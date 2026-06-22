@@ -5,7 +5,6 @@ import { usePathname, useRouter } from "next/navigation";
 import Icon from "./Icon";
 import UniformButton from "./UniformButton";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { supabase } from "@/lib/supabase";
 import { getProfileAvatarUrl, getProfileInitials } from "@/lib/profile";
 import { useCurrentUserProfile } from "@/lib/useCurrentUserProfile";
 import { signOutClientSide } from "@/lib/clientSignOut";
@@ -64,7 +63,6 @@ export default function FixedHeader() {
   const email = profile?.email || "";
   const roleTier = (profile?.role_tier as RoleTier | null) || null;
   const avatarPath = profile?.avatar_path || null;
-  const currentUserId = profile?.id || null;
   const avatarUrl = useMemo(
     () => getProfileAvatarUrl(avatarPath, process.env.NEXT_PUBLIC_SUPABASE_URL),
     [avatarPath],
@@ -143,8 +141,6 @@ export default function FixedHeader() {
     }
     setIsProfileDropdownOpen(false);
     router.replace("/login");
-    router.refresh();
-    window.location.assign("/login");
   };
 
   const handleSelectTheme = (mode: ThemeMode) => {

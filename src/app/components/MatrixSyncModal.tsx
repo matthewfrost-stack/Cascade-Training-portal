@@ -68,6 +68,10 @@ export default function MatrixSyncModal({ onClose }: { onClose: () => void }) {
   const canRunFull = useMemo(() => mode === 'full', [mode]);
 
   const handleImport = async () => {
+    await runImport(false);
+  };
+
+  const runImport = async (allowNewStaff: boolean) => {
     if (!file) return;
     if (!locationId) return;
 
@@ -79,6 +83,7 @@ export default function MatrixSyncModal({ onClose }: { onClose: () => void }) {
       const form = new FormData();
       form.set('locationId', locationId);
       form.set('file', file);
+      form.set('allowNewStaff', String(allowNewStaff));
 
       const res = await fetch('/api/training-matrix/import-csv', { method: 'POST', body: form });
       const body = await res.json().catch(() => ({}));
@@ -152,7 +157,7 @@ export default function MatrixSyncModal({ onClose }: { onClose: () => void }) {
       {mode === 'full' && (
         <div>
           <p className={`mb-4 text-sm ${isDark ? 'text-gray-300' : 'text-gray-600'}`}>
-            Select a location and upload the latest matrix CSV for that site. Dates/statuses in the CSV overwrite existing records for matched staff and courses.
+            Select a location and upload the latest matrix CSV for that site. The sync now updates matched records and also creates missing staff, courses, and location links where possible.
           </p>
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
@@ -196,8 +201,39 @@ export default function MatrixSyncModal({ onClose }: { onClose: () => void }) {
             <div className={`rounded-lg border p-3 text-sm mb-4 ${isDark ? 'border-emerald-900/40 bg-emerald-950/20 text-emerald-200' : 'border-emerald-200 bg-emerald-50 text-emerald-800'}`}>
               <div className="font-semibold mb-1">{result.success ? '✅ Sync complete' : '⚠️ Sync completed with errors'}</div>
               <div>
-                Upserts: <strong>{result.summary.upserts}</strong> · Processed cells: <strong>{result.summary.processedCells}</strong> · Unknown staff: <strong>{result.summary.skippedUnknownStaff}</strong> · Unknown courses: <strong>{result.summary.skippedUnknownCourses}</strong>
+                Upserts: <strong>{result.summary.upserts}</strong> · Processed cells: <strong>{result.summary.processedCells}</strong> · Created profiles: <strong>{result.summary.createdProfiles || 0}</strong> · Created courses: <strong>{result.summary.createdCourses || 0}</strong>
+                {' '}· Linked staff: <strong>{result.summary.linkedStaffLocations || 0}</strong> · Linked courses: <strong>{result.summary.linkedCourses || 0}</strong>
+                {' '}· Unknown staff: <strong>{result.summary.skippedUnknownStaff}</strong> · Unknown courses: <strong>{result.summary.skippedUnknownCourses}</strong>
               </div>
+              {result.requiresStaffApproval && Array.isArray(result.unknownStaff) && result.unknownStaff.length > 0 && (
+                <div className={`mt-3 rounded-lg border p-3 ${isDark ? 'border-amber-900/40 bg-amber-950/20 text-amber-100' : 'border-amber-200 bg-amber-50 text-amber-800'}`}>
+                  <div className="font-semibold">Staff approval required</div>
+                  <div className="mt-1 text-sm">
+                    These new staff names were found in the CSV and were not created yet:
+                  </div>
+                  <div className="mt-2 text-xs opacity-90">{result.unknownStaff.slice(0, 10).join(' · ')}</div>
+                  <div className="mt-3 flex flex-wrap gap-2">
+                    <UniformButton
+                      variant="primary"
+                      className="no-ui-motion shadow-md"
+                      onClick={() => runImport(true)}
+                      disabled={importing}
+                    >
+                      Approve & Add New Staff
+                    </UniformButton>
+                    <UniformButton
+                      variant="secondary"
+                      className="no-ui-motion border shadow-sm"
+                      onClick={() => {
+                        setResult(null);
+                      }}
+                      disabled={importing}
+                    >
+                      Leave Pending
+                    </UniformButton>
+                  </div>
+                </div>
+              )}
               <div className="mt-2 space-y-2">
                 {Array.isArray(result.errors) && result.errors.length > 0 && (
                   <div>

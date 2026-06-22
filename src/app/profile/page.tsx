@@ -129,7 +129,7 @@ export default function ProfilePage() {
       let result: any;
       try {
         result = await response.json();
-      } catch (parseError) {
+      } catch {
         throw new Error("Invalid server response when saving profile.");
       }
 
@@ -146,7 +146,6 @@ export default function ProfilePage() {
       setRoleTier(result.profile?.role_tier || roleTier);
       setMessage("Your profile has been updated.");
       await refreshProfile();
-      router.refresh();
     } catch (saveError: unknown) {
       setError(getErrorMessage(saveError, "Unable to save your profile."));
     } finally {

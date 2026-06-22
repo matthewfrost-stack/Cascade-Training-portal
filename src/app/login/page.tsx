@@ -43,8 +43,7 @@ export default function SignInPage() {
         setMessageType('error');
         return;
       }
-      router.push('/');
-      router.refresh();
+      router.replace('/');
     } catch (error: unknown) {
       setMessage(getErrorMessage(error));
       setMessageType('error');

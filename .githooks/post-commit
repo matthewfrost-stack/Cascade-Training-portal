@@ -1,40 +1,94 @@
-#!/bin/bash
+#!/usr/bin/env python3
+import sys
+import subprocess
+import json
+import urllib.request
 
-# 1. Fetch credentials
-TOKEN=$(git config monday.token)
-BOARD_ID=$(git config monday.boardid)
+# ==================== 🛠️ MATCH YOUR MONDAY COLUMN IDS HERE ====================
+COLUMN_IDS = {
+    "engineer": "person",       
+    "date": "date4",            
+    "description": "text_mm479zh2", 
+    "type": "status",           
+    "commit_link": "link_mm47favx"   
+}
+# ==============================================================================
 
-if [ -z "$TOKEN" ] || [ -z "$BOARD_ID" ]; then
-    exit 0
-fi
+# 1. Fetch credentials from local Git config
+try:
+    token = subprocess.check_output(['git', 'config', 'monday.token'], stderr=subprocess.DEVNULL).decode('utf-8').strip()
+    board_id = subprocess.check_output(['git', 'config', 'monday.boardid'], stderr=subprocess.DEVNULL).decode('utf-8').strip()
+    user_id = subprocess.check_output(['git', 'config', 'monday.userid'], stderr=subprocess.DEVNULL).decode('utf-8').strip()
+except subprocess.CalledProcessError:
+    token, board_id, user_id = "", "", ""
 
-# 2. Get commit info
-MSG=$(git log -1 --pretty=%B)
-HASH=$(git rev-parse --short HEAD)
-CLEAN_MSG=$(echo "$MSG" | sed 's/"/\\"/g' | tr -d '\n')
+if not token or not board_id:
+    print("⚠️ Monday.com integration skipped: Missing local git config settings.")
+    sys.exit(0)
 
-# 3. Detect the Type based on how the commit starts
-case "$CLEAN_MSG" in
-  feat:*)   TYPE_LABEL="Feature" ;;
-  fix:*)    TYPE_LABEL="Fix" ;;
-  update:*) TYPE_LABEL="Update" ;;
-  *)        TYPE_LABEL="" ;;
-esac
+# 2. Extract commit details
+subject = subprocess.check_output(['git', 'log', '-1', '--pretty=%s']).decode('utf-8').strip()
+body = subprocess.check_output(['git', 'log', '-1', '--pretty=%b']).decode('utf-8').strip()
+commit_hash = subprocess.check_output(['git', 'log', '-1', '--pretty=%h']).decode('utf-8').strip()
 
-# 4. Get today's date (YYYY-MM-DD)
-CURRENT_DATE=$(date +"%Y-%m-%d")
+commit_date = subprocess.check_output(['git', 'log', '-1', "--pretty=%ad", "--date=format:%Y-%m-%d"]).decode('utf-8').strip()
+commit_time = subprocess.check_output(['git', 'log', '-1', "--pretty=%ad", "--date=format:%H:%M:%S"]).decode('utf-8').strip()
 
-# 5. Build the Monday column data (assuming default column IDs 'status' and 'date')
-if [ -n "$TYPE_LABEL" ]; then
-    COLUMN_VALUES="{\\\"status\\\": {\\\"label\\\": \\\"$TYPE_LABEL\\\"}, \\\"date\\\": {\\\"date\\\": \\\"$CURRENT_DATE\\\"}}"
-else
-    COLUMN_VALUES="{\\\"date\\\": {\\\"date\\\": \\\"$CURRENT_DATE\\\"}}"
-fi
+# 3. Automatically build the repository web link
+commit_url = "https://github.com"
+try:
+    remote_url = subprocess.check_output(['git', 'config', '--get', 'remote.origin.url'], stderr=subprocess.DEVNULL).decode('utf-8').strip()
+    if remote_url.startswith("git@"):
+        remote_url = remote_url.replace(":", "/").replace("git@", "https://")
+    if remote_url.endswith(".git"):
+        remote_url = remote_url[:-4]
+    
+    commit_url = f"{remote_url}/commit/{commit_hash}"
+except:
+    pass
 
-# 6. Push everything to Monday
-curl -s -X POST \
-  -H "Authorization: $TOKEN" \
-  -H "Content-Type: application/json" \
-  -H "API-Version: 2023-10" \
-  -d "{\"query\": \"mutation { create_item (board_id: $BOARD_ID, item_name: \\\"$CLEAN_MSG ($HASH)\\\", column_values: \\\"$COLUMN_VALUES\\\") { id } }\"}" \
-  https://api.monday.com/v2 > /dev/null
+# 4. Determine the Type label
+type_label = ""
+if subject.startswith("feat:"): type_label = "Feature"
+elif subject.startswith("fix:"): type_label = "Fix"
+elif subject.startswith("update:"): type_label = "Update"
+elif subject.startswith("refactor:"): type_label = "Refactor"
+
+# 5. Map data to the verified Monday columns
+column_values = {
+    COLUMN_IDS["description"]: body if body else "",  # 😎 Fixed: Sending a clean, plain text string
+    COLUMN_IDS["date"]: {"date": commit_date, "time": commit_time},
+    COLUMN_IDS["commit_link"]: {"url": commit_url, "text": commit_hash}
+}
+
+# Format assignment for Monday's Person column
+if user_id.isdigit():
+    column_values[COLUMN_IDS["engineer"]] = {"personsAndTeams": [{"id": int(user_id), "kind": "person"}]}
+
+if type_label:
+    column_values[COLUMN_IDS["type"]] = {"label": type_label}
+
+# 6. Build and send GraphQL payload
+query = "mutation CreateGitItem($boardId: ID!, $itemName: String!, $columnValues: JSON!) { create_item (board_id: $boardId, item_name: $itemName, column_values: $columnValues) { id } }"
+payload = {
+    "query": query,
+    "variables": {
+        "boardId": board_id,
+        "itemName": subject,
+        "columnValues": json.dumps(column_values)
+    }
+}
+
+req = urllib.request.Request(
+    "https://api.monday.com/v2",
+    data=json.dumps(payload).encode('utf-8'),
+    headers={"Authorization": token, "Content-Type": "application/json", "API-Version": "2023-10"},
+    method="POST"
+)
+
+try:
+    with urllib.request.urlopen(req) as response:
+        output = response.read().decode('utf-8')
+        print(f"👉 Monday API Response: {output}")
+except Exception as e:
+    print(f"❌ Failed to connect to Monday: {e}")

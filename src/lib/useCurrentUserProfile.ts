@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { usePathname } from "next/navigation";
 import { supabase } from "@/lib/supabase";
 
@@ -26,19 +26,10 @@ export function useCurrentUserProfile(): UseCurrentUserProfileState {
   const [profile, setProfile] = useState<CurrentUserProfile | null>(null);
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [loading, setLoading] = useState(true);
+  const hasBootstrappedRef = useRef(false);
+  const lastRouteWasAuthRef = useRef(true);
 
-  const parseJsonResponse = async (response: Response) => {
-    try {
-      return await response.json();
-    } catch (error) {
-      const body = await response
-        .text()
-        .catch(() => "<unable to read response body>");
-      throw new Error(`Invalid JSON response from profile endpoint: ${body}`);
-    }
-  };
-
-  const loadProfile = async () => {
+  const loadProfile = useCallback(async () => {
     let session: {
       access_token?: string | null;
       user?: {
@@ -80,7 +71,15 @@ export function useCurrentUserProfile(): UseCurrentUserProfileState {
 
         clearTimeout(timeoutId);
 
-        const result = await parseJsonResponse(response);
+        let result: { profile?: CurrentUserProfile | null } | null;
+        try {
+          result = await response.json();
+        } catch {
+          const body = await response
+            .text()
+            .catch(() => "<unable to read response body>");
+          throw new Error(`Invalid JSON response from profile endpoint: ${body}`);
+        }
         if (response.ok) {
           const profileData = (result?.profile || null) as CurrentUserProfile | null;
           if (profileData) {
@@ -151,16 +150,26 @@ export function useCurrentUserProfile(): UseCurrentUserProfileState {
       setProfile(null);
       setIsAuthenticated(false);
     }
-  };
+  }, []);
 
   useEffect(() => {
-    // Skip profile loading on login and auth pages
-    if (pathname === '/login' || pathname === '/auth/callback' || pathname.startsWith('/auth/')) {
+    const isAuthRoute =
+      pathname === "/login" ||
+      pathname === "/auth/callback" ||
+      pathname.startsWith("/auth/");
+
+    if (isAuthRoute) {
+      lastRouteWasAuthRef.current = true;
       setProfile(null);
       setIsAuthenticated(false);
       setLoading(false);
       return;
     }
+
+    const shouldBootstrapProfile =
+      !hasBootstrappedRef.current || lastRouteWasAuthRef.current;
+    hasBootstrappedRef.current = true;
+    lastRouteWasAuthRef.current = false;
 
     let mounted = true;
     let isInitialLoad = true;
@@ -177,13 +186,17 @@ export function useCurrentUserProfile(): UseCurrentUserProfileState {
       }
     };
 
-    syncProfile();
+    if (shouldBootstrapProfile) {
+      syncProfile();
+    } else {
+      setLoading(false);
+    }
 
     const { data: authListener } = supabase.auth.onAuthStateChange(
       async (event, session) => {
         if (!mounted) return;
 
-        // Only sync on auth state changes after the initial load
+        // Only sync on auth state changes after the initial listener setup
         if (isInitialLoad) {
           isInitialLoad = false;
           return;
@@ -204,7 +217,7 @@ export function useCurrentUserProfile(): UseCurrentUserProfileState {
       mounted = false;
       authListener.subscription.unsubscribe();
     };
-  }, [pathname]);
+  }, [loadProfile, pathname]);
 
   // Secondary effect: Refresh profile if critical fields are missing
   // This ensures permissions are restored even if API call initially failed
@@ -231,7 +244,7 @@ export function useCurrentUserProfile(): UseCurrentUserProfileState {
         }
       };
     }
-  }, [isAuthenticated, profile, loading]);
+  }, [isAuthenticated, profile, loading, loadProfile]);
 
   return {
     profile,

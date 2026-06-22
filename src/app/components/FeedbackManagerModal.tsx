@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
+import Link from 'next/link';
 import { supabase } from '@/lib/supabase';
 import Icon from './Icon';
 
@@ -175,12 +176,12 @@ export default function FeedbackManagerModal({ onClose }: { onClose: () => void 
         <div style={{ backgroundColor: isDark ? '#0f172a' : '#f1f5f9', borderColor: isDark ? '#334155' : '#e2e8f0' }} className="p-6 border-b flex justify-between items-center">
           <div className="flex items-center gap-6">
             <h2 style={{ color: isDark ? '#f1f5f9' : '#1e293b' }} className="text-xl font-black uppercase tracking-tight">Feedback & Automation</h2>
-            <a 
-              href="/feedback/results" 
+            <Link
+              href="/feedback/results"
               className="px-3 py-1.5 bg-blue-600/10 hover:bg-blue-600/20 text-blue-500 rounded-lg text-[9px] font-black uppercase tracking-wider transition-all border border-blue-500/20"
             >
               View Results
-            </a>
+            </Link>
           </div>
           <button onClick={onClose} style={{ color: isDark ? '#94a3b8' : '#64748b' }} className="hover:text-red-500 transition-colors">
             <Icon name="close" className="w-6 h-6" />

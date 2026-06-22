@@ -46,6 +46,9 @@ export default function BookingModal({ event, onClose, onRefresh, onOpenChecklis
     return s.length >= 5 ? s.slice(0, 5) : s;
   };
 
+  const escapeCsvValue = (value: unknown) =>
+    `"${String(value ?? '').replace(/"/g, '""')}"`;
+
   const eventTimeRange = (() => {
     const start = formatEventTime(event?.start_time);
     const end = formatEventTime(event?.end_time);
@@ -216,6 +219,43 @@ export default function BookingModal({ event, onClose, onRefresh, onOpenChecklis
       setRoster([]);
     }
   }
+
+  const handleExportRoster = () => {
+    if (!event || roster.length === 0) return;
+
+    const headers = [
+      'Staff Name',
+      'Location',
+      'Attendance',
+      'Late Minutes',
+      'Late Reason',
+      'Absence Reason',
+    ];
+
+    const rows = roster.map((row) => [
+      row.profiles?.full_name || '',
+      row.profiles?.location || '',
+      row.attended_at ? 'Present' : 'Absent',
+      row.minutes_late || 0,
+      row.late_reason || '',
+      row.absence_reason || '',
+    ]);
+
+    const csv = [headers, ...rows]
+      .map((row) => row.map(escapeCsvValue).join(','))
+      .join('\n');
+
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+    const url = window.URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    const date = new Date(event.event_date).toISOString().split('T')[0];
+    a.href = url;
+    a.download = `roster-${event.course_name}-${date}.csv`;
+    document.body.appendChild(a);
+    a.click();
+    window.URL.revokeObjectURL(url);
+    document.body.removeChild(a);
+  };
 
   const toggleLocationExpanded = (locationName: string) => {
     const newExpanded = new Set(expandedLocations);
@@ -568,6 +608,19 @@ export default function BookingModal({ event, onClose, onRefresh, onOpenChecklis
             </>
           ) : (
             <div className="space-y-4">
+              <div className="flex justify-end">
+                <UniformButton
+                  type="button"
+                  variant="secondary"
+                  size="sm"
+                  onClick={handleExportRoster}
+                  disabled={loading || roster.length === 0}
+                  className="px-4"
+                  title="Export roster as CSV"
+                >
+                  Export CSV
+                </UniformButton>
+              </div>
               {roster
                 .sort((a, b) => {
                   // Sort by location first, then by name
