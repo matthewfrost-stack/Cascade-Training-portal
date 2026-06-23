@@ -28,7 +28,7 @@ function AdminToolsPageInner() {
   const [isDark, setIsDark] = useState(true);
   const [accessDenied, setAccessDenied] = useState(false);
 
-  const openParam = (searchParams.get('open') || '').trim().toLowerCase();
+  const openParam = (searchParams?.get('open') || '').trim().toLowerCase();
   const initialModal =
     openParam === 'staff' ? 'staff' : openParam === 'notifications' ? 'notifications' : openParam === 'housekeeping' ? 'housekeeping' : null;
 

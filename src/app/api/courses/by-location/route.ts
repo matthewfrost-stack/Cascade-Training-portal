@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { createServiceClient, requireRole } from '@/lib/apiAuth';
+import { createServiceClient, getScopedLocationIds, requireRole } from '@/lib/apiAuth';
 
 export const dynamic = 'force-dynamic';
 
@@ -19,6 +19,14 @@ export async function GET(request: NextRequest) {
     }
 
     const supabase = createServiceClient();
+    const scopedLocations = await getScopedLocationIds(authz.userId, authz.role, supabase);
+
+    if (!scopedLocations.all && !scopedLocations.ids.includes(locationId)) {
+      return NextResponse.json(
+        { error: 'Forbidden' },
+        { status: 403 }
+      );
+    }
 
     // Get courses for this location with proper ordering
     const { data: locationCourses, error } = await supabase

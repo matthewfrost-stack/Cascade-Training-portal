@@ -99,21 +99,21 @@ function FeedbackForm() {
       
       // Initialize default values
       const initialScaleValues: Record<string, number> = {};
-      data.scale_questions.forEach(scale => {
-        scale.questions.forEach(question => {
+      data.scale_questions.forEach((scale: { questions: Array<{ id: string }> }) => {
+        scale.questions.forEach((question: { id: string }) => {
           initialScaleValues[question.id] = 5;
         });
       });
       setScaleValues(initialScaleValues);
 
       const initialBooleanValues: Record<string, boolean | null> = {};
-      data.boolean_questions.forEach(question => {
+      data.boolean_questions.forEach((question: { id: string }) => {
         initialBooleanValues[question.id] = null;
       });
       setBooleanValues(initialBooleanValues);
 
       const initialTextValues: Record<string, string> = {};
-      data.text_questions.forEach(question => {
+      data.text_questions.forEach((question: { id: string }) => {
         initialTextValues[question.id] = '';
       });
       setTextValues(initialTextValues);

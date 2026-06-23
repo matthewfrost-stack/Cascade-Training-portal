@@ -1,5 +1,5 @@
 import { NextRequest } from 'next/server';
-import { createServiceClient, requireRole } from '@/lib/apiAuth';
+import { createServiceClient, getScopedLocationIds, requireRole } from '@/lib/apiAuth';
 
 export const dynamic = 'force-dynamic';
 
@@ -20,6 +20,17 @@ export async function POST(request: NextRequest) {
           error: 'Missing required fields: staffId, locationId',
         },
         { status: 400 }
+      );
+    }
+
+    const scopedLocations = await getScopedLocationIds(authz.userId, authz.role, supabaseAdmin);
+    if (!scopedLocations.all && !scopedLocations.ids.includes(locationId)) {
+      return Response.json(
+        {
+          success: false,
+          error: 'Forbidden',
+        },
+        { status: 403 }
       );
     }
 

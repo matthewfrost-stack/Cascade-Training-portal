@@ -1,61 +1,14 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { createClient } from '@supabase/supabase-js';
+import { createServiceClient, requireRole } from '@/lib/apiAuth';
 
 export const dynamic = 'force-dynamic';
 
-export async function GET(request: NextRequest) {
+export async function GET(_request: NextRequest) {
   try {
-    const supabase = createClient(
-      process.env.NEXT_PUBLIC_SUPABASE_URL || '',
-      process.env.SUPABASE_SERVICE_ROLE_KEY || ''
-    );
+    const authz = await requireRole(['admin', 'scheduler', 'manager', 'staff']);
+    if ('error' in authz) return authz.error;
 
-    // Get the user's authentication token from the request
-    const token = request.headers.get('Authorization')?.replace('Bearer ', '');
-    
-    if (!token) {
-      return NextResponse.json(
-        { error: 'Unauthorized' },
-        { status: 401 }
-      );
-    }
-
-    // Create an authenticated client with the user's token
-    const authClient = createClient(
-      process.env.NEXT_PUBLIC_SUPABASE_URL || '',
-      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || '',
-      {
-        global: {
-          headers: {
-            Authorization: `Bearer ${token}`
-          }
-        }
-      }
-    );
-
-    // Get current user and their role
-    const { data: { user }, error: userError } = await authClient.auth.getUser();
-
-    if (userError || !user) {
-      return NextResponse.json(
-        { error: 'Unauthorized' },
-        { status: 401 }
-      );
-    }
-
-    // Get user's profile to check role and location
-    const { data: userProfile, error: profileError } = await supabase
-      .from('profiles')
-      .select('role_tier, id')
-      .eq('id', user.id)
-      .single();
-
-    if (profileError || !userProfile) {
-      return NextResponse.json(
-        { error: 'User profile not found' },
-        { status: 404 }
-      );
-    }
+    const supabase = createServiceClient();
 
     // Build query based on user role
     let query = supabase
@@ -74,14 +27,14 @@ export async function GET(request: NextRequest) {
       `);
 
     // Apply location filtering based on role
-    if (userProfile.role_tier === 'admin') {
+    if (authz.role === 'admin') {
       // Admins see everything - no filter needed
-    } else if (userProfile.role_tier === 'manager' || userProfile.role_tier === 'scheduler') {
+    } else if (authz.role === 'manager' || authz.role === 'scheduler') {
       // Get locations this user manages
       const { data: managedLocations } = await supabase
         .from('staff_locations')
         .select('location_id')
-        .eq('staff_id', user.id);
+        .eq('staff_id', authz.userId);
 
       const locationIds = managedLocations?.map(ml => ml.location_id) || [];
 
@@ -92,7 +45,7 @@ export async function GET(request: NextRequest) {
       query = query.in('completed_at_location_id', locationIds);
     } else {
       // Staff only see their own records
-      query = query.eq('staff_id', user.id);
+      query = query.eq('staff_id', authz.userId);
     }
 
     const { data, error } = await query;
@@ -107,7 +60,7 @@ export async function GET(request: NextRequest) {
 
     return NextResponse.json({
       records: data || [],
-      userRole: userProfile.role_tier,
+      userRole: authz.role,
       count: data?.length || 0
     });
   } catch (error) {

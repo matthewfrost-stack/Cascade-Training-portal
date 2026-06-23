@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { requireRole } from '@/lib/apiAuth';
+import { createServiceClient, getScopedLocationIds, requireRole } from '@/lib/apiAuth';
 
 export const dynamic = 'force-dynamic';
 
@@ -16,8 +16,14 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: 'locationId required' }, { status: 400 });
     }
 
+    const supabase = createServiceClient();
+    const scopedLocations = await getScopedLocationIds(authz.userId, authz.role, supabase);
+    if (!scopedLocations.all && !scopedLocations.ids.includes(locationId)) {
+      return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+    }
+
     // Get staff and courses for location
-    const { data: staffData, error: staffError } = await authz.service
+    const { data: staffData, error: staffError } = await supabase
       .from('staff_locations')
       .select('staff_id, profiles(full_name, email), display_order')
       .eq('location_id', locationId)
@@ -27,7 +33,7 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: 'Failed to fetch staff' }, { status: 500 });
     }
 
-    const { data: courseData, error: courseError } = await authz.service
+    const { data: courseData, error: courseError } = await supabase
       .from('location_courses')
       .select('course_id, courses(name, category), display_order')
       .eq('location_id', locationId)
@@ -38,10 +44,10 @@ export async function GET(request: NextRequest) {
     }
 
     // Get all training records for this location
-    const { data: trainingData, error: trainingError } = await authz.service
+    const { data: trainingData, error: trainingError } = await supabase
       .from('staff_training_matrix')
       .select('staff_id, course_id, completion_date, expiry_date, status')
-      .eq('location_id', locationId);
+      .eq('completed_at_location_id', locationId);
 
     if (trainingError) {
       return NextResponse.json({ error: 'Failed to fetch training data' }, { status: 500 });

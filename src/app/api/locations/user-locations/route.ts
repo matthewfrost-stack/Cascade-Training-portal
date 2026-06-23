@@ -1,128 +1,37 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { createClient } from '@supabase/supabase-js';
+import { createServiceClient, getScopedLocationIds, requireRole } from '@/lib/apiAuth';
 
 export const dynamic = 'force-dynamic';
 
-export async function GET(request: NextRequest) {
+export async function GET(_request: NextRequest) {
   try {
-    const supabase = createClient(
-      process.env.NEXT_PUBLIC_SUPABASE_URL || '',
-      process.env.SUPABASE_SERVICE_ROLE_KEY || ''
-    );
+    const authz = await requireRole(['admin', 'manager', 'scheduler', 'staff']);
+    if ('error' in authz) return authz.error;
 
-    // Get the user's authentication token
-    const token = request.headers.get('Authorization')?.replace('Bearer ', '');
-    
-    if (!token) {
-      return NextResponse.json(
-        { error: 'Unauthorized' },
-        { status: 401 }
-      );
-    }
+    const supabase = createServiceClient();
+    const scopedLocations = await getScopedLocationIds(authz.userId, authz.role, supabase);
 
-    // Create authenticated client
-    const authClient = createClient(
-      process.env.NEXT_PUBLIC_SUPABASE_URL || '',
-      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || '',
-      {
-        global: {
-          headers: {
-            Authorization: `Bearer ${token}`
-          }
-        }
-      }
-    );
+    let locations: { id: string; name: string }[] = [];
 
-    const { data: { user }, error: userError } = await authClient.auth.getUser();
-
-    if (userError || !user) {
-      return NextResponse.json(
-        { error: 'Unauthorized' },
-        { status: 401 }
-      );
-    }
-
-    // Get user profile
-    const { data: userProfile } = await supabase
-      .from('profiles')
-      .select('role_tier, managed_houses, location')
-      .eq('id', user.id)
-      .single();
-
-    if (!userProfile) {
-      return NextResponse.json(
-        { error: 'User profile not found' },
-        { status: 404 }
-      );
-    }
-
-    let locations: any[] = [];
-
-    if (userProfile.role_tier === 'admin') {
-      // Admins see all locations
+    if (scopedLocations.all) {
       const { data } = await supabase
         .from('locations')
         .select('id, name')
         .order('name');
       locations = data || [];
-    } else if (userProfile.role_tier === 'manager' || userProfile.role_tier === 'scheduler') {
-      // Managers/schedulers can see explicitly managed houses + their linked staff locations.
-      const locationMap = new Map<string, { id: string; name: string }>();
-
-      // Existing staff_locations links
-      const { data: linkedLocations } = await supabase
-        .from('staff_locations')
-        .select('location_id, locations(id, name)')
-        .eq('staff_id', user.id);
-
-      (linkedLocations || []).forEach((sl: any) => {
-        if (sl.locations?.id && sl.locations?.name) {
-          locationMap.set(sl.locations.id, sl.locations);
-        }
-      });
-
-      // Managed house names from profile
-      const managedNames = new Set<string>();
-      if (Array.isArray(userProfile.managed_houses)) {
-        userProfile.managed_houses.forEach((name: any) => {
-          if (typeof name === 'string' && name.trim()) {
-            managedNames.add(name.trim());
-          }
-        });
-      }
-      if (typeof userProfile.location === 'string' && userProfile.location.trim()) {
-        managedNames.add(userProfile.location.trim());
-      }
-
-      if (managedNames.size > 0) {
-        const { data: managedLocations } = await supabase
-          .from('locations')
-          .select('id, name')
-          .in('name', Array.from(managedNames));
-
-        (managedLocations || []).forEach((loc: any) => {
-          if (loc.id && loc.name) {
-            locationMap.set(loc.id, loc);
-          }
-        });
-      }
-
-      locations = Array.from(locationMap.values()).sort((a, b) => a.name.localeCompare(b.name));
-    } else {
-      // Staff get their own location
+    } else if (scopedLocations.ids.length > 0) {
       const { data } = await supabase
-        .from('staff_locations')
-        .select('locations(id, name)')
-        .eq('staff_id', user.id)
-        .limit(1);
-
-      locations = data?.map(sl => sl.locations).filter(Boolean) || [];
+        .from('locations')
+        .select('id, name')
+        .in('id', scopedLocations.ids)
+        .order('name');
+      locations = data || [];
     }
 
     return NextResponse.json({
       locations,
       count: locations.length,
-      userRole: userProfile.role_tier
+      userRole: authz.role
     });
   } catch (error) {
     console.error('Error in user locations endpoint:', error);

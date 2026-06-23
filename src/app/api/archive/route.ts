@@ -1,59 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { createClient } from '@supabase/supabase-js';
+import { createServiceClient, requireRole } from '@/lib/apiAuth';
 
-type RoleTier = 'staff' | 'manager' | 'scheduler' | 'admin';
-
-function getClients(token: string) {
-  const service = createClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL || '',
-    process.env.SUPABASE_SERVICE_ROLE_KEY || ''
-  );
-
-  const auth = createClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL || '',
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || '',
-    {
-      global: {
-        headers: { Authorization: `Bearer ${token}` },
-      },
-    }
-  );
-
-  return { service, auth };
-}
-
-async function requireAdmin(request: NextRequest) {
-  const token = request.headers.get('Authorization')?.replace('Bearer ', '') || '';
-  if (!token) return { error: NextResponse.json({ error: 'Unauthorized' }, { status: 401 }) };
-
-  const { service, auth } = getClients(token);
-  const { data: userRes, error: userErr } = await auth.auth.getUser();
-  if (userErr || !userRes.user) {
-    return { error: NextResponse.json({ error: 'Unauthorized' }, { status: 401 }) };
-  }
-
-  const { data: profile, error: profileErr } = await service
-    .from('profiles')
-    .select('id,role_tier')
-    .eq('id', userRes.user.id)
-    .single();
-
-  if (profileErr || !profile) {
-    return { error: NextResponse.json({ error: 'Profile not found' }, { status: 404 }) };
-  }
-
-  if ((profile.role_tier as RoleTier) !== 'admin') {
-    return { error: NextResponse.json({ error: 'Forbidden' }, { status: 403 }) };
-  }
-
-  return { service, userId: profile.id as string };
-}
-
-export async function GET(request: NextRequest) {
-  const authz = await requireAdmin(request);
+export async function GET(_request: NextRequest) {
+  const authz = await requireRole(['admin']);
   if ('error' in authz) return authz.error;
 
-  const { service } = authz;
+  const service = createServiceClient();
 
   const { data, error } = await service
     .from('deleted_items')
@@ -78,10 +30,11 @@ export async function GET(request: NextRequest) {
 }
 
 export async function POST(request: NextRequest) {
-  const authz = await requireAdmin(request);
+  const authz = await requireRole(['admin']);
   if ('error' in authz) return authz.error;
 
-  const { service, userId } = authz;
+  const service = createServiceClient();
+  const { userId } = authz;
   const body = await request.json();
   const deletedItemId = body?.deletedItemId as string | undefined;
 
@@ -225,10 +178,10 @@ export async function POST(request: NextRequest) {
 }
 
 export async function DELETE(request: NextRequest) {
-  const authz = await requireAdmin(request);
+  const authz = await requireRole(['admin']);
   if ('error' in authz) return authz.error;
 
-  const { service } = authz;
+  const service = createServiceClient();
   const body = await request.json();
   const deletedItemId = body?.deletedItemId as string | undefined;
 

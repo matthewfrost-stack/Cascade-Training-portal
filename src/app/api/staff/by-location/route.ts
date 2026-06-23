@@ -1,60 +1,15 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { createClient } from '@supabase/supabase-js';
+import { createServiceClient, getScopedLocationIds, requireRole } from '@/lib/apiAuth';
 
 export const dynamic = 'force-dynamic';
 
-export async function GET(request: NextRequest) {
+export async function GET(_request: NextRequest) {
   try {
-    const supabase = createClient(
-      process.env.NEXT_PUBLIC_SUPABASE_URL || '',
-      process.env.SUPABASE_SERVICE_ROLE_KEY || ''
-    );
+    const authz = await requireRole(['admin', 'manager', 'scheduler', 'staff']);
+    if ('error' in authz) return authz.error;
 
-    // Get the user's authentication token
-    const token = request.headers.get('Authorization')?.replace('Bearer ', '');
-    
-    if (!token) {
-      return NextResponse.json(
-        { error: 'Unauthorized' },
-        { status: 401 }
-      );
-    }
-
-    // Create authenticated client
-    const authClient = createClient(
-      process.env.NEXT_PUBLIC_SUPABASE_URL || '',
-      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || '',
-      {
-        global: {
-          headers: {
-            Authorization: `Bearer ${token}`
-          }
-        }
-      }
-    );
-
-    const { data: { user }, error: userError } = await authClient.auth.getUser();
-
-    if (userError || !user) {
-      return NextResponse.json(
-        { error: 'Unauthorized' },
-        { status: 401 }
-      );
-    }
-
-    // Get user profile
-    const { data: userProfile } = await supabase
-      .from('profiles')
-      .select('role_tier')
-      .eq('id', user.id)
-      .single();
-
-    if (!userProfile) {
-      return NextResponse.json(
-        { error: 'User profile not found' },
-        { status: 404 }
-      );
-    }
+    const supabase = createServiceClient();
+    const scopedLocations = await getScopedLocationIds(authz.userId, authz.role, supabase);
 
     let query = supabase
       .from('profiles')
@@ -70,29 +25,15 @@ export async function GET(request: NextRequest) {
       `);
 
     // Apply location filtering
-    if (userProfile.role_tier === 'admin') {
+    if (scopedLocations.all) {
       // Admins see all staff
-    } else if (userProfile.role_tier === 'manager' || userProfile.role_tier === 'scheduler') {
-      // Get locations this user manages
-      const { data: managedLocations } = await supabase
-        .from('staff_locations')
-        .select('location_id')
-        .eq('staff_id', user.id);
-
-      const locationIds = managedLocations?.map(ml => ml.location_id) || [];
-
-      if (locationIds.length === 0) {
-        return NextResponse.json({ staff: [] });
-      }
-
-      // Get staff assigned to these locations
+    } else if (scopedLocations.ids.length > 0) {
       const { data: staffAtLocations } = await supabase
         .from('staff_locations')
         .select('staff_id')
-        .in('location_id', locationIds);
+        .in('location_id', scopedLocations.ids);
 
       const staffIds = staffAtLocations?.map(sl => sl.staff_id) || [];
-      
       if (staffIds.length === 0) {
         return NextResponse.json({ staff: [] });
       }
@@ -100,7 +41,7 @@ export async function GET(request: NextRequest) {
       query = query.in('id', staffIds);
     } else {
       // Staff can only see themselves
-      query = query.eq('id', user.id);
+      query = query.eq('id', authz.userId);
     }
 
     const { data: staff, error } = await query;
@@ -116,7 +57,7 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({
       staff: staff || [],
       count: staff?.length || 0,
-      userRole: userProfile.role_tier
+      userRole: authz.role
     });
   } catch (error) {
     console.error('Error in staff by location endpoint:', error);

@@ -153,10 +153,11 @@ export function useCurrentUserProfile(): UseCurrentUserProfileState {
   }, []);
 
   useEffect(() => {
+    const currentPath = pathname ?? "";
     const isAuthRoute =
-      pathname === "/login" ||
-      pathname === "/auth/callback" ||
-      pathname.startsWith("/auth/");
+      currentPath === "/login" ||
+      currentPath === "/auth/callback" ||
+      currentPath.startsWith("/auth/");
 
     if (isAuthRoute) {
       lastRouteWasAuthRef.current = true;
