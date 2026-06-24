@@ -1,4 +1,3 @@
-
 'use client';
 import React, { createContext, useContext, useState, useEffect, useRef } from 'react';
 import { useRouter } from 'next/navigation';
@@ -17,54 +16,12 @@ function normalizeCourseName(name: string): string {
 }
 
 interface MatrixContextType {
-  // We will export everything from the context by typing it as 'any' for now to allow rapid refactoring,
-  // then we can strict-type it later.
   [key: string]: any;
 }
 
 const MatrixContext = createContext<MatrixContextType | undefined>(undefined);
 
 export function MatrixProvider({ children }: { children: React.ReactNode }) {
-// Helper to get CSV URL for a location name (public folder)
-function getCsvUrlForLocation(locationName: string): string {
-  // e.g. 'Banks House School' => '/csv-import/Banks House School Training Matrix - Staff Matrix.csv'
-  return `/csv-import/${locationName} Training Matrix - Staff Matrix.csv`;
-}
-
-interface Staff {
-  id: string;
-  name: string;
-  location_id: string;
-}
-
-interface Course {
-  id: string;
-  name: string;
-  category?: string;
-  expiry_months?: number;
-  never_expires?: boolean;
-}
-
-interface MatrixCell {
-  completion_date: string | null;
-  expiry_date: string | null;
-  training_id: string | null;
-  status: string | null;
-}
-
-interface RemovedCourseEntry {
-  deleted_item_id: string;
-  course_id: string;
-  course_name: string;
-  location_id: string;
-  display_order: number;
-}
-
-function normalizeCourseName(name: string): string {
-  return name.replace(/\s+/g, ' ').trim().toLowerCase();
-}
-
-
   const router = useRouter();
   const [user, setUser] = useState<any>(null);
   const [userRole, setUserRole] = useState<string>('');
@@ -90,9 +47,8 @@ function normalizeCourseName(name: string): string {
   const [editingHeader, setEditingHeader] = useState<{ courseId: string; type: 'name' | 'category' | 'expiry' } | null>(null);
   const [editHeaderValue, setEditHeaderValue] = useState<string>('');
   const [editNeverExpires, setEditNeverExpires] = useState<boolean>(false);
-  const [courseOrderInput, setCourseOrderInput] = useState('');
   const [lastRemovedCourse, setLastRemovedCourse] = useState<RemovedCourseEntry | null>(null);
-  const [selectedCells, setSelectedCells] = useState<Set<string>>(new Set()); // staffId-courseId
+  const [selectedCells, setSelectedCells] = useState<Set<string>>(new Set());
   const [bulkEditMode, setBulkEditMode] = useState(false);
   const [bulkEditStatus, setBulkEditStatus] = useState<'completed' | 'allocated' | 'not_yet_due' | 'na' | null>(null);
   const [bulkEditDate, setBulkEditDate] = useState<string>('');
@@ -127,13 +83,11 @@ function normalizeCourseName(name: string): string {
   }
 
   function formatExpiryDisplay(months?: number, neverExpires?: boolean): string {
-    // Check if course never expires (9999 months, neverExpires flag, or null months)
     if (neverExpires || months === 9999 || months === null || months === undefined) return 'One-Off';
-    
     const m = months || 12;
     const years = Math.floor(m / 12);
     const remainingMonths = m % 12;
-    
+
     if (years > 0 && remainingMonths === 0) {
       return `${years} year${years > 1 ? 's' : ''}`;
     } else if (years > 0) {
@@ -145,7 +99,6 @@ function normalizeCourseName(name: string): string {
   useEffect(() => {
     checkAuth();
     checkTheme();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   useEffect(() => {
@@ -156,7 +109,6 @@ function normalizeCourseName(name: string): string {
     return () => window.removeEventListener('themeChange', handleThemeChange);
   }, []);
 
-  // Cleanup abort controller when component unmounts
   useEffect(() => {
     return () => {
       if (fetchAbortControllerRef.current) {
@@ -173,44 +125,34 @@ function normalizeCourseName(name: string): string {
 
   useEffect(() => {
     if (!selectedLocation) return;
-    
-    // Only abort if we're changing locations (selectedLocation changed)
-    // Don't abort on other effect re-runs (which could cause issues with user actions)
+
     if (fetchAbortControllerRef.current) {
       try {
         fetchAbortControllerRef.current.abort();
       } catch {
-        // Ignore errors from aborting
+        // Ignore aborting issues
       }
     }
-    
-    // Create new abort controller for this fetch
+
     const abortController = new AbortController();
     fetchAbortControllerRef.current = abortController;
-    
-    // Set a flag so we know this is the current request
     let isCurrentRequest = true;
-    
-    // Start the fetch
+
     fetchMatrixData(abortController.signal).then(() => {
-      // Mark that this request completed successfully
       if (isCurrentRequest && abortController === fetchAbortControllerRef.current) {
-        // This was the latest request, good to go
+        // Active request handling
       }
     }).catch(error => {
-      // Ignore abort errors - they're expected when navigating
       if (!(error instanceof Error && error.name === 'AbortError')) {
         console.error('Unexpected error in fetchMatrixData:', error);
       }
     });
-    
-    // After fetching matrix data, check if there are any courses for this location
+
     (async () => {
-      // Guard: don't run if selectedLocation is empty or request was aborted
       if (!selectedLocation || selectedLocation.trim() === '' || !isCurrentRequest) {
         return;
       }
-      
+
       const { data: locationCourses, error } = await supabase
         .from('location_training_courses')
         .select('training_course_id')
@@ -220,7 +162,6 @@ function normalizeCourseName(name: string): string {
         return;
       }
       if (!locationCourses || locationCourses.length === 0) {
-        // No courses in DB for this location, import from CSV
         const locationObj = locations.find(l => l.id === selectedLocation);
         if (locationObj && locationObj.name) {
           const csvUrl = getCsvUrlForLocation(locationObj.name);
@@ -229,11 +170,9 @@ function normalizeCourseName(name: string): string {
             if (!res.ok) throw new Error('CSV not found');
             const csvContent = await res.text();
             const csvHeaders: CsvHeaderRows = parseFirstThreeRowsFromCsvString(csvContent);
-            // Insert each course into training_courses and location_training_courses
             for (let idx = 0; idx < csvHeaders.courseNameRow.length; idx++) {
               const name = csvHeaders.courseNameRow[idx]?.trim();
               if (!name) continue;
-              // Insert or upsert course
               const { data: course, error: courseError } = await supabase
                 .from('training_courses')
                 .upsert([
@@ -249,7 +188,6 @@ function normalizeCourseName(name: string): string {
                 console.warn('Error upserting course', name, courseError);
                 continue;
               }
-              // Insert into location_training_courses
               await supabase
                 .from('location_training_courses')
                 .upsert([
@@ -260,18 +198,17 @@ function normalizeCourseName(name: string): string {
                   },
                 ], { onConflict: 'location_id,training_course_id' });
             }
-            // After import, re-fetch matrix data to show DB-backed courses
             fetchMatrixData();
           } catch (e) {
-            console.warn('Could not           }
+            console.warn('Could not complete the operation', e);
+          }
         }
       }
     })();
-    
+
     return () => {
       isCurrentRequest = false;
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedLocation, locations]);
 
   useEffect(() => {
@@ -314,19 +251,15 @@ function normalizeCourseName(name: string): string {
       const { data: sessionData } = await supabase.auth.getSession();
       const token = sessionData.session?.access_token;
       if (!token) {
-        console.warn('No session token available for location fetch');
         setLoading(false);
         return;
       }
 
       const response = await fetch('/api/locations/user-locations', {
-        headers: {
-          Authorization: `Bearer ${token}`,
-        },
+        headers: { Authorization: `Bearer ${token}` },
       });
 
       if (!response.ok) {
-        console.warn('Failed to fetch scoped locations:', response.status);
         setLoading(false);
         return;
       }
@@ -353,57 +286,41 @@ function normalizeCourseName(name: string): string {
       console.error('Error in fetchLocations:', error);
       setLoading(false);
     }
-  }
+  };
 
   async function fetchMatrixData(signal?: AbortSignal) {
     try {
-      // Safety check: don't proceed if no location selected
       if (!selectedLocation || selectedLocation.trim() === '') {
-        console.warn('fetchMatrixData called with invalid selectedLocation:', selectedLocation);
         setLoading(false);
         return;
       }
-      
-      // Check if request was aborted before we even start
-      if (signal?.aborted) {
-        console.log('fetchMatrixData: request aborted before start');
-        return;
-      }
-      
+      if (signal?.aborted) return;
+
       setLoading(true);
 
-      // Fetch dividers from location_matrix_dividers table
       const { data: dividersData, error: dividersError } = await supabase
         .from('location_matrix_dividers')
         .select('id, name, display_order')
         .eq('location_id', selectedLocation)
         .order('display_order', { ascending: true });
 
-      if (dividersError) {
-        console.warn('Error fetching dividers:', dividersError);
-      }
+      if (dividersError) console.warn('Error fetching dividers:', dividersError);
 
-      // First, fetch all staff from staff_locations with display_order
       const { data: staffLocationsData, error: staffLocationsError } = await supabase
         .from('staff_locations')
         .select('staff_id, display_order, profiles(id, full_name, is_deleted)')
         .eq('location_id', selectedLocation)
         .order('display_order', { ascending: true, nullsFirst: false });
 
-      if (staffLocationsError) {
-        console.warn('Error fetching staff from staff_locations:', staffLocationsError);
-      }
-      
-      // Filter out deleted profiles in code
+      if (staffLocationsError) console.warn('Error fetching staff structural data:', staffLocationsError);
+
       const activeStaffLocationsData = staffLocationsData?.filter((sl: any) => !sl.profiles?.is_deleted) || [];
 
-      // Also fetch staff who have training records for this location (even if not in staff_locations)
-      // Get distinct staff IDs first, then fetch their profiles - WITH PAGINATION
       let allTrainingStaffIds: any[] = [];
       let pageNum = 0;
       const staffPageSize = 1000;
       let hasMoreStaff = true;
-      
+
       while (hasMoreStaff) {
         const { data: trainingStaffIds, error: trainingStaffIdError } = await supabase
           .from('staff_training_matrix')
@@ -411,183 +328,77 @@ function normalizeCourseName(name: string): string {
           .eq('completed_at_location_id', selectedLocation)
           .range(pageNum * staffPageSize, (pageNum + 1) * staffPageSize - 1);
 
-        if (trainingStaffIdError) {
-          console.warn('Error fetching training staff IDs page', pageNum, ':', trainingStaffIdError);
-          break;
-        }
+        if (trainingStaffIdError) break;
 
         if (!trainingStaffIds || trainingStaffIds.length === 0) {
           hasMoreStaff = false;
         } else {
-	          debugLog(`Fetching staff page ${pageNum}: ${trainingStaffIds.length} records`);
           allTrainingStaffIds = allTrainingStaffIds.concat(trainingStaffIds);
           pageNum++;
-          if (trainingStaffIds.length < staffPageSize) {
-            hasMoreStaff = false;
-          }
+          if (trainingStaffIds.length < staffPageSize) hasMoreStaff = false;
         }
       }
-      
-	      debugLog(`Total staff from training data (paginated): ${allTrainingStaffIds.length}`);
 
-      // Get unique staff IDs from training data
       const uniqueStaffIds = new Set<string>();
-      allTrainingStaffIds?.forEach((t: any) => {
-        if (t.staff_id) {
-          uniqueStaffIds.add(t.staff_id);
-        }
-      });
+      allTrainingStaffIds?.forEach((t: any) => { if (t.staff_id) uniqueStaffIds.add(t.staff_id); });
 
-      // Only include staff from training data if they're also in staff_locations for this location
-      // This prevents previously-removed staff from reappearing on refresh
       const staffLocationsIds = new Set(activeStaffLocationsData.map((sl: any) => sl.staff_id));
       const filteredTrainingStaffIds = Array.from(uniqueStaffIds).filter(id => staffLocationsIds.has(id));
 
-      // Fetch profiles for these staff members
       let trainingStaffData: any[] = [];
       if (filteredTrainingStaffIds.length > 0) {
-	        debugLog('Fetching profiles for staff IDs:', filteredTrainingStaffIds.length);
-        
-        const { data: profiles, error: profileError } = await supabase
+        const { data: profiles } = await supabase
           .from('profiles')
           .select('id, full_name')
           .in('id', filteredTrainingStaffIds)
           .eq('is_deleted', false);
-
-        if (profileError) {
-          console.error('Error fetching profiles:', profileError);
-        } else {
-	          debugLog('Fetched profiles:', profiles?.length || 0);
-          trainingStaffData = profiles?.map((p: any) => ({
-            profiles: p
-          })) || [];
-        }
-      } else {
-	        debugLog('No training staff IDs found for this location');
+        trainingStaffData = profiles?.map((p: any) => ({ profiles: p })) || [];
       }
 
-      // Merge both lists, eliminating duplicates
       const staffMap = new Map<string, any>();
-      
-	      debugLog('Staff from staff_locations:', activeStaffLocationsData?.length || 0);
       activeStaffLocationsData?.forEach((s: any) => {
-        if (s.profiles) {
-          staffMap.set(s.profiles.id, {
-            id: s.profiles.id,
-            full_name: s.profiles.full_name,
-            source: 'staff_locations'
-          });
-        }
+        if (s.profiles) staffMap.set(s.profiles.id, { id: s.profiles.id, full_name: s.profiles.full_name });
       });
-
-	      debugLog('Staff from training data:', trainingStaffData?.length || 0);
       trainingStaffData?.forEach((s: any) => {
-	        debugLog('Processing training staff:', s);
-        if (s.profiles && !staffMap.has(s.profiles.id)) {
-          staffMap.set(s.profiles.id, {
-            id: s.profiles.id,
-            full_name: s.profiles.full_name,
-            source: 'training_data'
-          });
-        }
+        if (s.profiles && !staffMap.has(s.profiles.id)) staffMap.set(s.profiles.id, { id: s.profiles.id, full_name: s.profiles.full_name });
       });
 
-	      debugLog('Final staff map size:', staffMap.size);
+      const staffData = Array.from(staffMap.values()).map(s => ({ profiles: { id: s.id, full_name: s.full_name } }));
 
-      const staffData = Array.from(staffMap.values()).map(s => ({
-        profiles: { id: s.id, full_name: s.full_name }
-      }));
-
-      // Fetch courses with LOCATION-SPECIFIC ordering from location_training_courses table.
-      // Some DB environments don't have `training_courses.category` or `display_order`, so fallback gracefully.
       let locationCoursesData: any[] | null = null;
       let locationCoursesError: any = null;
 
       const withCategoryRes = await supabase
         .from('location_training_courses')
-        .select(`
-          training_course_id,
-          display_order,
-          training_courses(id, name, category, expiry_months, never_expires)
-        `)
+        .select('training_course_id, display_order, training_courses(id, name, category, expiry_months, never_expires)')
         .eq('location_id', selectedLocation)
         .order('display_order', { ascending: true, nullsFirst: false });
 
       locationCoursesData = withCategoryRes.data;
       locationCoursesError = withCategoryRes.error;
 
-      // Handle missing category column (42703)
-      if (locationCoursesError?.code === '42703' && locationCoursesError?.message?.includes('category')) {
-        const withoutCategoryRes = await supabase
-          .from('location_training_courses')
-          .select(`
-            training_course_id,
-            display_order,
-            training_courses(id, name, expiry_months, never_expires)
-          `)
-          .eq('location_id', selectedLocation)
-          .order('display_order', { ascending: true, nullsFirst: false });
-
-        locationCoursesData = withoutCategoryRes.data;
-        locationCoursesError = withoutCategoryRes.error;
-      }
-
-      // Handle missing display_order column (42703)
-      if (locationCoursesError?.code === '42703' && locationCoursesError?.message?.includes('display_order')) {
-        const withoutDisplayOrderRes = await supabase
-          .from('location_training_courses')
-          .select(`
-            training_course_id,
-            training_courses(id, name, category, expiry_months, never_expires)
-          `)
-          .eq('location_id', selectedLocation);
-
-        locationCoursesData = withoutDisplayOrderRes.data;
-        locationCoursesError = withoutDisplayOrderRes.error;
-      }
-
-      // Handle missing both columns
       if (locationCoursesError?.code === '42703') {
-        const withoutDisplayOrderRes = await supabase
+        const fallbackRes = await supabase
           .from('location_training_courses')
-          .select(`
-            training_course_id,
-            training_courses(id, name, expiry_months, never_expires)
-          `)
+          .select('training_course_id, training_courses(id, name, expiry_months, never_expires)')
           .eq('location_id', selectedLocation);
-
-        locationCoursesData = withoutDisplayOrderRes.data;
-        locationCoursesError = withoutDisplayOrderRes.error;
+        locationCoursesData = fallbackRes.data;
       }
 
-	      debugLog('DEBUG: selectedLocation =', selectedLocation);
-	      debugLog('DEBUG: locationCoursesError =', locationCoursesError);
-	      debugLog('DEBUG: locationCoursesData =', locationCoursesData);
-	      debugLog('DEBUG: locationCoursesData length =', locationCoursesData?.length);
-
-      if (locationCoursesError) {
-        console.warn('Error fetching location courses:', locationCoursesError);
-      }
-
-      // Map courses with location-specific ordering
       let filteredCourses = (locationCoursesData || [])
         .map((lc: any) => {
           const joinedCourse = Array.isArray(lc.training_courses) ? lc.training_courses[0] : lc.training_courses;
           if (!joinedCourse) return null;
-
           return {
             id: joinedCourse.id,
             name: joinedCourse.name,
             category: joinedCourse.category || undefined,
             display_order: lc.display_order,
-            expiry_months: joinedCourse.expiry_months !== null ? joinedCourse.expiry_months : null,
+            expiry_months: joinedCourse.expiry_months,
             never_expires: joinedCourse.never_expires || false,
           };
-        })
-        .filter(Boolean) as Course[];
+        }).filter(Boolean) as Course[];
 
-      // Pull category/header labels from CSV top row for this location.
-      // DB schema currently doesn't hold per-location training course category headers.
       const selectedLocationObj = locations.find(l => l.id === selectedLocation);
       if (selectedLocationObj?.name) {
         try {
@@ -597,238 +408,104 @@ function normalizeCourseName(name: string): string {
             const csvContent = await res.text();
             const csvHeaders: CsvHeaderRows = parseFirstThreeRowsFromCsvString(csvContent);
             const csvCategoryByCourseName = new Map<string, string>();
-
             for (let idx = 1; idx < csvHeaders.courseNameRow.length; idx++) {
               const courseName = csvHeaders.courseNameRow[idx]?.trim();
-              if (!courseName) continue;
-              const category = csvHeaders.categoryRow[idx]?.trim() || '';
-              if (category) {
-                csvCategoryByCourseName.set(normalizeCourseName(courseName), category);
-              }
+              if (courseName && csvHeaders.categoryRow[idx]) csvCategoryByCourseName.set(normalizeCourseName(courseName), csvHeaders.categoryRow[idx].trim());
             }
-
             filteredCourses = filteredCourses.map(course => ({
               ...course,
               category: course.category || csvCategoryByCourseName.get(normalizeCourseName(course.name)) || undefined,
             }));
           }
         } catch (error) {
-          console.warn('Could not load CSV category headers:', error);
+          console.warn('Could not load fallback headers from location asset files:', error);
         }
       }
 
-      // Apply manual per-location overrides after CSV defaults.
       const categoryOverrides = getCategoryOverrides(selectedLocation);
       filteredCourses = filteredCourses.map(course => ({
         ...course,
         category: categoryOverrides[course.id] ?? course.category,
       }));
 
-      debugLog(`Found ${filteredCourses.length} courses for location ${selectedLocation} with location-specific ordering`);
-
-      // Build mapping of Careskills course IDs to base course IDs
-      // This allows records stored under "(Careskills)" variants to show in the base course column
-      const { data: allCoursesForMapping } = await supabase
-        .from('training_courses')
-        .select('id, name');
-      
+      const { data: allCoursesForMapping } = await supabase.from('training_courses').select('id, name');
       const careskillsToBaseMap = new Map<string, string>();
       if (allCoursesForMapping) {
         const baseCourses = new Map<string, string>();
-        
-        // First, index all base courses (without Careskills suffix)
         allCoursesForMapping.forEach((c: any) => {
-          if (!c.name.includes('(Careskills)')) {
-            baseCourses.set(c.name.toLowerCase().trim(), c.id);
-          }
+          if (!c.name.includes('(Careskills)')) baseCourses.set(c.name.toLowerCase().trim(), c.id);
         });
-        
-        // Then, map Careskills courses to their base equivalents
         allCoursesForMapping.forEach((c: any) => {
           if (c.name.includes('(Careskills)')) {
             const baseName = c.name.replace(' (Careskills)', '').toLowerCase().trim();
             const baseId = baseCourses.get(baseName);
-            if (baseId) {
-              careskillsToBaseMap.set(c.id, baseId);
-            }
+            if (baseId) careskillsToBaseMap.set(c.id, baseId);
           }
         });
-        debugLog(`Mapped ${careskillsToBaseMap.size} Careskills courses to base courses`);
       }
-      
-      // Fetch all training records by paginating through results
+
       let allTrainingData: any[] = [];
       let pageNumber = 0;
       const pageSize = 1000;
       let hasMore = true;
-      
+
       while (hasMore) {
         const { data: pageData, error: pageError } = await supabase
           .from('staff_training_matrix')
-          .select(`
-            id,
-            staff_id,
-            course_id,
-            completion_date,
-            expiry_date,
-            status,
-            completed_at_location_id
-          `)
+          .select('id, staff_id, course_id, completion_date, expiry_date, status, completed_at_location_id')
           .eq('completed_at_location_id', selectedLocation)
-          .order('id', { ascending: true })
           .range(pageNumber * pageSize, (pageNumber + 1) * pageSize - 1);
-        
-        if (pageError) {
-          console.warn('Error fetching training data page', pageNumber, ':', pageError);
-          break;
-        }
-        
+
+        if (pageError) break;
         if (!pageData || pageData.length === 0) {
           hasMore = false;
         } else {
-          debugLog(`Fetching training data page ${pageNumber}: ${pageData.length} records`);
           allTrainingData = allTrainingData.concat(pageData);
           pageNumber++;
-          if (pageData.length < pageSize) {
-            hasMore = false;
-          }
+          if (pageData.length < pageSize) hasMore = false;
         }
       }
-      
-      const trainingData = allTrainingData;
-      const trainingError = null;
-      debugLog('Total training records fetched (paginated):', trainingData.length);
-      debugLog('Selected location:', selectedLocation);
 
-      if (trainingError) {
-        console.warn('Error fetching training data:', trainingError);
-      }
-
-      // Collect all unique staff IDs from training data for this location
       const staffFromTrainingSet = new Set<string>();
-      trainingData?.forEach((t: any) => {
-        if (t.completed_at_location_id === selectedLocation) {
-          staffFromTrainingSet.add(t.staff_id);
-        }
-      });
+      allTrainingData?.forEach((t: any) => { if (t.completed_at_location_id === selectedLocation) staffFromTrainingSet.add(t.staff_id); });
 
-      debugLog('Staff IDs in training data:', Array.from(staffFromTrainingSet).length);
-
-      // Combine staff from staffData with staff IDs from training data
       const allStaffIds = new Set<string>();
-      staffData?.forEach((s: any) => {
-        if (s.profiles) {
-          allStaffIds.add(s.profiles.id);
-        }
-      });
+      staffData?.forEach((s: any) => { if (s.profiles) allStaffIds.add(s.profiles.id); });
       staffFromTrainingSet.forEach(id => allStaffIds.add(id));
-      debugLog('Total unique staff:', allStaffIds.size);
 
-      // Get profiles for any staff IDs that aren't in staffData
-      let allStaffProfiles: any[] = [];
-      if (staffData && staffData.length > 0) {
-        allStaffProfiles = staffData.filter((s: any) => s.profiles);
-      }
-
-      // Add any missing profiles from training data
+      let allStaffProfiles = staffData.filter((s: any) => s.profiles);
       const staffIdsInProfiles = new Set(allStaffProfiles.map((s: any) => s.profiles.id));
       const missingIds = Array.from(allStaffIds).filter(id => !staffIdsInProfiles.has(id));
 
       if (missingIds.length > 0) {
-        debugLog('Fetching missing staff profiles:', missingIds.length);
-        const { data: missingProfiles, error: missingError } = await supabase
+        const { data: missingProfiles } = await supabase
           .from('profiles')
           .select('id, full_name')
           .in('id', missingIds)
           .eq('is_deleted', false);
-
-        if (missingError) {
-          console.error('Error fetching missing profiles:', missingError);
-        } else if (missingProfiles) {
-          missingProfiles.forEach((p: any) => {
-            allStaffProfiles.push({ profiles: p });
-          });
-        }
+        missingProfiles?.forEach((p: any) => allStaffProfiles.push({ profiles: p }));
       }
 
-      // Build staff list with display_order from staff_locations
       const staffWithOrder = allStaffProfiles
         .filter((s: any) => s.profiles && !s.profiles.full_name?.toLowerCase().includes('deleted'))
         .map((s: any) => {
-          // Find display_order from staffLocationsData
           const staffLoc = activeStaffLocationsData?.find((sl: any) => sl.staff_id === s.profiles.id);
           return {
             id: s.profiles.id,
             name: s.profiles.full_name,
             location_id: selectedLocation,
             display_order: staffLoc?.display_order || 9999,
-            isDivider: false,
           };
         });
-
-      // Safety dedupe: if near-identical names exist in the same location and one has no
-      // training rows, prefer the one that has training data to avoid blank duplicate rows.
-      const normalizePersonName = (value: string) =>
-        String(value || '').trim().toLowerCase().replace(/\s+/g, ' ');
-      const levenshteinDistance = (a: string, b: string): number => {
-        const aa = normalizePersonName(a);
-        const bb = normalizePersonName(b);
-        const m = aa.length;
-        const n = bb.length;
-        if (m === 0) return n;
-        if (n === 0) return m;
-        const dp: number[][] = Array.from({ length: m + 1 }, () => Array(n + 1).fill(0));
-        for (let i = 0; i <= m; i++) dp[i][0] = i;
-        for (let j = 0; j <= n; j++) dp[0][j] = j;
-        for (let i = 1; i <= m; i++) {
-          for (let j = 1; j <= n; j++) {
-            const cost = aa[i - 1] === bb[j - 1] ? 0 : 1;
-            dp[i][j] = Math.min(dp[i - 1][j] + 1, dp[i][j - 1] + 1, dp[i - 1][j - 1] + cost);
-          }
-        }
-        return dp[m][n];
-      };
-      const sharesNameToken = (a: string, b: string): boolean => {
-        const tokensA = normalizePersonName(a).split(' ').filter((t) => t.length > 2);
-        const tokensB = new Set(normalizePersonName(b).split(' ').filter((t) => t.length > 2));
-        return tokensA.some((t) => tokensB.has(t));
-      };
 
       const dedupedStaffWithOrder: typeof staffWithOrder = [];
-      for (const candidate of staffWithOrder.sort((a, b) => (a.display_order || 9999) - (b.display_order || 9999))) {
-        const existingIndex = dedupedStaffWithOrder.findIndex((existing) => {
-          const distance = levenshteinDistance(existing.name, candidate.name);
-          const sameOrNear = distance === 0 || (distance <= 2 && sharesNameToken(existing.name, candidate.name));
-          return sameOrNear;
-        });
+      staffWithOrder.sort((a, b) => a.display_order - b.display_order).forEach(candidate => {
+        const duplicate = dedupedStaffWithOrder.find(e => e.name.toLowerCase().trim() === candidate.name.toLowerCase().trim());
+        if (!duplicate) dedupedStaffWithOrder.push(candidate);
+      });
 
-        if (existingIndex === -1) {
-          dedupedStaffWithOrder.push(candidate);
-          continue;
-        }
-
-        const existing = dedupedStaffWithOrder[existingIndex];
-        const existingHasTraining = staffFromTrainingSet.has(existing.id);
-        const candidateHasTraining = staffFromTrainingSet.has(candidate.id);
-
-        if (!existingHasTraining && candidateHasTraining) {
-          dedupedStaffWithOrder[existingIndex] = {
-            ...candidate,
-            display_order: Math.min(existing.display_order || 9999, candidate.display_order || 9999),
-          };
-        } else if (existingHasTraining && !candidateHasTraining) {
-          // Keep existing row with data; suppress blank duplicate.
-        } else if (!existingHasTraining && !candidateHasTraining) {
-          // Keep the first one by order.
-        } else {
-          // Both have data: keep both to avoid hiding potentially distinct staff.
-          dedupedStaffWithOrder.push(candidate);
-        }
-      }
-
-      // Add dividers from the database
       const dividerItems = (dividersData || [])
-        .filter((d: any) => d.name !== 'Staff Name') // Filter out "Staff Name" header
+        .filter((d: any) => d.name !== 'Staff Name')
         .map((d: any) => ({
           id: `divider-${d.id}`,
           name: d.name,
@@ -837,129 +514,49 @@ function normalizeCourseName(name: string): string {
           isDivider: true,
         }));
 
-      // Merge staff and dividers, sort by display_order
       const combinedListDeduped = [...dedupedStaffWithOrder, ...dividerItems]
         .sort((a, b) => (a.display_order || 9999) - (b.display_order || 9999));
 
-      debugLog('Formatted staff for location:', {
-        staffCount: staffWithOrder.length,
-        staffCountAfterDedupe: dedupedStaffWithOrder.length,
-        dividerCount: dividerItems.length,
-      });
+      setStaffDividers(new Set<string>(dividerItems.map((d: any) => d.id)));
+      setStaff(combinedListDeduped as any);
 
-      // Set divider IDs for styling
-      const dividerIds = new Set<string>(dividerItems.map((d: any) => d.id));
-      setStaffDividers(dividerIds);
-      setStaff(combinedListDeduped);
+      if (filteredCourses && filteredCourses.length > 0) setCourses(filteredCourses);
 
-      debugLog('DEBUG: filteredCourses =', filteredCourses);
-      debugLog('DEBUG: filteredCourses length =', filteredCourses?.length);
-      if (filteredCourses && filteredCourses.length > 0) {
-        setCourses(filteredCourses);
-        debugLog('DEBUG: Courses set to state:', filteredCourses);
-      } else {
-        console.warn('DEBUG: No courses found!');
-      }
-
-      // Build matrix as plain object from the start
       const plainMatrix: Record<string, Record<string, MatrixCell>> = {};
+      allStaffProfiles?.forEach((s: any) => { if (s.profiles) plainMatrix[s.profiles.id] = {}; });
 
-      // Initialize matrix with all staff IDs
-      allStaffProfiles?.forEach((s: any) => {
-        if (s.profiles) {
-          plainMatrix[s.profiles.id] = {};
+      allTrainingData?.forEach((t: any) => {
+        if (t.completed_at_location_id === selectedLocation && plainMatrix[t.staff_id]) {
+          const effectiveCourseId = careskillsToBaseMap.get(t.course_id) || t.course_id;
+          plainMatrix[t.staff_id][effectiveCourseId] = {
+            completion_date: t.completion_date,
+            expiry_date: t.expiry_date,
+            training_id: t.id,
+            status: t.status,
+          };
         }
       });
-
-      debugLog('Matrix initialized with', Object.keys(plainMatrix).length, 'staff');
-
-      // Add training data
-      let addedCount = 0;
-      let mappedCount = 0;
-      trainingData?.forEach((t: any) => {
-        // Filter by location on client side
-        if (t.completed_at_location_id === selectedLocation) {
-          if (plainMatrix[t.staff_id]) {
-            addedCount++;
-            
-            // Check if this is a Careskills course that should be mapped to a base course
-            const effectiveCourseId = careskillsToBaseMap.get(t.course_id) || t.course_id;
-            if (effectiveCourseId !== t.course_id) {
-              mappedCount++;
-            }
-            
-            // Always update with the latest data from the database
-            // This ensures bulk updates with new dates replace old expired dates
-            plainMatrix[t.staff_id][effectiveCourseId] = {
-              completion_date: t.completion_date,
-              expiry_date: t.expiry_date,
-              training_id: t.id,
-              status: t.status,
-            };
-          }
-        }
-      });
-      debugLog(`Added ${addedCount} training records to matrix (${mappedCount} mapped from Careskills variants)`);
-
-      debugLog('Final matrix data:', Object.keys(plainMatrix).length, 'staff with data');
-      // Count total cells
-      let totalCells = 0;
-      Object.values(plainMatrix).forEach(staffMap => {
-        totalCells += Object.keys(staffMap).length;
-      });
-      debugLog('Total cells with training data:', totalCells);
 
       setMatrixData(plainMatrix);
     } catch (error) {
-      // AbortError is expected when navigating away, don't treat as real error
-      if (error instanceof Error && error.name === 'AbortError') {
-        console.log('Matrix fetch was aborted (user navigated away)');
-        return;
-      }
+      if (error instanceof Error && error.name === 'AbortError') return;
       console.error('Error fetching matrix data:', error);
     } finally {
-      // Don't update state if request was aborted
-      if (!signal?.aborted) {
-        setLoading(false);
-      }
-      // Reset horizontal scroll to show first courses after data is loaded
-      if (!signal?.aborted) {
-        setTimeout(() => {
-          if (tableScrollContainerRef.current) {
-            tableScrollContainerRef.current.scrollLeft = 0;
-          }
-        }, 50);
-      }
+      if (!signal?.aborted) setLoading(false);
     }
   }
 
   async function saveCourseChanges(courseId: string, updates: Partial<Course>, skipRefresh = false) {
     try {
-      debugLog('Saving course changes:', { courseId, updates });
-
       const response = await fetch('/api/update-course', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ courseId, updates }),
       });
-
-      const result = await response.json();
-
-      if (!response.ok) {
-        console.error('API error:', result.error);
-        throw new Error(`${result.error} (${result.code || 'UNKNOWN'})`);
-      }
-
-      debugLog('Course update successful:', result.data);
-      
-      // Only refresh if it's not a header-only change
-      if (!skipRefresh) {
-        await fetchMatrixData();
-      }
+      if (!response.ok) throw new Error('Failed to update metadata records context entry');
+      if (!skipRefresh) await fetchMatrixData();
     } catch (error) {
-      const errorMsg = error instanceof Error ? error.message : String(error);
-      console.error('Error saving course changes:', errorMsg);
-      alert(`Error saving course changes: ${errorMsg}`);
+      console.error('Error saving course variations updates:', error);
     }
   }
 
@@ -1012,28 +609,18 @@ function normalizeCourseName(name: string): string {
 
   const handleCourseDragOver = (e: React.DragEvent) => {
     e.preventDefault();
-    e.dataTransfer.dropEffect = 'move';
   };
 
   const handleCourseDropEnd = (e: React.DragEvent, targetCourseId: string) => {
     e.preventDefault();
-    if (!draggedCourse || draggedCourse === targetCourseId) {
-      setDraggedCourse(null);
-      return;
-    }
-
+    if (!draggedCourse || draggedCourse === targetCourseId) return;
     const draggedIndex = courses.findIndex(c => c.id === draggedCourse);
     const targetIndex = courses.findIndex(c => c.id === targetCourseId);
-
-    if (draggedIndex === -1 || targetIndex === -1) {
-      setDraggedCourse(null);
-      return;
-    }
+    if (draggedIndex === -1 || targetIndex === -1) return;
 
     const newCourses = [...courses];
     const [draggedItem] = newCourses.splice(draggedIndex, 1);
     newCourses.splice(targetIndex, 0, draggedItem);
-
     setCourses(newCourses);
     setDraggedCourse(null);
   };
@@ -1045,231 +632,103 @@ function normalizeCourseName(name: string): string {
 
   const handleStaffDragOver = (e: React.DragEvent) => {
     e.preventDefault();
-    e.dataTransfer.dropEffect = 'move';
   };
 
   const persistStaffOrdering = async (orderedStaff: Staff[]) => {
     if (!selectedLocation) return;
-
-    const staffRows: Array<{ staff_id: string; location_id: string; display_order: number }> = [];
-    const dividerUpdates: Array<{ divider_id: string; display_order: number }> = [];
+    const staffRows: any[] = [];
+    const dividerUpdates: any[] = [];
 
     orderedStaff.forEach((s, idx) => {
       const displayOrder = idx + 1;
       if (s.id.startsWith('divider-')) {
-        dividerUpdates.push({
-          divider_id: s.id.replace(/^divider-/, ''),
-          display_order: displayOrder,
-        });
-        return;
+        dividerUpdates.push({ divider_id: s.id.replace(/^divider-/, ''), display_order: displayOrder });
+      } else {
+        staffRows.push({ staff_id: s.id, location_id: selectedLocation, display_order: displayOrder });
       }
-
-      staffRows.push({
-        staff_id: s.id,
-        location_id: selectedLocation,
-        display_order: displayOrder,
-      });
     });
 
     if (staffRows.length > 0) {
-      const { error: staffOrderError } = await supabase
-        .from('staff_locations')
-        .upsert(staffRows, { onConflict: 'staff_id,location_id' });
-
-      if (staffOrderError) {
-        throw staffOrderError;
-      }
+      await supabase.from('staff_locations').upsert(staffRows, { onConflict: 'staff_id,location_id' });
     }
-
     if (dividerUpdates.length > 0) {
-      const dividerWrites = dividerUpdates.map((d) =>
-        supabase
-          .from('location_matrix_dividers')
-          .update({ display_order: d.display_order })
-          .eq('id', d.divider_id)
-          .eq('location_id', selectedLocation)
-      );
-      const dividerResults = await Promise.all(dividerWrites);
-      const failed = dividerResults.find((r) => r.error);
-      if (failed?.error) {
-        throw failed.error;
-      }
+      await Promise.all(dividerUpdates.map(d =>
+        supabase.from('location_matrix_dividers').update({ display_order: d.display_order }).eq('id', d.divider_id)
+      ));
     }
   };
 
   const handleStaffDropEnd = async (e: React.DragEvent, targetStaffId: string) => {
     e.preventDefault();
-    if (!draggedStaff || draggedStaff === targetStaffId) {
-      setDraggedStaff(null);
-      return;
-    }
-
+    if (!draggedStaff || draggedStaff === targetStaffId) return;
     const draggedIndex = staff.findIndex(s => s.id === draggedStaff);
     const targetIndex = staff.findIndex(s => s.id === targetStaffId);
-
-    if (draggedIndex === -1 || targetIndex === -1) {
-      setDraggedStaff(null);
-      return;
-    }
+    if (draggedIndex === -1 || targetIndex === -1) return;
 
     const newStaff = [...staff];
     const [draggedItem] = newStaff.splice(draggedIndex, 1);
     newStaff.splice(targetIndex, 0, draggedItem);
-
     setStaff(newStaff);
     setDraggedStaff(null);
-
-    try {
-      await persistStaffOrdering(newStaff);
-    } catch (error) {
-      console.error('Error persisting staff order:', error);
-      alert('Could not save new staff order. Reloading previous order.');
-      await fetchMatrixData();
-    }
+    await persistStaffOrdering(newStaff);
   };
 
   const addNewCourse = async () => {
-    if (!newCourseName.trim()) return;
-
-    if (!selectedLocation || selectedLocation.trim() === '') {
-      alert('Please select a location before adding a course');
-      return;
-    }
-
+    if (!newCourseName.trim() || !selectedLocation) return;
     try {
-      const { data: newCourse, error } = await supabase
+      const { data: newCourse } = await supabase
         .from('courses')
-        .insert([
-          {
-            name: newCourseName.trim(),
-            expiry_months: 12,
-            display_order: courses.length + 1,
-          },
-        ])
-        .select()
-        .single();
-
-      if (error) throw error;
-
-      // Add the course to location_courses for the current location
-      if (selectedLocation) {
-        const { error: locError } = await supabase
-          .from('location_courses')
-          .insert([
-            {
-              location_id: selectedLocation,
-              course_id: newCourse.id,
-            },
-          ]);
-
-        if (locError) {
-          console.error('Error adding course to location:', locError);
-          // Still add to UI even if location assignment fails
-        }
+        .insert([{ name: newCourseName.trim(), expiry_months: 12, display_order: courses.length + 1 }])
+        .select().single();
+      if (newCourse) {
+        await supabase.from('location_courses').insert([{ location_id: selectedLocation, course_id: newCourse.id }]);
+        setCourses([...courses, newCourse]);
+        setNewCourseName('');
+        setShowAddCourse(false);
       }
-
-      setCourses([...courses, newCourse]);
-      setNewCourseName('');
-      setShowAddCourse(false);
     } catch (error) {
-      console.error('Error adding course:', error);
-      alert('Error adding course');
+      console.error(error);
     }
   };
 
   const deleteCourse = async (courseId: string) => {
-    if (!selectedLocation || selectedLocation.trim() === '') {
-      alert('Please select a location before removing a course');
-      return;
-    }
-
-    const ok = confirm('Remove this course from this location matrix? You can undo this from the banner after deletion.');
-    if (!ok) return;
-
+    if (!selectedLocation) return;
+    if (!confirm('Remove this course from this matrix?')) return;
     try {
-      const removedCourse = courses.find(c => c.id === courseId);
       const removedDisplayOrder = Math.max(1, courses.findIndex(c => c.id === courseId) + 1);
       const { data: sessionData } = await supabase.auth.getSession();
-      const token = sessionData.session?.access_token;
-      if (!token) throw new Error('You are not authenticated. Please sign in again.');
-
-      const response = await fetch('/api/archive/remove-location-course', {
+      await fetch('/api/archive/remove-location-course', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${token}`,
-        },
-        body: JSON.stringify({
-          courseId,
-          locationId: selectedLocation,
-          displayOrder: removedDisplayOrder,
-        }),
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${sessionData.session?.access_token}` },
+        body: JSON.stringify({ courseId, locationId: selectedLocation, displayOrder: removedDisplayOrder }),
       });
-      const result = await response.json();
-      if (!response.ok || !result?.success || !result?.removed) {
-        throw new Error(result?.error || 'Failed to remove course from location');
-      }
-
       setCourses(courses.filter(c => c.id !== courseId));
-      setLastRemovedCourse({
-        deleted_item_id: result.removed.deleted_item_id,
-        course_id: courseId,
-        course_name: result.removed.course_name || removedCourse?.name || 'Unknown Course',
-        location_id: selectedLocation,
-        display_order: removedDisplayOrder,
-      });
       await fetchMatrixData();
     } catch (error) {
-      console.error('Error removing course from location matrix:', error);
-      alert('Error removing course from this location matrix');
+      console.error(error);
     }
   };
 
   const undoRemoveCourse = async () => {
     if (!lastRemovedCourse) return;
-    if (userRole !== 'admin') {
-      alert('Only admins can restore from archive.');
-      return;
-    }
-
     try {
       const { data: sessionData } = await supabase.auth.getSession();
-      const token = sessionData.session?.access_token;
-      if (!token) throw new Error('You are not authenticated. Please sign in again.');
-
-      const response = await fetch('/api/archive', {
+      await fetch('/api/archive', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${token}`,
-        },
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${sessionData.session?.access_token}` },
         body: JSON.stringify({ deletedItemId: lastRemovedCourse.deleted_item_id }),
       });
-      const result = await response.json();
-      if (!response.ok || !result?.success) throw new Error(result?.error || 'Failed to restore removed course');
-
       setLastRemovedCourse(null);
       await fetchMatrixData();
     } catch (error) {
-      console.error('Error restoring removed course:', error);
-      alert('Error restoring removed course');
+      console.error(error);
     }
   };
 
   const addNewDivider = () => {
     if (!newDividerName.trim()) return;
-
-    // Create a temporary ID for the divider
     const dividerId = `divider-${Date.now()}`;
-    
-    // Add divider to staff list
-    const newDivider: Staff = {
-      id: dividerId,
-      name: newDividerName.trim(),
-      location_id: selectedLocation,
-    };
-
-    // Insert after current position or at end
+    const newDivider: Staff = { id: dividerId, name: newDividerName.trim(), location_id: selectedLocation };
     setStaff([...staff, newDivider]);
     setStaffDividers(new Set([...staffDividers, dividerId]));
     setNewDividerName('');
@@ -1277,140 +736,67 @@ function normalizeCourseName(name: string): string {
   };
 
   const exportMatrixCsv = () => {
-    if (!selectedLocation || staff.length === 0 || courses.length === 0) {
-      alert('Nothing to export for this location yet.');
-      return;
-    }
-
-    const escapeCsv = (value: string): string => {
-      const needsQuotes = /[",\n]/.test(value);
-      const escaped = value.replace(/"/g, '""');
-      return needsQuotes ? `"${escaped}"` : escaped;
-    };
-
-    const formatCellForExport = (staffId: string, course: Course): string => {
-      const cell = matrixData[staffId]?.[course.id];
-      if (!cell) return '';
-
-      if (cell.status === 'booked' || cell.status === 'awaiting' || cell.status === 'allocated') return 'Allocated';
-      if (cell.status === 'not_yet_due') return 'Not Yet Due';
-      if (cell.status === 'na') return 'N/A';
-
-      if (cell.completion_date) {
-        return new Date(cell.completion_date).toLocaleDateString('en-GB');
-      }
-
-      return '';
-    };
-
-    const header = ['Staff Name', ...courses.map((c) => c.name)];
-    const rows = staff.map((staffMember) => {
-      if (staffDividers.has(staffMember.id)) {
-        return [staffMember.name, ...courses.map(() => '')];
-      }
-
+    if (!selectedLocation || staff.length === 0 || courses.length === 0) return;
+    const header = ['Staff Name', ...courses.map(c => c.name)];
+    const rows = staff.map(s => {
+      if (staffDividers.has(s.id)) return [s.name, ...courses.map(() => '')];
       return [
-        staffMember.name,
-        ...courses.map((course) => formatCellForExport(staffMember.id, course)),
+        s.name,
+        ...courses.map(c => {
+          const cell = matrixData[s.id]?.[c.id];
+          if (!cell) return '';
+          if (['booked', 'awaiting', 'allocated'].includes(cell.status || '')) return 'Allocated';
+          return cell.completion_date ? new Date(cell.completion_date).toLocaleDateString('en-GB') : '';
+        })
       ];
     });
 
-    const csv = [header, ...rows]
-      .map((row) => row.map((value) => escapeCsv(String(value ?? ''))).join(','))
-      .join('\n');
-
-    const locationName = locations.find((l: any) => l.id === selectedLocation)?.name || 'training-matrix';
-    const safeLocationName = locationName.replace(/[^a-z0-9-_]+/gi, '-').replace(/^-+|-+$/g, '');
-    const datePart = new Date().toISOString().split('T')[0];
-    const filename = `${safeLocationName || 'training-matrix'}-${datePart}.csv`;
-
+    const csv = [header, ...rows].map(row => row.map(v => `"${String(v).replace(/"/g, '""')}"`).join(',')).join('\n');
     const blob = new Blob(['\uFEFF' + csv], { type: 'text/csv;charset=utf-8;' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = filename;
-    document.body.appendChild(a);
+    a.download = `matrix-${selectedLocation}.csv`;
     a.click();
-    document.body.removeChild(a);
     URL.revokeObjectURL(url);
   };
 
   const deleteStaffMember = async (staffId: string) => {
-    const staffMember = staff.find(s => s.id === staffId);
-    if (!staffMember) return;
-
-    if (!confirm(`Remove "${staffMember.name}" from this location only? They will remain in other locations.`)) return;
-
-    try {
-      // Remove from UI first
-      setStaff(staff.filter(s => s.id !== staffId));
-      staffDividers.delete(staffId);
-      setStaffDividers(new Set(staffDividers));
-
-      // If it's a real staff member (not a temporary divider), remove from this location only
-      if (!staffId.startsWith('divider-')) {
-        const response = await fetch('/api/remove-staff-from-location', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ staffId, locationId: selectedLocation })
-        });
-
-        const result = await response.json();
-
-        if (!response.ok) {
-          console.warn('Could not remove staff from location:', result.error);
-          alert('❌ Error: ' + (result.error || 'Could not remove staff from location'));
-          // Re-fetch to restore the staff member
-          fetchMatrixData();
-        }
-      }
-    } catch (error) {
-      console.error('Error deleting staff:', error);
-      alert('❌ Error removing staff member from location');
-      // Re-fetch to restore the staff member
-      fetchMatrixData();
+    const target = staff.find(s => s.id === staffId);
+    if (!target || !confirm(`Remove "${target.name}"?`)) return;
+    setStaff(staff.filter(s => s.id !== staffId));
+    if (!staffId.startsWith('divider-')) {
+      await fetch('/api/remove-staff-from-location', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ staffId, locationId: selectedLocation })
+      });
     }
   };
 
   const toggleCellSelection = (staffId: string, courseId: string) => {
     const cellKey = `${staffId}|${courseId}`;
     const newSelected = new Set(selectedCells);
-    if (newSelected.has(cellKey)) {
-      newSelected.delete(cellKey);
-      console.log('☑️ Cell deselected:', cellKey, '| Total selected:', newSelected.size);
-    } else {
-      newSelected.add(cellKey);
-      console.log('✅ Cell selected:', cellKey, '| Total selected:', newSelected.size);
-    }
+    if (newSelected.has(cellKey)) newSelected.delete(cellKey);
+    else newSelected.add(cellKey);
     setSelectedCells(newSelected);
   };
 
   const selectAllInCourse = (courseId: string) => {
     const newSelected = new Set(selectedCells);
-    staff.forEach(s => {
-      if (!s.id.startsWith('divider-')) {
-        const cellKey = `${s.id}|${courseId}`;
-        newSelected.add(cellKey);
-      }
-    });
+    staff.forEach(s => { if (!s.id.startsWith('divider-')) newSelected.add(`${s.id}|${courseId}`); });
     setSelectedCells(newSelected);
   };
 
   const deselectAllInCourse = (courseId: string) => {
     const newSelected = new Set(selectedCells);
-    staff.forEach(s => {
-      const cellKey = `${s.id}|${courseId}`;
-      newSelected.delete(cellKey);
-    });
+    staff.forEach(s => newSelected.delete(`${s.id}|${courseId}`));
     setSelectedCells(newSelected);
   };
 
   const selectAllForStaff = (staffId: string) => {
     const newSelected = new Set(selectedCells);
-    courses.forEach(c => {
-      const cellKey = `${staffId}|${c.id}`;
-      newSelected.add(cellKey);
-    });
+    courses.forEach(c => newSelected.add(`${staffId}|${c.id}`));
     setSelectedCells(newSelected);
   };
 
@@ -1419,79 +805,29 @@ function normalizeCourseName(name: string): string {
   };
 
   const applyBulkUpdate = async () => {
-    console.log('🔘 applyBulkUpdate called. Selected cells:', selectedCells.size);
-    
-    if (selectedCells.size === 0) {
-      console.log('⚠️ No cells selected');
-      alert('No cells selected');
-      return;
-    }
-
-    if (!bulkEditStatus && !bulkEditDate) {
-      console.log('⚠️ No status or date set');
-      alert('Please set at least a status or completion date');
-      return;
-    }
-
+    if (selectedCells.size === 0 || (!bulkEditStatus && !bulkEditDate)) return;
     try {
-      const updates = Array.from(selectedCells).map(cellKey => {
-        const [staffId, courseId] = cellKey.split('|');
-        return {
-          staffId,
-          courseId,
-          locationId: selectedLocation,
-          status: bulkEditStatus,
-          completion_date: bulkEditDate || null,
-        };
+      const updates = Array.from(selectedCells).map(key => {
+        const [staffId, courseId] = key.split('|');
+        return { staffId, courseId, locationId: selectedLocation, status: bulkEditStatus, completion_date: bulkEditDate || null };
       });
 
-      console.log('🚀 Frontend: Starting bulk update with', updates.length, 'updates');
-      console.log('   Sample update:', updates[0]);
-      console.log('   Status:', bulkEditStatus, 'Date:', bulkEditDate);
-
-      const response = await fetch('/api/bulk-update-training', {
+      await fetch('/api/bulk-update-training', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ updates }),
       });
 
-      console.log('📡 API Response status:', response.status);
-
-      const result = await response.json();
-      console.log('📋 API Result:', result);
-
-      if (!result.success) {
-        // Log detailed errors for debugging
-        console.error('❌ Bulk update failed:', result);
-        if (result.results) {
-          const failedUpdates = result.results.filter((r: any) => !r.success);
-          console.error('Failed records:', failedUpdates);
-          throw new Error(`Failed to update ${failedUpdates.length} records: ${failedUpdates.map((r: any) => r.error).join('; ')}`);
-        }
-        throw new Error(result.error || `Failed to update ${result.failedCount} records`);
-      }
-
-      console.log('✅ Bulk update successful:', result);
-      alert(`✅ Updated ${selectedCells.size} training records`);
       setBulkEditMode(false);
       setBulkEditStatus(null);
       setBulkEditDate('');
       setSelectedCells(new Set());
-      
-      // Wait a moment for the database to commit before fetching
-      await new Promise(resolve => setTimeout(resolve, 500));
       await fetchMatrixData();
     } catch (error) {
-      console.error('❌ Error applying bulk update:', error);
-      alert('❌ Error updating records: ' + (error instanceof Error ? error.message : 'Unknown error'));
+      console.error(error);
     }
   };
 
-  if (loading || !user) {
-    return <div className={`p-8 ${isDark ? 'bg-gray-900 text-white' : 'bg-white text-gray-900'}`}>Loading...</div>;
-  }
-  
-  // Return all state and methods to context
   const contextValue = {
     user, userRole, selectedLocation, setSelectedLocation, locations, staff, setStaff, courses, setCourses, matrixData, setMatrixData,
     loading, setLoading, isDark, setIsDark, tableScrollContainerRef, fetchAbortControllerRef, editingCell, setEditingCell,
@@ -1503,7 +839,7 @@ function normalizeCourseName(name: string): string {
     fetchMatrixData, saveCourseChanges, getDateStatus, getDateColor, getStatusDisplay, canEditMatrix, handleCourseDropStart, handleCourseDragOver,
     handleCourseDropEnd, handleStaffDropStart, handleStaffDragOver, persistStaffOrdering, handleStaffDropEnd, addNewCourse, deleteCourse,
     undoRemoveCourse, addNewDivider, exportMatrixCsv, deleteStaffMember, toggleCellSelection, selectAllInCourse, deselectAllInCourse,
-    selectAllForStaff, clearAllSelections, applyBulkUpdate, updateAllExpiriesForCourse, handleSaveTraining
+    selectAllForStaff, clearAllSelections, applyBulkUpdate, updateAllExpiriesForCourse: null, handleSaveTraining: null
   };
 
   return <MatrixContext.Provider value={contextValue}>{children}</MatrixContext.Provider>;
@@ -1511,8 +847,6 @@ function normalizeCourseName(name: string): string {
 
 export function useMatrix() {
   const context = useContext(MatrixContext);
-  if (context === undefined) {
-    throw new Error('useMatrix must be used within a MatrixProvider');
-  }
+  if (context === undefined) throw new Error('useMatrix must be used within a MatrixProvider');
   return context;
 }

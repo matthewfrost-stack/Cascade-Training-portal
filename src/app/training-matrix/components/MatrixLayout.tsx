@@ -1,4 +1,3 @@
-
 'use client';
 import React from 'react';
 import { useMatrix } from '../context/MatrixContext';
@@ -22,7 +21,7 @@ export function MatrixLayout() {
     selectAllForStaff, clearAllSelections, applyBulkUpdate, updateAllExpiriesForCourse, handleSaveTraining
   } = useMatrix();
 
-    return (
+  return (
     <div className={`min-h-screen ${isDark ? 'bg-gray-900' : 'bg-gray-50'}`}>
       {/* Header */}
       <div className={`p-6 ${isDark ? 'bg-gray-800' : 'bg-white'} border-b ${isDark ? 'border-gray-700' : 'border-gray-200'}`}>
@@ -40,9 +39,8 @@ export function MatrixLayout() {
               <select
                 value={selectedLocation}
                 onChange={(e) => setSelectedLocation(e.target.value)}
-                className={`px-4 py-2 rounded-lg border ${
-                  isDark ? 'bg-gray-700 border-gray-600 text-white' : 'bg-white border-gray-300 text-gray-900'
-                } focus:outline-none focus:ring-2 focus:ring-blue-500 transition-all duration-200`}
+                className={`px-4 py-2 rounded-lg border ${isDark ? 'bg-gray-700 border-gray-600 text-white' : 'bg-white border-gray-300 text-gray-900'
+                  } focus:outline-none focus:ring-2 focus:ring-blue-500 transition-all duration-200`}
               >
                 {locations.map((loc) => (
                   <option key={loc.id} value={loc.id}>
@@ -93,11 +91,10 @@ export function MatrixLayout() {
                           value={newCourseName}
                           onChange={(e) => setNewCourseName(e.target.value)}
                           placeholder="Course name"
-                          className={`px-3 py-2 rounded border text-sm transition-colors duration-150 ${
-                            isDark
+                          className={`px-3 py-2 rounded border text-sm transition-colors duration-150 ${isDark
                               ? 'bg-gray-700 border-gray-600 text-white placeholder-gray-400'
                               : 'bg-white border-gray-300 text-gray-900 placeholder-gray-500'
-                          }`}
+                            }`}
                           onKeyDown={(e) => {
                             if (e.key === 'Enter') addNewCourse();
                             if (e.key === 'Escape') {
@@ -138,11 +135,10 @@ export function MatrixLayout() {
                           value={newDividerName}
                           onChange={(e) => setNewDividerName(e.target.value)}
                           placeholder="Section name (e.g., Management)"
-                          className={`px-3 py-2 rounded border text-sm transition-colors duration-150 ${
-                            isDark
+                          className={`px-3 py-2 rounded border text-sm transition-colors duration-150 ${isDark
                               ? 'bg-gray-700 border-gray-600 text-white placeholder-gray-400'
                               : 'bg-white border-gray-300 text-gray-900 placeholder-gray-500'
-                          }`}
+                            }`}
                           onKeyDown={(e) => {
                             if (e.key === 'Enter') addNewDivider();
                             if (e.key === 'Escape') {
@@ -174,26 +170,23 @@ export function MatrixLayout() {
               </div>
             )}
             {lastRemovedCourse && userRole === 'admin' && (
-              <div className={`w-full max-w-4xl rounded-lg border px-4 py-2 text-sm flex items-center justify-between ${
-                isDark ? 'bg-amber-900/20 border-amber-700 text-amber-200' : 'bg-amber-50 border-amber-300 text-amber-800'
-              }`}>
+              <div className={`w-full max-w-4xl rounded-lg border px-4 py-2 text-sm flex items-center justify-between ${isDark ? 'bg-amber-900/20 border-amber-700 text-amber-200' : 'bg-amber-50 border-amber-300 text-amber-800'
+                }`}>
                 <span>
                   Removed from this location: <strong>{lastRemovedCourse.course_name}</strong>
                 </span>
                 <div className="flex items-center gap-2">
                   <button
                     onClick={undoRemoveCourse}
-                    className={`px-3 py-1 rounded font-semibold ${
-                      isDark ? 'bg-amber-700 hover:bg-amber-600 text-white' : 'bg-amber-500 hover:bg-amber-600 text-white'
-                    }`}
+                    className={`px-3 py-1 rounded font-semibold ${isDark ? 'bg-amber-700 hover:bg-amber-600 text-white' : 'bg-amber-500 hover:bg-amber-600 text-white'
+                      }`}
                   >
                     Undo
                   </button>
                   <button
                     onClick={() => setLastRemovedCourse(null)}
-                    className={`px-3 py-1 rounded ${
-                      isDark ? 'bg-gray-700 hover:bg-gray-600 text-gray-200' : 'bg-gray-200 hover:bg-gray-300 text-gray-800'
-                    }`}
+                    className={`px-3 py-1 rounded ${isDark ? 'bg-gray-700 hover:bg-gray-600 text-gray-200' : 'bg-gray-200 hover:bg-gray-300 text-gray-800'
+                      }`}
                   >
                     Dismiss
                   </button>
@@ -238,20 +231,16 @@ export function MatrixLayout() {
                             onChange={(e) => setEditHeaderValue(e.target.value)}
                             onBlur={() => {
                               const newCategory = editHeaderValue.trim() || undefined;
-                              // Update local state immediately for instant feedback
                               const updatedCourses = courses.map(c => c.id === course.id ? { ...c, category: newCategory } : c);
                               setCourses(updatedCourses);
-                              // Persist category header override per location.
                               saveCategoryOverride(selectedLocation, course.id, newCategory || '');
                               setEditingHeader(null);
                             }}
                             onKeyDown={(e) => {
                               if (e.key === 'Enter') {
                                 const newCategory = editHeaderValue.trim() || undefined;
-                                // Update local state immediately for instant feedback
                                 const updatedCourses = courses.map(c => c.id === course.id ? { ...c, category: newCategory } : c);
                                 setCourses(updatedCourses);
-                                // Persist category header override per location.
                                 saveCategoryOverride(selectedLocation, course.id, newCategory || '');
                                 setEditingHeader(null);
                               }
@@ -282,9 +271,7 @@ export function MatrixLayout() {
                           setEditingHeader({ courseId: course.id, type: 'name' });
                           setEditHeaderValue(course.name);
                         }}
-                        className={`px-2 py-1 text-center text-xs font-semibold ${isDark ? 'text-gray-300' : 'text-gray-700'} min-w-[140px] transition-all duration-150 cursor-grab active:cursor-grabbing hover:opacity-80 ${isDark ? 'bg-gray-600' : 'bg-gray-200'} ${
-                          draggedCourse === course.id ? 'opacity-50' : 'opacity-100'
-                        } ${draggedCourse && draggedCourse !== course.id ? 'bg-gray-500 bg-opacity-30' : ''}`}
+                        className={`px-2 py-1 text-center text-xs font-semibold ${isDark ? 'text-gray-300' : 'text-gray-700'} min-w-[140px] transition-all duration-150 cursor-grab active:cursor-grabbing hover:opacity-80 ${isDark ? 'bg-gray-600' : 'bg-gray-200'}`}
                         title="Drag to reorder courses"
                       >
                         {editingHeader?.courseId === course.id && editingHeader?.type === 'name' ? (
@@ -456,18 +443,16 @@ export function MatrixLayout() {
                         onDragStart={(e) => handleStaffDropStart(e, staffMember.id)}
                         onDragOver={handleStaffDragOver}
                         onDrop={(e) => handleStaffDropEnd(e, staffMember.id)}
-                        className={`border-b transition-all duration-150 ${
-                          isDivider
+                        className={`border-b transition-all duration-150 ${isDivider
                             ? `${isDark ? 'bg-gray-900' : 'bg-gray-300'}`
-                            : `${isDark ? 'border-gray-700 hover:bg-gray-750' : 'border-gray-200 hover:bg-gray-50'} ${draggedStaff === staffMember.id ? 'opacity-50' : 'opacity-100'} ${draggedStaff && draggedStaff !== staffMember.id ? 'cursor-move' : ''}`
-                        }`}
+                            : `${isDark ? 'border-gray-700 hover:bg-gray-750' : 'border-gray-200 hover:bg-gray-50'}`
+                          }`}
                       >
                         <td
-                          className={`px-4 py-2 font-medium sticky left-0 min-w-[200px] z-10 text-sm group ${
-                            isDivider
+                          className={`px-4 py-2 font-medium sticky left-0 min-w-[200px] z-10 text-sm group ${isDivider
                               ? `${isDark ? 'bg-gray-900 text-gray-400' : 'bg-gray-300 text-gray-600'} font-semibold`
                               : `${isDark ? 'bg-gray-600 text-white' : 'bg-gray-200 text-gray-900'}`
-                          }`}
+                            }`}
                         >
                           <div className="flex items-center justify-between gap-2">
                             {!isDivider && (
@@ -514,11 +499,9 @@ export function MatrixLayout() {
                           return (
                             <td
                               key={`${staffMember.id}|${course.id}`}
-                              className={`px-4 py-3 text-center transition-all duration-200 relative group ${
-                                canEditMatrix ? 'cursor-pointer hover:opacity-75' : ''
-                              } ${isSelected ? (isDark ? 'bg-blue-900/30' : 'bg-blue-100') : ''}`}
+                              className={`px-4 py-3 text-center transition-all duration-200 relative group ${canEditMatrix ? 'cursor-pointer hover:opacity-75' : ''
+                                } ${isSelected ? (isDark ? 'bg-blue-900/30' : 'bg-blue-100') : ''}`}
                               onClick={(e) => {
-                                // Don't open edit modal if checkbox was clicked
                                 if ((e.target as HTMLElement).tagName === 'INPUT') {
                                   return;
                                 }
@@ -615,48 +598,44 @@ export function MatrixLayout() {
         }}>
           <div className={`rounded-lg p-6 shadow-2xl ${isDark ? 'bg-gray-800' : 'bg-white'} relative z-50 w-96`} onClick={(e) => e.stopPropagation()}>
             <h3 className={`text-lg font-semibold mb-4 ${isDark ? 'text-white' : 'text-gray-900'}`}>Update Training Record</h3>
-            
+
             {/* Status Selection */}
             <div className="mb-4">
               <label className={`block text-sm font-medium mb-2 ${isDark ? 'text-gray-300' : 'text-gray-700'}`}>Status</label>
               <div className="grid grid-cols-2 gap-2">
                 <button
                   onClick={() => setEditStatus('completed')}
-                  className={`px-3 py-2 rounded text-sm font-medium transition-colors ${
-                    editStatus === 'completed'
+                  className={`px-3 py-2 rounded text-sm font-medium transition-colors ${editStatus === 'completed'
                       ? isDark ? 'bg-green-600 text-white' : 'bg-green-500 text-white'
                       : isDark ? 'bg-gray-700 text-gray-300 hover:bg-gray-600' : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
-                  }`}
+                    }`}
                 >
                   In Date
                 </button>
                 <button
                   onClick={() => setEditStatus('allocated')}
-                  className={`px-3 py-2 rounded text-sm font-medium transition-colors ${
-                    editStatus === 'allocated'
+                  className={`px-3 py-2 rounded text-sm font-medium transition-colors ${editStatus === 'allocated'
                       ? isDark ? 'bg-blue-600 text-white' : 'bg-blue-500 text-white'
                       : isDark ? 'bg-gray-700 text-gray-300 hover:bg-gray-600' : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
-                  }`}
+                    }`}
                 >
                   Allocated
                 </button>
                 <button
                   onClick={() => setEditStatus('not_yet_due')}
-                  className={`px-3 py-2 rounded text-sm font-medium transition-colors ${
-                    editStatus === 'not_yet_due'
+                  className={`px-3 py-2 rounded text-sm font-medium transition-colors ${editStatus === 'not_yet_due'
                       ? isDark ? 'bg-purple-600 text-white' : 'bg-purple-500 text-white'
                       : isDark ? 'bg-gray-700 text-gray-300 hover:bg-gray-600' : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
-                  }`}
+                    }`}
                 >
                   Not Yet Due
                 </button>
                 <button
                   onClick={() => setEditStatus('na')}
-                  className={`px-3 py-2 rounded text-sm font-medium transition-colors ${
-                    editStatus === 'na'
+                  className={`px-3 py-2 rounded text-sm font-medium transition-colors ${editStatus === 'na'
                       ? isDark ? 'bg-gray-600 text-white' : 'bg-gray-400 text-white'
                       : isDark ? 'bg-gray-700 text-gray-300 hover:bg-gray-600' : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
-                  }`}
+                    }`}
                 >
                   N/A
                 </button>
@@ -722,48 +701,44 @@ export function MatrixLayout() {
             <h3 className={`text-lg font-semibold mb-4 ${isDark ? 'text-white' : 'text-gray-900'}`}>
               Bulk Update ({selectedCells.size} cells)
             </h3>
-            
+
             {/* Status Selection */}
             <div className="mb-4">
               <label className={`block text-sm font-medium mb-2 ${isDark ? 'text-gray-300' : 'text-gray-700'}`}>Status</label>
               <div className="grid grid-cols-2 gap-2">
                 <button
                   onClick={() => setBulkEditStatus('completed')}
-                  className={`px-3 py-2 rounded text-sm font-medium transition-colors ${
-                    bulkEditStatus === 'completed'
+                  className={`px-3 py-2 rounded text-sm font-medium transition-colors ${bulkEditStatus === 'completed'
                       ? isDark ? 'bg-green-600 text-white' : 'bg-green-500 text-white'
                       : isDark ? 'bg-gray-700 text-gray-300 hover:bg-gray-600' : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
-                  }`}
+                    }`}
                 >
                   In Date
                 </button>
                 <button
                   onClick={() => setBulkEditStatus('allocated')}
-                  className={`px-3 py-2 rounded text-sm font-medium transition-colors ${
-                    bulkEditStatus === 'allocated'
+                  className={`px-3 py-2 rounded text-sm font-medium transition-colors ${bulkEditStatus === 'allocated'
                       ? isDark ? 'bg-blue-600 text-white' : 'bg-blue-500 text-white'
                       : isDark ? 'bg-gray-700 text-gray-300 hover:bg-gray-600' : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
-                  }`}
+                    }`}
                 >
                   Allocated
                 </button>
                 <button
                   onClick={() => setBulkEditStatus('not_yet_due')}
-                  className={`px-3 py-2 rounded text-sm font-medium transition-colors ${
-                    bulkEditStatus === 'not_yet_due'
+                  className={`px-3 py-2 rounded text-sm font-medium transition-colors ${bulkEditStatus === 'not_yet_due'
                       ? isDark ? 'bg-purple-600 text-white' : 'bg-purple-500 text-white'
                       : isDark ? 'bg-gray-700 text-gray-300 hover:bg-gray-600' : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
-                  }`}
+                    }`}
                 >
                   Not Yet Due
                 </button>
                 <button
                   onClick={() => setBulkEditStatus('na')}
-                  className={`px-3 py-2 rounded text-sm font-medium transition-colors ${
-                    bulkEditStatus === 'na'
+                  className={`px-3 py-2 rounded text-sm font-medium transition-colors ${bulkEditStatus === 'na'
                       ? isDark ? 'bg-gray-600 text-white' : 'bg-gray-400 text-white'
                       : isDark ? 'bg-gray-700 text-gray-300 hover:bg-gray-600' : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
-                  }`}
+                    }`}
                 >
                   N/A
                 </button>
@@ -810,197 +785,4 @@ export function MatrixLayout() {
       )}
     </div>
   );
-
-  async function updateAllExpiriesForCourse(courseId: string, newExpiryMonths: number, neverExpires: boolean = false) {
-    try {
-      // Get all training records for this course that have completion dates - WITH PAGINATION
-      let allTrainings: any[] = [];
-      let pageNum = 0;
-      const pageSize = 1000;
-      let hasMore = true;
-
-      while (hasMore) {
-        const { data: trainingPage, error: pageError } = await supabase
-          .from('staff_training_matrix')
-          .select('id, completion_date')
-          .eq('course_id', courseId)
-          .not('completion_date', 'is', null)
-          .range(pageNum * pageSize, (pageNum + 1) * pageSize - 1);
-
-        if (pageError) throw pageError;
-
-        if (!trainingPage || trainingPage.length === 0) {
-          hasMore = false;
-        } else {
-          allTrainings = allTrainings.concat(trainingPage);
-          pageNum++;
-          if (trainingPage.length < pageSize) {
-            hasMore = false;
-          }
-        }
-      }
-
-      debugLog(`Updating ${allTrainings.length} training records for course ${courseId}`);
-
-      if (allTrainings && allTrainings.length > 0) {
-        // Update each training record with new expiry date
-        const updates = allTrainings.map(training => {
-          let expiryDateString: string | null = null;
-          
-          if (!neverExpires) {
-            const completionDate = new Date(training.completion_date);
-            const expiryDate = new Date(completionDate);
-            expiryDate.setMonth(expiryDate.getMonth() + newExpiryMonths);
-            expiryDateString = expiryDate.toISOString().split('T')[0];
-          }
-
-          return supabase
-            .from('staff_training_matrix')
-            .update({ expiry_date: expiryDateString })
-            .eq('id', training.id);
-        });
-
-        await Promise.all(updates);
-      }
-      // Fetch updated data after updates complete
-      await fetchMatrixData();
-    } catch (error) {
-      console.error('Error updating expiry dates:', error);
-      alert('Error updating expiry dates');
-    }
-  }
-
-  async function handleSaveTraining(staffId: string, courseId: string, trainingId: string | null, completionDate: string | null = null, status: 'completed' | 'allocated' | 'not_yet_due' | 'na' = 'completed') {
-    try {
-      // Verify selectedLocation is set - if not, this will cause the record to not appear on refresh
-      if (!selectedLocation || selectedLocation.trim() === '') {
-        alert('Please select a location before saving training records');
-        return;
-      }
-
-      // Find the course to get expiry_months and never_expires
-      const course = courses.find(c => c.id === courseId);
-      const expiryMonths = course?.expiry_months || 12;
-      const neverExpires = course?.never_expires || false;
-
-      const existingCell = matrixData[staffId]?.[courseId];
-      let effectiveCompletionDate = completionDate;
-
-      // Calculate expiry date only if completed with a date
-      let expiryDateString: string | null = null;
-      if (status === 'completed' && completionDate && !neverExpires) {
-        const compDate = new Date(completionDate);
-        const expiryDate = new Date(compDate);
-        expiryDate.setMonth(expiryDate.getMonth() + expiryMonths);
-        expiryDateString = expiryDate.toISOString().split('T')[0]; // YYYY-MM-DD
-      } else if (status === 'allocated') {
-        // Preserve existing expiry when switching to allocated
-        if (existingCell?.expiry_date) {
-          expiryDateString = existingCell.expiry_date;
-        } else if (existingCell?.completion_date && !neverExpires) {
-          // Calculate expiry from completion date if not already stored
-          const compDate = new Date(existingCell.completion_date);
-          const expiryDate = new Date(compDate);
-          expiryDate.setMonth(expiryDate.getMonth() + expiryMonths);
-          expiryDateString = expiryDate.toISOString().split('T')[0];
-        }
-        if (!effectiveCompletionDate && existingCell?.completion_date) {
-          effectiveCompletionDate = existingCell.completion_date;
-        }
-      }
-
-      debugLog('Saving training:', {
-        staffId,
-        courseId,
-        trainingId,
-        completion_date: completionDate,
-        expiry_date: expiryDateString,
-        status: status,
-        completed_at_location_id: selectedLocation,
-      });
-
-      // Use upsert to handle both insert and update cases
-      // Important: Do NOT include 'id' field - let database auto-generate for new records
-      const upsertData: any = {
-        staff_id: staffId,
-        course_id: courseId,
-        completion_date: effectiveCompletionDate || null,
-        expiry_date: expiryDateString,
-        completed_at_location_id: selectedLocation,
-        status: status,
-        updated_at: new Date().toISOString(),
-      };
-
-      let { data, error } = await supabase
-        .from('staff_training_matrix')
-        .upsert(upsertData, { onConflict: 'staff_id,course_id,completed_at_location_id' })
-        .select();
-
-      // Support deployments that still use the older two-column unique key.
-      if (error?.code === '42P10') {
-        const fallback = await supabase
-          .from('staff_training_matrix')
-          .upsert(upsertData, { onConflict: 'staff_id,course_id' })
-          .select();
-        data = fallback.data;
-        error = fallback.error;
-      }
-
-      debugLog('Upsert response:', { data, error });
-
-      if (error) {
-        console.error('Save error:', error);
-        alert(`Error saving training: ${error.message}`);
-        return;
-      }
-      
-      if (!data || data.length === 0) {
-        console.error('No data returned from upsert');
-        alert('Error: Record was not saved. Please try again.');
-        return;
-      }
-
-      // Verify the record was actually saved by fetching it directly
-      const savedRecordId = data[0].id;
-      const { data: verifyData } = await supabase
-        .from('staff_training_matrix')
-        .select('*')
-        .eq('id', savedRecordId);
-      
-      debugLog('Verification fetch for record', savedRecordId, ':', verifyData);
-      
-      debugLog('Upsert saved record:', {
-        id: data[0].id,
-        staff_id: data[0].staff_id,
-        course_id: data[0].course_id,
-        completed_at_location_id: data[0].completed_at_location_id,
-      });
-      debugLog('Save successful:', data);
-
-      // Immediately update the matrix with the newly saved record
-      // This ensures it appears even if the database fetch doesn't include it yet
-      if (data && data.length > 0) {
-        const savedRecord = data[0];
-        const updatedMatrix = { ...matrixData };
-        if (!updatedMatrix[staffId]) {
-          updatedMatrix[staffId] = {};
-        }
-        updatedMatrix[staffId][courseId] = {
-          completion_date: savedRecord.completion_date,
-          expiry_date: savedRecord.expiry_date,
-          training_id: savedRecord.id,
-          status: savedRecord.status,
-        };
-        setMatrixData(updatedMatrix);
-        debugLog('Matrix updated with new record immediately');
-      }
-
-      setEditingCell(null);
-      alert('Training record saved successfully!');
-    } catch (error) {
-      console.error('Error saving training:', error);
-      alert(`Error saving training record: ${error}`);
-    }
-  }
 }
-
