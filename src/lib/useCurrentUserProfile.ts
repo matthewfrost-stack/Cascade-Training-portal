@@ -221,29 +221,34 @@ export function useCurrentUserProfile(): UseCurrentUserProfileState {
   }, [loadProfile, pathname]);
 
   // Secondary effect: Refresh profile if critical fields are missing
-  // This ensures permissions are restored even if API call initially failed
+  // This ensures permissions are restored even if API call initially failed.
+  // Capped at 3 retries to prevent hammering the API on a degraded connection.
+  const retryCountRef = useRef(0);
   useEffect(() => {
     if (!isAuthenticated || !profile || loading) return;
-    
-    // If we have a profile but critical permission data is missing, refresh
-    if (profile.role_tier === null && profile.id) {
+
+    if (profile.role_tier === null && profile.id && retryCountRef.current < 3) {
+      retryCountRef.current += 1;
       let retryTimeout: NodeJS.Timeout;
-      
+
       const retryLoadProfile = async () => {
-        // Add a small delay to avoid hammering the API
         await new Promise(resolve => {
-          retryTimeout = setTimeout(resolve, 500);
+          retryTimeout = setTimeout(resolve, 500 * retryCountRef.current);
         });
         await loadProfile();
       };
-      
+
       retryLoadProfile();
-      
+
       return () => {
         if (retryTimeout) {
           clearTimeout(retryTimeout);
         }
       };
+    }
+
+    if (profile.role_tier !== null) {
+      retryCountRef.current = 0;
     }
   }, [isAuthenticated, profile, loading, loadProfile]);
 

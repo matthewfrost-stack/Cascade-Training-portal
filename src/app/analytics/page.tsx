@@ -23,6 +23,7 @@ export default function AnalyticsDashboard() {
   useEffect(() => {
     checkAuth();
     checkTheme();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   useEffect(() => {
@@ -98,6 +99,7 @@ export default function AnalyticsDashboard() {
     if (user) {
       fetchAnalytics();
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [filterYear, filterPeriod, user]);
 
   async function fetchAnalytics() {

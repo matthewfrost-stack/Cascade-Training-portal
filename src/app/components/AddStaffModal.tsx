@@ -391,7 +391,7 @@ export default function AddStaffModal({ onClose, onRefresh }: { onClose: () => v
       let errorCount = 0;
       let skippedDuplicates = 0;
       let skippedInternalDuplicates = 0;
-      let errors: string[] = [];
+      const errors: string[] = [];
       const emailsInThisUpload = new Set<string>(); // Track emails within this CSV
 
       // First, fetch all existing emails to check for duplicates

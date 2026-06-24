@@ -3,7 +3,6 @@
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { supabase } from '@/lib/supabase';
-import Icon from '@/app/components/Icon';
 
 interface ArchiveItem {
   id: string;
@@ -11,7 +10,7 @@ interface ArchiveItem {
   entity_id: string;
   location_id: string | null;
   location_name: string | null;
-  snapshot: any;
+  snapshot: Record<string, unknown>;
   deleted_by: string | null;
   deleted_at: string;
 }
@@ -127,13 +126,13 @@ export default function ArchivePage() {
 
   function itemTitle(item: ArchiveItem): string {
     if (item.entity_type === 'location_training_course') {
-      return item?.snapshot?.course_name || 'Removed Matrix Course';
+      return (item?.snapshot as { course_name?: string })?.course_name || 'Removed Matrix Course';
     }
     if (item.entity_type === 'booking') {
       return 'Deleted Booking';
     }
     if (item.entity_type === 'profile') {
-      return item?.snapshot?.profile?.full_name || 'Deleted Profile';
+      return (item?.snapshot as { profile?: { full_name?: string } })?.profile?.full_name || 'Deleted Profile';
     }
     return item.entity_type;
   }

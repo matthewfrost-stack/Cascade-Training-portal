@@ -106,7 +106,7 @@ export default function AdminPage() {
       <main style={{ backgroundColor: isDark ? '#0f172a' : '#f1f5f9', minHeight: '100vh' }} className="p-8 transition-colors duration-300 flex items-center justify-center">
         <div className="text-center">
           <h1 style={{ color: isDark ? '#f1f5f9' : '#1e293b' }} className="text-2xl font-bold mb-4">Access Denied</h1>
-          <p style={{ color: isDark ? '#94a3b8' : '#64748b' }} className="mb-6">You don't have permission to access the admin panel.</p>
+          <p style={{ color: isDark ? '#94a3b8' : '#64748b' }} className="mb-6">You don&apos;t have permission to access the admin panel.</p>
           <button
             onClick={handleBack}
             className="px-4 py-2 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700"

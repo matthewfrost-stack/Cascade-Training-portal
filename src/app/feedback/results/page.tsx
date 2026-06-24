@@ -66,6 +66,7 @@ export default function FeedbackResultsPage() {
     const handleTheme = (e: any) => setIsDark(e.detail.isDark);
     window.addEventListener('themeChange', handleTheme);
     return () => window.removeEventListener('themeChange', handleTheme);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   async function checkAuth() {

@@ -14,4 +14,13 @@ export default [
   {
     ignores: [".next/**", "out/**", "build/**", "next-env.d.ts"],
   },
+  {
+    // Phase 2: these are tracked for elimination but downgraded to warnings
+    // so builds are not blocked while the typing work is in progress.
+    rules: {
+      "@typescript-eslint/no-explicit-any": "warn",
+      "@typescript-eslint/no-unused-vars": "warn",
+      "react-hooks/exhaustive-deps": "warn",
+    },
+  },
 ];

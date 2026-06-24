@@ -40,7 +40,7 @@ export default function FeedbackManagerModal({ onClose }: { onClose: () => void 
       ]);
 
       if (formRes.data) {
-        let config = formRes.data.config || {};
+        const config = formRes.data.config || {};
         // Auto-migration: if old format exists, or no fields yet, use defaults
         if (!config.fields || config.fields.length === 0) {
           config.fields = [

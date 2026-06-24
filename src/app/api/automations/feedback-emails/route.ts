@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
+import { requireRole } from '@/lib/apiAuth';
 import { sendEmail, getEmailSendOptionsFromHeaders } from '@/lib/email';
 
 export async function GET(req: Request) {
@@ -14,20 +15,25 @@ async function handleRequest(req: Request) {
   try {
     const authHeader = req.headers.get('Authorization');
     const cronSecret = process.env.CRON_SECRET;
-    
-    // Auth check (if secret is configured, require it unless it's a manual POST with eventId)
-    // Actually, normally we check for 'Bearer ' + secret
+
+    // Auth: accept either a valid CRON_SECRET (for scheduled jobs) or an admin session.
+    const hasCronSecret = cronSecret && authHeader === `Bearer ${cronSecret}`;
+    if (!hasCronSecret) {
+      // Fall back to checking a Supabase admin session.
+      const authz = await requireRole(['admin']);
+      if ('error' in authz) {
+        return authz.error;
+      }
+    }
+
     let eventId: string | null = null;
     try {
       if (req.method === 'POST') {
-        const body = await req.json();
-        eventId = body.eventId;
+        const body = (await req.json()) as { eventId?: string };
+        eventId = body.eventId ?? null;
       }
-    } catch (e) {}
-
-    // Require authorization for automated runs
-    if (!eventId && cronSecret && authHeader !== `Bearer ${cronSecret}`) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    } catch {
+      // No body or invalid JSON — eventId stays null.
     }
 
     const supabase = createClient(

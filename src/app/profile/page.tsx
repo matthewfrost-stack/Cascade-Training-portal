@@ -1,6 +1,7 @@
 "use client";
 
 import { ChangeEvent, FormEvent, useEffect, useMemo, useState } from "react";
+import Image from "next/image";
 import { useRouter } from "next/navigation";
 import UniformButton from "@/app/components/UniformButton";
 import { supabase } from "@/lib/supabase";
@@ -187,9 +188,12 @@ export default function ProfilePage() {
             <div className="flex flex-col gap-5 rounded-3xl border border-slate-200 bg-slate-50 p-5 dark:border-slate-800 dark:bg-slate-900/40 sm:flex-row sm:items-center">
               <div className="flex h-24 w-24 shrink-0 items-center justify-center overflow-hidden rounded-full bg-slate-200 text-2xl font-black text-slate-700 dark:bg-[#1b2740] dark:text-slate-100">
                 {avatarUrl ? (
-                  <img
+                  <Image
                     src={avatarUrl}
                     alt="Profile"
+                    width={96}
+                    height={96}
+                    unoptimized
                     className="h-full w-full object-cover"
                   />
                 ) : (

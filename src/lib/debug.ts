@@ -2,12 +2,10 @@ export const isDev = process.env.NODE_ENV !== 'production';
 
 export function debugLog(...args: unknown[]): void {
   if (!isDev) return;
-  // eslint-disable-next-line no-console
-  console.log(...args);
+  console.log(...args); // eslint-disable-line no-console
 }
 
 export function debugWarn(...args: unknown[]): void {
   if (!isDev) return;
-  // eslint-disable-next-line no-console
-  console.warn(...args);
+  console.warn(...args); // eslint-disable-line no-console
 }

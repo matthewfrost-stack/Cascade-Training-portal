@@ -97,21 +97,23 @@ export async function getScopedLocationIds(
       .select('location_id, locations(id, name)')
       .eq('staff_id', userId);
 
-    (linkedLocations || []).forEach((sl: any) => {
-      if (sl.locations?.id && sl.locations?.name) {
-        locationMap.set(sl.locations.id, sl.locations);
+    (linkedLocations || []).forEach((sl) => {
+      const loc = (sl as unknown as { locations?: LocationRow | null })?.locations;
+      if (loc?.id && loc?.name) {
+        locationMap.set(loc.id, loc);
       }
     });
 
-    const { data: userProfile } = await service
+    const { data: rawProfile } = await service
       .from('profiles')
       .select('managed_houses, location')
       .eq('id', userId)
       .single();
 
+    const userProfile = rawProfile as { managed_houses?: unknown[]; location?: string } | null;
     const managedNames = new Set<string>();
     if (Array.isArray(userProfile?.managed_houses)) {
-      userProfile.managed_houses.forEach((name: any) => {
+      userProfile.managed_houses.forEach((name: unknown) => {
         if (typeof name === 'string' && name.trim()) {
           managedNames.add(name.trim());
         }
@@ -127,9 +129,10 @@ export async function getScopedLocationIds(
         .select('id, name')
         .in('name', Array.from(managedNames));
 
-      (managedLocations || []).forEach((loc: any) => {
-        if (loc.id && loc.name) {
-          locationMap.set(loc.id, loc);
+      (managedLocations || []).forEach((loc) => {
+        const row = loc as LocationRow;
+        if (row.id && row.name) {
+          locationMap.set(row.id, row);
         }
       });
     }
@@ -143,8 +146,8 @@ export async function getScopedLocationIds(
     .eq('staff_id', userId);
 
   const ids = (staffLocations || [])
-    .map((sl: any) => sl.locations?.id)
-    .filter((id: any): id is string => Boolean(id));
+    .map((sl) => (sl as { locations?: { id?: string } | null }).locations?.id)
+    .filter((id): id is string => typeof id === 'string' && Boolean(id));
 
   return { all: false, ids };
 }
