@@ -473,7 +473,7 @@ export function MatrixProvider({ children }: { children: React.ReactNode }) {
       staffData?.forEach((s: any) => { if (s.profiles) allStaffIds.add(s.profiles.id); });
       staffFromTrainingSet.forEach(id => allStaffIds.add(id));
 
-      let allStaffProfiles = staffData.filter((s: any) => s.profiles);
+      const allStaffProfiles = staffData.filter((s: any) => s.profiles);
       const staffIdsInProfiles = new Set(allStaffProfiles.map((s: any) => s.profiles.id));
       const missingIds = Array.from(allStaffIds).filter(id => !staffIdsInProfiles.has(id));
 

@@ -42,7 +42,7 @@ export function MatrixLayout() {
                 className={`px-4 py-2 rounded-lg border ${isDark ? 'bg-gray-700 border-gray-600 text-white' : 'bg-white border-gray-300 text-gray-900'
                   } focus:outline-none focus:ring-2 focus:ring-blue-500 transition-all duration-200`}
               >
-                {locations.map((loc) => (
+                {locations.map((loc: any) => (
                   <option key={loc.id} value={loc.id}>
                     {loc.name}
                   </option>
@@ -92,8 +92,8 @@ export function MatrixLayout() {
                           onChange={(e) => setNewCourseName(e.target.value)}
                           placeholder="Course name"
                           className={`px-3 py-2 rounded border text-sm transition-colors duration-150 ${isDark
-                              ? 'bg-gray-700 border-gray-600 text-white placeholder-gray-400'
-                              : 'bg-white border-gray-300 text-gray-900 placeholder-gray-500'
+                            ? 'bg-gray-700 border-gray-600 text-white placeholder-gray-400'
+                            : 'bg-white border-gray-300 text-gray-900 placeholder-gray-500'
                             }`}
                           onKeyDown={(e) => {
                             if (e.key === 'Enter') addNewCourse();
@@ -136,8 +136,8 @@ export function MatrixLayout() {
                           onChange={(e) => setNewDividerName(e.target.value)}
                           placeholder="Section name (e.g., Management)"
                           className={`px-3 py-2 rounded border text-sm transition-colors duration-150 ${isDark
-                              ? 'bg-gray-700 border-gray-600 text-white placeholder-gray-400'
-                              : 'bg-white border-gray-300 text-gray-900 placeholder-gray-500'
+                            ? 'bg-gray-700 border-gray-600 text-white placeholder-gray-400'
+                            : 'bg-white border-gray-300 text-gray-900 placeholder-gray-500'
                             }`}
                           onKeyDown={(e) => {
                             if (e.key === 'Enter') addNewDivider();
@@ -444,14 +444,14 @@ export function MatrixLayout() {
                         onDragOver={handleStaffDragOver}
                         onDrop={(e) => handleStaffDropEnd(e, staffMember.id)}
                         className={`border-b transition-all duration-150 ${isDivider
-                            ? `${isDark ? 'bg-gray-900' : 'bg-gray-300'}`
-                            : `${isDark ? 'border-gray-700 hover:bg-gray-750' : 'border-gray-200 hover:bg-gray-50'}`
+                          ? `${isDark ? 'bg-gray-900' : 'bg-gray-300'}`
+                          : `${isDark ? 'border-gray-700 hover:bg-gray-750' : 'border-gray-200 hover:bg-gray-50'}`
                           }`}
                       >
                         <td
                           className={`px-4 py-2 font-medium sticky left-0 min-w-[200px] z-10 text-sm group ${isDivider
-                              ? `${isDark ? 'bg-gray-900 text-gray-400' : 'bg-gray-300 text-gray-600'} font-semibold`
-                              : `${isDark ? 'bg-gray-600 text-white' : 'bg-gray-200 text-gray-900'}`
+                            ? `${isDark ? 'bg-gray-900 text-gray-400' : 'bg-gray-300 text-gray-600'} font-semibold`
+                            : `${isDark ? 'bg-gray-600 text-white' : 'bg-gray-200 text-gray-900'}`
                             }`}
                         >
                           <div className="flex items-center justify-between gap-2">
@@ -606,8 +606,8 @@ export function MatrixLayout() {
                 <button
                   onClick={() => setEditStatus('completed')}
                   className={`px-3 py-2 rounded text-sm font-medium transition-colors ${editStatus === 'completed'
-                      ? isDark ? 'bg-green-600 text-white' : 'bg-green-500 text-white'
-                      : isDark ? 'bg-gray-700 text-gray-300 hover:bg-gray-600' : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
+                    ? isDark ? 'bg-green-600 text-white' : 'bg-green-500 text-white'
+                    : isDark ? 'bg-gray-700 text-gray-300 hover:bg-gray-600' : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
                     }`}
                 >
                   In Date
@@ -615,8 +615,8 @@ export function MatrixLayout() {
                 <button
                   onClick={() => setEditStatus('allocated')}
                   className={`px-3 py-2 rounded text-sm font-medium transition-colors ${editStatus === 'allocated'
-                      ? isDark ? 'bg-blue-600 text-white' : 'bg-blue-500 text-white'
-                      : isDark ? 'bg-gray-700 text-gray-300 hover:bg-gray-600' : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
+                    ? isDark ? 'bg-blue-600 text-white' : 'bg-blue-500 text-white'
+                    : isDark ? 'bg-gray-700 text-gray-300 hover:bg-gray-600' : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
                     }`}
                 >
                   Allocated
@@ -624,8 +624,8 @@ export function MatrixLayout() {
                 <button
                   onClick={() => setEditStatus('not_yet_due')}
                   className={`px-3 py-2 rounded text-sm font-medium transition-colors ${editStatus === 'not_yet_due'
-                      ? isDark ? 'bg-purple-600 text-white' : 'bg-purple-500 text-white'
-                      : isDark ? 'bg-gray-700 text-gray-300 hover:bg-gray-600' : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
+                    ? isDark ? 'bg-purple-600 text-white' : 'bg-purple-500 text-white'
+                    : isDark ? 'bg-gray-700 text-gray-300 hover:bg-gray-600' : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
                     }`}
                 >
                   Not Yet Due
@@ -633,8 +633,8 @@ export function MatrixLayout() {
                 <button
                   onClick={() => setEditStatus('na')}
                   className={`px-3 py-2 rounded text-sm font-medium transition-colors ${editStatus === 'na'
-                      ? isDark ? 'bg-gray-600 text-white' : 'bg-gray-400 text-white'
-                      : isDark ? 'bg-gray-700 text-gray-300 hover:bg-gray-600' : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
+                    ? isDark ? 'bg-gray-600 text-white' : 'bg-gray-400 text-white'
+                    : isDark ? 'bg-gray-700 text-gray-300 hover:bg-gray-600' : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
                     }`}
                 >
                   N/A
@@ -709,8 +709,8 @@ export function MatrixLayout() {
                 <button
                   onClick={() => setBulkEditStatus('completed')}
                   className={`px-3 py-2 rounded text-sm font-medium transition-colors ${bulkEditStatus === 'completed'
-                      ? isDark ? 'bg-green-600 text-white' : 'bg-green-500 text-white'
-                      : isDark ? 'bg-gray-700 text-gray-300 hover:bg-gray-600' : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
+                    ? isDark ? 'bg-green-600 text-white' : 'bg-green-500 text-white'
+                    : isDark ? 'bg-gray-700 text-gray-300 hover:bg-gray-600' : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
                     }`}
                 >
                   In Date
@@ -718,8 +718,8 @@ export function MatrixLayout() {
                 <button
                   onClick={() => setBulkEditStatus('allocated')}
                   className={`px-3 py-2 rounded text-sm font-medium transition-colors ${bulkEditStatus === 'allocated'
-                      ? isDark ? 'bg-blue-600 text-white' : 'bg-blue-500 text-white'
-                      : isDark ? 'bg-gray-700 text-gray-300 hover:bg-gray-600' : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
+                    ? isDark ? 'bg-blue-600 text-white' : 'bg-blue-500 text-white'
+                    : isDark ? 'bg-gray-700 text-gray-300 hover:bg-gray-600' : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
                     }`}
                 >
                   Allocated
@@ -727,8 +727,8 @@ export function MatrixLayout() {
                 <button
                   onClick={() => setBulkEditStatus('not_yet_due')}
                   className={`px-3 py-2 rounded text-sm font-medium transition-colors ${bulkEditStatus === 'not_yet_due'
-                      ? isDark ? 'bg-purple-600 text-white' : 'bg-purple-500 text-white'
-                      : isDark ? 'bg-gray-700 text-gray-300 hover:bg-gray-600' : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
+                    ? isDark ? 'bg-purple-600 text-white' : 'bg-purple-500 text-white'
+                    : isDark ? 'bg-gray-700 text-gray-300 hover:bg-gray-600' : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
                     }`}
                 >
                   Not Yet Due
@@ -736,8 +736,8 @@ export function MatrixLayout() {
                 <button
                   onClick={() => setBulkEditStatus('na')}
                   className={`px-3 py-2 rounded text-sm font-medium transition-colors ${bulkEditStatus === 'na'
-                      ? isDark ? 'bg-gray-600 text-white' : 'bg-gray-400 text-white'
-                      : isDark ? 'bg-gray-700 text-gray-300 hover:bg-gray-600' : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
+                    ? isDark ? 'bg-gray-600 text-white' : 'bg-gray-400 text-white'
+                    : isDark ? 'bg-gray-700 text-gray-300 hover:bg-gray-600' : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
                     }`}
                 >
                   N/A
