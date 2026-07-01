@@ -85,13 +85,11 @@ export default function AnalyticsDashboard() {
     try {
       const { data: { user: currentUser } } = await supabase.auth.getUser();
       if (!currentUser) {
-        router.push('/login');
         return;
       }
       setUser(currentUser);
     } catch (err) {
       console.error("Error checking auth:", err);
-      router.push('/login');
     }
   }
 

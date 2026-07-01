@@ -1,12 +1,10 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { useRouter } from 'next/navigation';
 import CalendarPage from './CalendarPage';
 import { supabase } from '@/lib/supabase';
 
 export default function BookingCalendarPage() {
-  const router = useRouter();
   const [isDark, setIsDark] = useState(true);
 
   useEffect(() => {
@@ -37,12 +35,14 @@ export default function BookingCalendarPage() {
       } = await supabase.auth.getSession();
 
       if (!session?.user) {
-        router.push('/login');
+        // Middleware handles unauthenticated redirects server-side.
+        // Do not push to /login from the client — it causes a redirect loop
+        // where middleware bounces the authenticated session back to /.
         return;
       }
     } catch (error) {
       console.error('Auth error:', error);
-      router.push('/login');
+      // Do not redirect on error — let middleware handle it server-side.
     }
   }
 

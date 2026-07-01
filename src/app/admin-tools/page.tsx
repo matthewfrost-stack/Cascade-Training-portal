@@ -24,7 +24,7 @@ export default function AdminToolsPage() {
 function AdminToolsPageInner() {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const { profile, isAuthenticated, loading } = useCurrentUserProfile();
+  const { profile, loading } = useCurrentUserProfile();
   const [isDark, setIsDark] = useState(true);
   const [accessDenied, setAccessDenied] = useState(false);
 
@@ -48,15 +48,8 @@ function AdminToolsPageInner() {
     // Wait for auth to complete
     if (loading) return;
 
-    // Not authenticated
-    if (!isAuthenticated || !profile) {
-      router.push('/login');
-      return;
-    }
-
     // Don't have permissions yet - wait for profile to fully load
-    if (!profile.role_tier) {
-      console.warn('Profile loaded but role_tier is missing, waiting...');
+    if (!profile?.role_tier) {
       return;
     }
 
@@ -69,7 +62,7 @@ function AdminToolsPageInner() {
       }, 2000);
       return () => clearTimeout(timeout);
     }
-  }, [loading, isAuthenticated, profile, router]);
+  }, [loading, profile, router]);
 
   if (loading) {
     return (

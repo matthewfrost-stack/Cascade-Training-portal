@@ -37,12 +37,10 @@ export default function ExpiryCheckerPage() {
       } = await supabase.auth.getSession();
 
       if (!session?.user) {
-        router.push('/login');
         return;
       }
     } catch (error) {
       console.error('Auth error:', error);
-      router.push('/login');
     }
   }
 

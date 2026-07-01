@@ -215,7 +215,7 @@ export function MatrixLayout() {
                   <tr style={{ position: 'sticky', top: '0px', zIndex: 20 }} className={`h-8 ${isDark ? 'bg-gray-600' : 'bg-gray-200'} border-b ${isDark ? 'border-gray-500' : 'border-gray-300'}`}>
                     <th className={`px-4 py-1 text-left font-semibold text-xs sticky left-0 z-30 ${isDark ? 'bg-gray-600' : 'bg-gray-200'} min-w-[200px]`}>
                     </th>
-                    {courses.map((course) => (
+                    {courses.map((course: any) => (
                       <th
                         key={`cat-${course.id}`}
                         onClick={() => {
@@ -231,7 +231,7 @@ export function MatrixLayout() {
                             onChange={(e) => setEditHeaderValue(e.target.value)}
                             onBlur={() => {
                               const newCategory = editHeaderValue.trim() || undefined;
-                              const updatedCourses = courses.map(c => c.id === course.id ? { ...c, category: newCategory } : c);
+                              const updatedCourses = courses.map((c: any) => c.id === course.id ? { ...c, category: newCategory } : c);
                               setCourses(updatedCourses);
                               saveCategoryOverride(selectedLocation, course.id, newCategory || '');
                               setEditingHeader(null);
@@ -239,7 +239,7 @@ export function MatrixLayout() {
                             onKeyDown={(e) => {
                               if (e.key === 'Enter') {
                                 const newCategory = editHeaderValue.trim() || undefined;
-                                const updatedCourses = courses.map(c => c.id === course.id ? { ...c, category: newCategory } : c);
+                                const updatedCourses = courses.map((c: any) => c.id === course.id ? { ...c, category: newCategory } : c);
                                 setCourses(updatedCourses);
                                 saveCategoryOverride(selectedLocation, course.id, newCategory || '');
                                 setEditingHeader(null);
@@ -260,7 +260,7 @@ export function MatrixLayout() {
                     <th className={`px-4 py-1 text-left font-semibold text-xs sticky left-0 z-30 ${isDark ? 'bg-gray-600' : 'bg-gray-200'} min-w-[200px]`}>
                       Staff Member
                     </th>
-                    {courses.map((course) => (
+                    {courses.map((course: any) => (
                       <th
                         key={`name-${course.id}`}
                         draggable={!editingHeader}
@@ -271,7 +271,8 @@ export function MatrixLayout() {
                           setEditingHeader({ courseId: course.id, type: 'name' });
                           setEditHeaderValue(course.name);
                         }}
-                        className={`px-2 py-1 text-center text-xs font-semibold ${isDark ? 'text-gray-300' : 'text-gray-700'} min-w-[140px] transition-all duration-150 cursor-grab active:cursor-grabbing hover:opacity-80 ${isDark ? 'bg-gray-600' : 'bg-gray-200'}`}
+                        className={`px-2 py-1 text-center text-xs font-semibold ${isDark ? 'text-gray-300' : 'text-gray-700'} min-w-[140px] transition-all duration-150 cursor-grab active:cursor-grabbing hover:opacity-80 ${isDark ? 'bg-gray-600' : 'bg-gray-200'} ${draggedCourse === course.id ? 'opacity-50' : 'opacity-100'
+                          } ${draggedCourse && draggedCourse !== course.id ? 'bg-gray-500 bg-opacity-30' : ''}`}
                         title="Drag to reorder courses"
                       >
                         {editingHeader?.courseId === course.id && editingHeader?.type === 'name' ? (
@@ -281,7 +282,7 @@ export function MatrixLayout() {
                             onChange={(e) => setEditHeaderValue(e.target.value)}
                             onBlur={() => {
                               if (editHeaderValue.trim()) {
-                                const updatedCourses = courses.map(c => c.id === course.id ? { ...c, name: editHeaderValue.trim() } : c);
+                                const updatedCourses = courses.map((c: any) => c.id === course.id ? { ...c, name: editHeaderValue.trim() } : c);
                                 setCourses(updatedCourses);
                                 saveCourseChanges(course.id, { name: editHeaderValue.trim() }, true);
                               }
@@ -290,7 +291,7 @@ export function MatrixLayout() {
                             onKeyDown={(e) => {
                               if (e.key === 'Enter') {
                                 if (editHeaderValue.trim()) {
-                                  const updatedCourses = courses.map(c => c.id === course.id ? { ...c, name: editHeaderValue.trim() } : c);
+                                  const updatedCourses = courses.map((c: any) => c.id === course.id ? { ...c, name: editHeaderValue.trim() } : c);
                                   setCourses(updatedCourses);
                                   saveCourseChanges(course.id, { name: editHeaderValue.trim() }, true);
                                 }
@@ -346,7 +347,7 @@ export function MatrixLayout() {
                   <tr style={{ position: 'sticky', top: '64px', zIndex: 20 }} className={`h-8 ${isDark ? 'bg-gray-600' : 'bg-gray-200'} border-b ${isDark ? 'border-gray-500' : 'border-gray-300'}`}>
                     <th className={`px-4 py-1 text-left font-semibold text-xs sticky left-0 z-30 ${isDark ? 'bg-gray-600' : 'bg-gray-200'} min-w-[200px]`}>
                     </th>
-                    {courses.map((course) => (
+                    {courses.map((course: any) => (
                       <th
                         key={`expiry-${course.id}`}
                         onClick={() => {
@@ -375,7 +376,7 @@ export function MatrixLayout() {
                                 onKeyDown={async (e) => {
                                   if (e.key === 'Enter') {
                                     const months = parseInt(editHeaderValue) || 12;
-                                    const updatedCourses = courses.map(c => c.id === course.id ? { ...c, expiry_months: months } : c);
+                                    const updatedCourses = courses.map((c: any) => c.id === course.id ? { ...c, expiry_months: months } : c);
                                     setCourses(updatedCourses);
                                     await saveCourseChanges(course.id, { expiry_months: months, never_expires: false }, true);
                                     await updateAllExpiriesForCourse(course.id, months, false);
@@ -393,7 +394,7 @@ export function MatrixLayout() {
                                 onClick={async () => {
                                   setEditNeverExpires(false);
                                   const months = parseInt(editHeaderValue) || 12;
-                                  const updatedCourses = courses.map(c => c.id === course.id ? { ...c, never_expires: false, expiry_months: months } : c);
+                                  const updatedCourses = courses.map((c: any) => c.id === course.id ? { ...c, never_expires: false, expiry_months: months } : c);
                                   setCourses(updatedCourses);
                                   await saveCourseChanges(course.id, { never_expires: false, expiry_months: months }, true);
                                   await updateAllExpiriesForCourse(course.id, months, false);
@@ -407,13 +408,13 @@ export function MatrixLayout() {
                             <button
                               onClick={async () => {
                                 if (editNeverExpires) {
-                                  const updatedCourses = courses.map(c => c.id === course.id ? { ...c, never_expires: true, expiry_months: 9999 } : c);
+                                  const updatedCourses = courses.map((c: any) => c.id === course.id ? { ...c, never_expires: true, expiry_months: 9999 } : c);
                                   setCourses(updatedCourses);
                                   await saveCourseChanges(course.id, { never_expires: true, expiry_months: 9999 }, true);
                                   await updateAllExpiriesForCourse(course.id, 9999, true);
                                 } else {
                                   const months = parseInt(editHeaderValue) || 12;
-                                  const updatedCourses = courses.map(c => c.id === course.id ? { ...c, never_expires: false, expiry_months: months } : c);
+                                  const updatedCourses = courses.map((c: any) => c.id === course.id ? { ...c, never_expires: false, expiry_months: months } : c);
                                   setCourses(updatedCourses);
                                   await saveCourseChanges(course.id, { expiry_months: months, never_expires: false }, true);
                                   await updateAllExpiriesForCourse(course.id, months, false);
@@ -433,7 +434,7 @@ export function MatrixLayout() {
                   </tr>
                 </thead>
                 <tbody>
-                  {staff.map((staffMember) => {
+                  {staff.map((staffMember: any) => {
                     const isDivider = staffDividers.has(staffMember.id);
 
                     return (
@@ -459,7 +460,7 @@ export function MatrixLayout() {
                               <input
                                 type="checkbox"
                                 onChange={() => selectAllForStaff(staffMember.id)}
-                                checked={courses.every(c => selectedCells.has(`${staffMember.id}|${c.id}`))}
+                                checked={courses.every((c: any) => selectedCells.has(`${staffMember.id}|${c.id}`))}
                                 className="w-4 h-4 cursor-pointer"
                                 title="Select all courses for this staff member"
                               />
@@ -477,7 +478,7 @@ export function MatrixLayout() {
                             </button>
                           </div>
                         </td>
-                        {courses.map((course) => {
+                        {courses.map((course: any) => {
                           if (isDivider) {
                             return (
                               <td
@@ -668,8 +669,8 @@ export function MatrixLayout() {
                     alert('Please select a status');
                     return;
                   }
-                  const staffMember = staff.find(s => s.id === editingCell.staffId);
-                  const course = courses.find(c => c.id === editingCell.courseId);
+                  const staffMember = staff.find((s: any) => s.id === editingCell.staffId);
+                  const course = courses.find((c: any) => c.id === editingCell.courseId);
                   const cell = matrixData[editingCell.staffId]?.[editingCell.courseId];
                   if (staffMember && course) {
                     handleSaveTraining(staffMember.id, course.id, cell?.training_id || null, editStatus === 'completed' ? editDate : null, editStatus);

@@ -49,7 +49,6 @@ export default function ProfilePage() {
 
   useEffect(() => {
     if (!loading && !isAuthenticated) {
-      router.replace("/login");
       return;
     }
 

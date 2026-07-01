@@ -1,10 +1,9 @@
 'use client';
 import React, { createContext, useContext, useState, useEffect, useRef } from 'react';
-import { useRouter } from 'next/navigation';
 import { supabase } from '@/lib/supabase';
 import { parseFirstThreeRowsFromCsvString, CsvHeaderRows } from './csvHeaderUtils';
 import { debugLog } from '@/lib/debug';
-import { Staff, Course, MatrixCell, RemovedCourseEntry } from './types';
+import { Staff, Course, MatrixCell, RemovedCourseEntry } from '../types';
 
 // Helper to get CSV URL for a location name (public folder)
 function getCsvUrlForLocation(locationName: string): string {
@@ -22,7 +21,6 @@ interface MatrixContextType {
 const MatrixContext = createContext<MatrixContextType | undefined>(undefined);
 
 export function MatrixProvider({ children }: { children: React.ReactNode }) {
-  const router = useRouter();
   const [user, setUser] = useState<any>(null);
   const [userRole, setUserRole] = useState<string>('');
   const [selectedLocation, setSelectedLocation] = useState<string>('');
@@ -223,7 +221,10 @@ export function MatrixProvider({ children }: { children: React.ReactNode }) {
     try {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) {
-        router.push('/login');
+        // Middleware handles unauthenticated redirects — do not push to /login
+        // from the client side as it creates a redirect loop (middleware bounces
+        // authenticated sessions back to / before the client token refreshes).
+        setLoading(false);
         return;
       }
       setUser(user);
@@ -235,7 +236,8 @@ export function MatrixProvider({ children }: { children: React.ReactNode }) {
       setUserRole(profile?.role_tier || 'staff');
     } catch (error) {
       console.error('Auth check error:', error);
-      router.push('/login');
+      // Do not redirect on error — middleware will handle this server-side.
+      setLoading(false);
     }
   };
 
