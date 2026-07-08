@@ -830,6 +830,168 @@ export function MatrixProvider({ children }: { children: React.ReactNode }) {
     }
   };
 
+  async function updateAllExpiriesForCourse(courseId: string, newExpiryMonths: number, neverExpires: boolean = false) {
+    try {
+      let allTrainings: any[] = [];
+      let pageNum = 0;
+      const pageSize = 1000;
+      let hasMore = true;
+
+      while (hasMore) {
+        const { data: trainingPage, error: pageError } = await supabase
+          .from('staff_training_matrix')
+          .select('id, completion_date')
+          .eq('course_id', courseId)
+          .not('completion_date', 'is', null)
+          .range(pageNum * pageSize, (pageNum + 1) * pageSize - 1);
+
+        if (pageError) throw pageError;
+
+        if (!trainingPage || trainingPage.length === 0) {
+          hasMore = false;
+        } else {
+          allTrainings = allTrainings.concat(trainingPage);
+          pageNum++;
+          if (trainingPage.length < pageSize) {
+            hasMore = false;
+          }
+        }
+      }
+
+      debugLog(`Updating ${allTrainings.length} training records for course ${courseId}`);
+
+      if (allTrainings && allTrainings.length > 0) {
+        const updates = allTrainings.map(training => {
+          let expiryDateString: string | null = null;
+          
+          if (!neverExpires) {
+            const completionDate = new Date(training.completion_date);
+            const expiryDate = new Date(completionDate);
+            expiryDate.setMonth(expiryDate.getMonth() + newExpiryMonths);
+            expiryDateString = expiryDate.toISOString().split('T')[0];
+          }
+
+          return supabase
+            .from('staff_training_matrix')
+            .update({ expiry_date: expiryDateString })
+            .eq('id', training.id);
+        });
+
+        await Promise.all(updates);
+      }
+      await fetchMatrixData();
+    } catch (error) {
+      console.error('Error updating expiry dates:', error);
+      alert('Error updating expiry dates');
+    }
+  }
+
+  async function handleSaveTraining(staffId: string, courseId: string, trainingId: string | null, completionDate: string | null = null, status: 'completed' | 'allocated' | 'not_yet_due' | 'na' = 'completed') {
+    try {
+      if (!selectedLocation || selectedLocation.trim() === '') {
+        alert('Please select a location before saving training records');
+        return;
+      }
+
+      const course = courses.find(c => c.id === courseId);
+      const expiryMonths = course?.expiry_months || 12;
+      const neverExpires = course?.never_expires || false;
+
+      const existingCell = matrixData[staffId]?.[courseId];
+      let effectiveCompletionDate = completionDate;
+
+      let expiryDateString: string | null = null;
+      if (status === 'completed' && completionDate && !neverExpires) {
+        const compDate = new Date(completionDate);
+        const expiryDate = new Date(compDate);
+        expiryDate.setMonth(expiryDate.getMonth() + expiryMonths);
+        expiryDateString = expiryDate.toISOString().split('T')[0];
+      } else if (status === 'allocated') {
+        if (existingCell?.expiry_date) {
+          expiryDateString = existingCell.expiry_date;
+        } else if (existingCell?.completion_date && !neverExpires) {
+          const compDate = new Date(existingCell.completion_date);
+          const expiryDate = new Date(compDate);
+          expiryDate.setMonth(expiryDate.getMonth() + expiryMonths);
+          expiryDateString = expiryDate.toISOString().split('T')[0];
+        }
+        if (!effectiveCompletionDate && existingCell?.completion_date) {
+          effectiveCompletionDate = existingCell.completion_date;
+        }
+      }
+
+      debugLog('Saving training:', {
+        staffId,
+        courseId,
+        trainingId,
+        completion_date: completionDate,
+        expiry_date: expiryDateString,
+        status: status,
+        completed_at_location_id: selectedLocation,
+      });
+
+      const upsertData: any = {
+        staff_id: staffId,
+        course_id: courseId,
+        completion_date: effectiveCompletionDate || null,
+        expiry_date: expiryDateString,
+        completed_at_location_id: selectedLocation,
+        status: status,
+        updated_at: new Date().toISOString(),
+      };
+
+      let { data, error } = await supabase
+        .from('staff_training_matrix')
+        .upsert(upsertData, { onConflict: 'staff_id,course_id,completed_at_location_id' })
+        .select();
+
+      if (error?.code === '42P10') {
+        const fallback = await supabase
+          .from('staff_training_matrix')
+          .upsert(upsertData, { onConflict: 'staff_id,course_id' })
+          .select();
+        data = fallback.data;
+        error = fallback.error;
+      }
+
+      debugLog('Upsert response:', { data, error });
+
+      if (error) {
+        console.error('Save error:', error);
+        alert(`Error saving training: ${error.message}`);
+        return;
+      }
+      
+      if (!data || data.length === 0) {
+        console.error('No data returned from upsert');
+        alert('Error: Record was not saved. Please try again.');
+        return;
+      }
+
+      if (data && data.length > 0) {
+        const savedRecord = data[0];
+        const updatedMatrix = { ...matrixData };
+        if (!updatedMatrix[staffId]) {
+          updatedMatrix[staffId] = {};
+        }
+        updatedMatrix[staffId][courseId] = {
+          completion_date: savedRecord.completion_date,
+          expiry_date: savedRecord.expiry_date,
+          training_id: savedRecord.id,
+          status: savedRecord.status,
+        };
+        setMatrixData(updatedMatrix);
+        debugLog('Matrix updated with new record immediately');
+      }
+
+      setEditingCell(null);
+      alert('Training record saved successfully!');
+    } catch (error) {
+      console.error('Error saving training:', error);
+      alert(`Error saving training record: ${error}`);
+    }
+  }
+
   const contextValue = {
     user, userRole, selectedLocation, setSelectedLocation, locations, staff, setStaff, courses, setCourses, matrixData, setMatrixData,
     loading, setLoading, isDark, setIsDark, tableScrollContainerRef, fetchAbortControllerRef, editingCell, setEditingCell,
@@ -841,7 +1003,7 @@ export function MatrixProvider({ children }: { children: React.ReactNode }) {
     fetchMatrixData, saveCourseChanges, getDateStatus, getDateColor, getStatusDisplay, canEditMatrix, handleCourseDropStart, handleCourseDragOver,
     handleCourseDropEnd, handleStaffDropStart, handleStaffDragOver, persistStaffOrdering, handleStaffDropEnd, addNewCourse, deleteCourse,
     undoRemoveCourse, addNewDivider, exportMatrixCsv, deleteStaffMember, toggleCellSelection, selectAllInCourse, deselectAllInCourse,
-    selectAllForStaff, clearAllSelections, applyBulkUpdate, updateAllExpiriesForCourse: null, handleSaveTraining: null
+    selectAllForStaff, clearAllSelections, applyBulkUpdate, updateAllExpiriesForCourse, handleSaveTraining
   };
 
   return <MatrixContext.Provider value={contextValue}>{children}</MatrixContext.Provider>;

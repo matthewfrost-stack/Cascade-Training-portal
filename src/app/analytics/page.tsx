@@ -127,19 +127,37 @@ export default function AnalyticsDashboard() {
     }
 
     try {
-      // First fetch all bookings with basic fields
-      const { data: bookings, error: bookingsError } = await supabase
-        .from('bookings')
-        .select('id, profile_id, event_id, attended_at, minutes_late, late_reason, absence_reason, created_at');
-      
-      if (bookingsError) {
-        console.error('Error fetching bookings:', bookingsError);
-        setData([]);
-        setLoading(false);
-        return;
+      // First fetch all bookings with basic fields using pagination (page size: 1000)
+      let bookings: any[] = [];
+      let pageNumber = 0;
+      const pageSize = 1000;
+      let hasMore = true;
+
+      while (hasMore) {
+        const { data: pageData, error: pageError } = await supabase
+          .from('bookings')
+          .select('id, profile_id, event_id, attended_at, minutes_late, late_reason, absence_reason, created_at')
+          .range(pageNumber * pageSize, (pageNumber + 1) * pageSize - 1);
+
+        if (pageError) {
+          console.error('Error fetching bookings page:', pageError);
+          setData([]);
+          setLoading(false);
+          return;
+        }
+
+        if (!pageData || pageData.length === 0) {
+          hasMore = false;
+        } else {
+          bookings = bookings.concat(pageData);
+          pageNumber++;
+          if (pageData.length < pageSize) {
+            hasMore = false;
+          }
+        }
       }
       
-      if (!bookings || bookings.length === 0) {
+      if (bookings.length === 0) {
         debugWarn('No bookings found');
         setData([]);
         setLoading(false);
@@ -158,34 +176,42 @@ export default function AnalyticsDashboard() {
       let events: any[] = [];
       let profiles: any[] = [];
 
-      // Fetch training events if we have event IDs
+      // Fetch training events in chunks of 500 if we have event IDs
       if (eventIds.length > 0) {
-        const { data: eventsData, error: eventsError } = await supabase
-          .from('training_events')
-          .select('id, event_date, course_id, courses(id, name)')
-          .in('id', eventIds);
+        const chunkSize = 500;
+        for (let i = 0; i < eventIds.length; i += chunkSize) {
+          const chunk = eventIds.slice(i, i + chunkSize);
+          const { data: eventsData, error: eventsError } = await supabase
+            .from('training_events')
+            .select('id, event_date, course_id, courses(id, name)')
+            .in('id', chunk);
 
-        if (eventsError) {
-          console.error('Error fetching events:', eventsError);
-        } else {
-          events = eventsData || [];
-          debugLog('Fetched events:', events.length);
+          if (eventsError) {
+            console.error('Error fetching events chunk:', eventsError);
+          } else if (eventsData) {
+            events = events.concat(eventsData);
+          }
         }
+        debugLog('Fetched events:', events.length);
       }
 
-      // Fetch profiles if we have profile IDs
+      // Fetch profiles in chunks of 500 if we have profile IDs
       if (profileIds.length > 0) {
-        const { data: profilesData, error: profilesError } = await supabase
-          .from('profiles')
-          .select('id, full_name, location')
-          .in('id', profileIds);
+        const chunkSize = 500;
+        for (let i = 0; i < profileIds.length; i += chunkSize) {
+          const chunk = profileIds.slice(i, i + chunkSize);
+          const { data: profilesData, error: profilesError } = await supabase
+            .from('profiles')
+            .select('id, full_name, location')
+            .in('id', chunk);
 
-        if (profilesError) {
-          console.error('Error fetching profiles:', profilesError);
-        } else {
-          profiles = profilesData || [];
-          debugLog('Fetched profiles:', profiles.length);
+          if (profilesError) {
+            console.error('Error fetching profiles chunk:', profilesError);
+          } else if (profilesData) {
+            profiles = profiles.concat(profilesData);
+          }
         }
+        debugLog('Fetched profiles:', profiles.length);
       }
 
       // Merge data
