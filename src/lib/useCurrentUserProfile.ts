@@ -220,6 +220,43 @@ export function useCurrentUserProfile(): UseCurrentUserProfileState {
     };
   }, [loadProfile, pathname]);
 
+  useEffect(() => {
+    let mounted = true;
+
+    const handleVisibilityChange = async () => {
+      if (document.visibilityState !== 'visible' || !mounted) return;
+      if (!hasBootstrappedRef.current || lastRouteWasAuthRef.current) return;
+      if (!isAuthenticated || !profile || profile.role_tier === null) {
+        setLoading(true);
+        await loadProfile();
+        if (mounted) {
+          setLoading(false);
+        }
+      }
+    };
+
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+
+    return () => {
+      mounted = false;
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+    };
+  }, [isAuthenticated, profile, loadProfile]);
+
+  useEffect(() => {
+    const currentPath = pathname ?? '';
+    const isAuthRoute =
+      currentPath === "/login" ||
+      currentPath === "/auth/callback" ||
+      currentPath.startsWith("/auth/");
+
+    if (isAuthRoute || loading || isAuthenticated) return;
+
+    loadProfile().catch((error) => {
+      console.warn('Failed to refresh profile on navigation:', error);
+    });
+  }, [pathname, isAuthenticated, loading, loadProfile]);
+
   // Secondary effect: Refresh profile if critical fields are missing
   // This ensures permissions are restored even if API call initially failed.
   // Capped at 3 retries to prevent hammering the API on a degraded connection.

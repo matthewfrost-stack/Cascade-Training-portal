@@ -225,7 +225,7 @@ export async function POST(request: NextRequest) {
     const locationName = locationNameErr ? '' : String(locationRow?.name || '');
 
     const csvText = await file.text();
-    const rows = parseLogicalRows(csvText, 25000);
+    const rows = parseLogicalRows(csvText, 50000);
 
     const headerIdx = rows.findIndex((r) => {
       const first = cleanCell(r[0] || '').toLowerCase();
@@ -268,13 +268,18 @@ export async function POST(request: NextRequest) {
       'notes',
       'date valid for',
       'management',
+      'managers',
+      'team leader',
       'team leaders',
       'lead support',
+      'leaders',
+      'staff',
       'staff team',
       'staff on probation',
       'inactive staff',
       'staff on maternity',
       'bank staff',
+      'mangers',
     ].map(normalizeKey));
 
     const ignoredMetaColumns = new Set<string>([
@@ -308,6 +313,19 @@ export async function POST(request: NextRequest) {
       if (!s?.id || !s?.full_name) return;
       staffMap.set(normalizeStaffName(String(s.full_name)), String(s.id));
     });
+
+    const { data: existingDividers, error: existingDividersErr } = await authz.service
+      .from('location_matrix_dividers')
+      .select('id, name')
+      .eq('location_id', locationId);
+
+    const existingDividerMap = new Map<string, { id: string; name: string }>();
+    if (!existingDividersErr) {
+      (existingDividers || []).forEach((d: any) => {
+        if (!d?.id || !d?.name) return;
+        existingDividerMap.set(normalizeKey(String(d.name)), { id: String(d.id), name: String(d.name) });
+      });
+    }
 
     // Courses configured for the selected location.
     const { data: locationCourses, error: courseErr } = await authz.service
@@ -594,8 +612,40 @@ export async function POST(request: NextRequest) {
       const staffName = cleanCell(row[0] || '');
       if (!staffName) continue;
 
-      if (dividerLabels.has(normalizeKey(staffName))) {
-        // Divider / header row in the spreadsheet (not a staff member)
+      const normalizedStaffName = normalizeKey(staffName);
+      if (dividerLabels.has(normalizedStaffName)) {
+        const displayOrder = staffRowPosition;
+        staffRowPosition += 1;
+
+        const existingDivider = existingDividerMap.get(normalizedStaffName);
+        if (existingDivider) {
+          const { error: dividerUpdateError } = await authz.service
+            .from('location_matrix_dividers')
+            .update({ display_order: displayOrder })
+            .eq('id', existingDivider.id);
+          if (dividerUpdateError) {
+            if (errorMessages.size < 10) errorMessages.add(dividerUpdateError.message);
+          }
+        } else {
+          const { data: insertedDivider, error: insertDividerError } = await authz.service
+            .from('location_matrix_dividers')
+            .insert([
+              {
+                location_id: locationId,
+                name: staffName,
+                display_order: displayOrder,
+              },
+            ])
+            .select('id')
+            .single();
+
+          if (insertDividerError || !insertedDivider?.id) {
+            if (errorMessages.size < 10) errorMessages.add(insertDividerError?.message || `Could not create divider ${staffName}`);
+          } else {
+            existingDividerMap.set(normalizedStaffName, { id: String(insertedDivider.id), name: staffName });
+          }
+        }
+
         continue;
       }
 
@@ -618,6 +668,7 @@ export async function POST(request: NextRequest) {
           if (createdProfileError || !createdProfile?.id) {
             summary.errors++;
             if (errorMessages.size < 10) errorMessages.add(`Could not create profile for ${staffName}: ${createdProfileError?.message || 'unknown error'}`);
+            staffRowPosition += 1;
             continue;
           }
 
@@ -627,6 +678,7 @@ export async function POST(request: NextRequest) {
         } else {
           summary.skippedUnknownStaff++;
           if (unknownStaffSamples.size < 25) unknownStaffSamples.add(staffName);
+          staffRowPosition += 1;
           continue;
         }
       }
@@ -634,7 +686,7 @@ export async function POST(request: NextRequest) {
       // Track staff display order from CSV row position
       if (!staffDisplayOrderUpdates.has(staffId)) {
         staffDisplayOrderUpdates.set(staffId, staffRowPosition);
-        staffRowPosition++;
+        staffRowPosition += 1;
       }
 
       for (const mapping of colToCourse) {
