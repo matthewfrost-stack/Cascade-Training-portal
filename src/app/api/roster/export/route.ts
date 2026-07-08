@@ -33,11 +33,31 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: 'Failed to fetch staff' }, { status: 500 });
     }
 
-    const { data: courseData, error: courseError } = await supabase
-      .from('location_courses')
-      .select('course_id, courses(name, category), display_order')
-      .eq('location_id', locationId)
-      .order('display_order', { ascending: true });
+    let courseData: any = null;
+    let courseError: any = null;
+
+    {
+      const res = await supabase
+        .from('location_courses')
+        .select('course_id, courses(name, category), display_order')
+        .eq('location_id', locationId)
+        .order('display_order', { ascending: true });
+      courseData = res.data;
+      courseError = res.error;
+    }
+
+    if (
+      courseError &&
+      (courseError.code === '42703' || String(courseError.message || '').includes('category'))
+    ) {
+      const fallback = await supabase
+        .from('location_courses')
+        .select('course_id, courses(name), display_order')
+        .eq('location_id', locationId)
+        .order('display_order', { ascending: true });
+      courseData = fallback.data;
+      courseError = fallback.error;
+    }
 
     if (courseError) {
       return NextResponse.json({ error: 'Failed to fetch courses' }, { status: 500 });
@@ -66,7 +86,7 @@ export async function GET(request: NextRequest) {
       email: s.profiles?.email || '',
     }));
 
-    const courses = (courseData || []).map((c: any) => ({
+    const courses: Array<{ id: string; name: string; category: string }> = (courseData || []).map((c: any) => ({
       id: c.course_id,
       name: c.courses?.name || 'Unknown',
       category: c.courses?.category || '',

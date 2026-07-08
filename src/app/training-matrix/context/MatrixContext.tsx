@@ -379,12 +379,20 @@ export function MatrixProvider({ children }: { children: React.ReactNode }) {
       locationCoursesData = withCategoryRes.data;
       locationCoursesError = withCategoryRes.error;
 
-      if (locationCoursesError?.code === '42703') {
+      if (
+        locationCoursesError?.code === '42703' ||
+        String(locationCoursesError?.message || '').includes('training_courses.category') ||
+        String(locationCoursesError?.message || '').includes('column "category"')
+      ) {
         const fallbackRes = await supabase
           .from('location_training_courses')
           .select('training_course_id, training_courses(id, name, expiry_months, never_expires)')
-          .eq('location_id', selectedLocation);
+          .eq('location_id', selectedLocation)
+          .order('display_order', { ascending: true, nullsFirst: false });
         locationCoursesData = fallbackRes.data;
+        if (fallbackRes.error) {
+          console.warn('Fallback loading location training courses without category failed:', fallbackRes.error);
+        }
       }
 
       let filteredCourses = (locationCoursesData || [])
@@ -613,7 +621,7 @@ export function MatrixProvider({ children }: { children: React.ReactNode }) {
     e.preventDefault();
   };
 
-  const handleCourseDropEnd = (e: React.DragEvent, targetCourseId: string) => {
+  const handleCourseDropEnd = async (e: React.DragEvent, targetCourseId: string) => {
     e.preventDefault();
     if (!draggedCourse || draggedCourse === targetCourseId) return;
     const draggedIndex = courses.findIndex(c => c.id === draggedCourse);
@@ -625,6 +633,7 @@ export function MatrixProvider({ children }: { children: React.ReactNode }) {
     newCourses.splice(targetIndex, 0, draggedItem);
     setCourses(newCourses);
     setDraggedCourse(null);
+    await persistCourseOrdering(newCourses);
   };
 
   const handleStaffDropStart = (e: React.DragEvent, staffId: string) => {
@@ -657,6 +666,18 @@ export function MatrixProvider({ children }: { children: React.ReactNode }) {
       await Promise.all(dividerUpdates.map(d =>
         supabase.from('location_matrix_dividers').update({ display_order: d.display_order }).eq('id', d.divider_id)
       ));
+    }
+  };
+
+  const persistCourseOrdering = async (orderedCourses: Course[]) => {
+    if (!selectedLocation) return;
+    const courseRows = orderedCourses.map((course, idx) => ({
+      location_id: selectedLocation,
+      training_course_id: course.id,
+      display_order: idx + 1,
+    }));
+    if (courseRows.length > 0) {
+      await supabase.from('location_training_courses').upsert(courseRows, { onConflict: 'location_id,training_course_id' });
     }
   };
 
@@ -727,14 +748,30 @@ export function MatrixProvider({ children }: { children: React.ReactNode }) {
     }
   };
 
-  const addNewDivider = () => {
-    if (!newDividerName.trim()) return;
-    const dividerId = `divider-${Date.now()}`;
-    const newDivider: Staff = { id: dividerId, name: newDividerName.trim(), location_id: selectedLocation };
-    setStaff([...staff, newDivider]);
-    setStaffDividers(new Set([...staffDividers, dividerId]));
-    setNewDividerName('');
-    setShowAddDivider(false);
+  const addNewDivider = async () => {
+    if (!newDividerName.trim() || !selectedLocation) return;
+
+    try {
+      const { data: insertedDivider, error: insertError } = await supabase
+        .from('location_matrix_dividers')
+        .insert([{ location_id: selectedLocation, name: newDividerName.trim(), display_order: staff.length + 1 }])
+        .select('id')
+        .single();
+
+      if (insertError || !insertedDivider?.id) {
+        console.error('Failed to create matrix group divider:', insertError);
+        return;
+      }
+
+      const dividerId = `divider-${insertedDivider.id}`;
+      const newDivider: Staff = { id: dividerId, name: newDividerName.trim(), location_id: selectedLocation };
+      setStaff([...staff, newDivider]);
+      setStaffDividers(new Set([...staffDividers, dividerId]));
+      setNewDividerName('');
+      setShowAddDivider(false);
+    } catch (error) {
+      console.error('Error creating new matrix group:', error);
+    }
   };
 
   const exportMatrixCsv = () => {

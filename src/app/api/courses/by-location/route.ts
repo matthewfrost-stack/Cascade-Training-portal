@@ -29,7 +29,7 @@ export async function GET(request: NextRequest) {
     }
 
     // Get courses for this location with proper ordering
-    const { data: locationCourses, error } = await supabase
+    let { data: locationCourses, error } = await supabase
       .from('location_courses')
       .select(`
         id,
@@ -44,6 +44,28 @@ export async function GET(request: NextRequest) {
       `)
       .eq('location_id', locationId)
       .order('display_order', { ascending: true });
+
+    if (
+      error &&
+      (error.code === '42703' || String(error.message || '').includes('category'))
+    ) {
+      const fallback = await supabase
+        .from('location_courses')
+        .select(`
+          id,
+          display_order,
+          courses (
+            id,
+            name,
+            expiry_months,
+            display_order as course_display_order
+          )
+        `)
+        .eq('location_id', locationId)
+        .order('display_order', { ascending: true });
+      locationCourses = fallback.data as any;
+      error = fallback.error;
+    }
 
     if (error) {
       console.error('Error fetching location courses:', error);

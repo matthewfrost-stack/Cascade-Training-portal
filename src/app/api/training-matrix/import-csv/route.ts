@@ -426,11 +426,31 @@ export async function POST(request: NextRequest) {
         };
         if (category) upsertPayload.category = category;
 
-        const { data: inserted, error: insertErr } = await authz.service
+        let inserted: any = null;
+        let insertErr: any = null;
+
+        const initialInsert = await authz.service
           .from('training_courses')
           .insert([upsertPayload])
           .select('id, expiry_months, never_expires, category')
           .single();
+
+        inserted = initialInsert.data;
+        insertErr = initialInsert.error;
+
+        if (
+          insertErr &&
+          (insertErr.code === '42703' || String(insertErr.message || '').includes('category'))
+        ) {
+          const { category: _ignoredCategory, ...payloadWithoutCategory } = upsertPayload;
+          const retryInsert = await authz.service
+            .from('training_courses')
+            .insert([payloadWithoutCategory])
+            .select('id, expiry_months, never_expires')
+            .single();
+          inserted = retryInsert.data;
+          insertErr = retryInsert.error;
+        }
 
         if (insertErr) {
           if (errorMessages.size < 10) errorMessages.add(insertErr.message);
@@ -469,10 +489,24 @@ export async function POST(request: NextRequest) {
       }
 
       if (Object.keys(courseUpdates).length > 0) {
-        const { error: updateCourseErr } = await authz.service
+        let { error: updateCourseErr } = await authz.service
           .from('training_courses')
           .update(courseUpdates)
           .eq('id', hit.id);
+
+        if (
+          updateCourseErr &&
+          (updateCourseErr.code === '42703' || String(updateCourseErr.message || '').includes('category'))
+        ) {
+          const { category: _ignored, ...updatesWithoutCategory } = courseUpdates;
+          if (Object.keys(updatesWithoutCategory).length > 0) {
+            const retryUpdate = await authz.service
+              .from('training_courses')
+              .update(updatesWithoutCategory)
+              .eq('id', hit.id);
+            updateCourseErr = retryUpdate.error;
+          }
+        }
 
         if (!updateCourseErr) {
           const existing = globalCourseMap.get(normalizedHeader);
