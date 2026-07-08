@@ -10,10 +10,12 @@ import BookingModal from '@/app/components/BookingModal';
 import BookingChecklistModal from '@/app/components/BookingChecklistModal';
 import { supabase } from '@/lib/supabase';
 import { hasPermission } from '@/lib/permissions';
+import { useCurrentUserProfile } from '@/lib/useCurrentUserProfile';
 
 export default function CalendarPage() {
   const router = useRouter();
   const pathname = usePathname();
+  const { profile, isAuthenticated } = useCurrentUserProfile();
   const [currentMonth, setCurrentMonth] = useState(new Date());
   const [events, setEvents] = useState<any[]>([]);
   const [showSchedule, setShowSchedule] = useState(false);
@@ -24,8 +26,6 @@ export default function CalendarPage() {
   const [loading, setLoading] = useState(true);
   const [isDark, setIsDark] = useState(true);
   const [filterCourse, setFilterCourse] = useState<string>('all');
-  const [user, setUser] = useState<any>(null);
-  const [userRole, setUserRole] = useState<string | null>(null);
 
   const isTestCourseName = (courseName?: string | null) =>
     !!courseName && /^e2e[-_ ]/i.test(courseName.trim());
@@ -125,30 +125,6 @@ export default function CalendarPage() {
   // We don't toggle dark mode here; we only react to the global control.
 
   useEffect(() => {
-    // Use onAuthStateChange to wait for session restore from storage
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
-      const currentUser = session?.user ?? null;
-      setUser(currentUser);
-      if (currentUser) {
-        try {
-          const { data: profile } = await supabase
-            .from('profiles')
-            .select('role_tier')
-            .eq('id', currentUser.id)
-            .single();
-          if (profile) setUserRole(profile.role_tier);
-        } catch (error) {
-          console.error('Error fetching user profile:', error);
-        }
-      }
-    });
-
-    return () => {
-      subscription?.unsubscribe();
-    };
-  }, []);
-
-  useEffect(() => {
     fetchEvents();
   }, [currentMonth]);
 
@@ -194,8 +170,8 @@ export default function CalendarPage() {
 
   const uniqueCourses = Array.from(new Set(events.map(e => e.courses?.name).filter(Boolean)));
   const filteredEvents = filterCourse === 'all' ? events : events.filter(e => e.courses?.name === filterCourse);
-  const canViewAdmin = hasPermission(userRole, 'ADMIN_DASHBOARD', 'canView');
-  const canSchedule = hasPermission(userRole, 'COURSE_SCHEDULING', 'canCreate');
+  const canViewAdmin = hasPermission(profile?.role_tier || null, 'ADMIN_DASHBOARD', 'canView');
+  const canSchedule = hasPermission(profile?.role_tier || null, 'COURSE_SCHEDULING', 'canCreate');
 
   return (
     <main style={{ backgroundColor: isDark ? '#0f172a' : '#f1f5f9' }} className="p-4 md:p-8 min-h-screen transition-colors duration-300">
@@ -205,9 +181,9 @@ export default function CalendarPage() {
           <div style={{ borderColor: isDark ? '#334155' : '#e2e8f0' }} className="p-4 md:p-8 border-b">
             <div className="grid grid-cols-3 items-center gap-2 md:gap-4 mb-4 md:mb-8">
               <div className="flex items-center gap-1 md:gap-2">
-                <div className={`w-2 h-2 rounded-full ${user ? 'bg-emerald-500' : 'bg-red-500'}`}></div>
+                <div className={`w-2 h-2 rounded-full ${isAuthenticated && profile ? 'bg-emerald-500' : 'bg-red-500'}`}></div>
                 <div style={{ color: isDark ? '#94a3b8' : '#64748b' }} className="text-[7px] md:text-[10px] font-black uppercase truncate">
-                  {user ? `${user.email}` : 'Offline'}
+                  {isAuthenticated && profile ? `${profile.email}` : 'Offline'}
                 </div>
               </div>
 
@@ -372,7 +348,7 @@ export default function CalendarPage() {
           onClose={() => setSelectedEvent(null)} 
           onRefresh={fetchEvents}
           onOpenChecklist={() => {
-            if (userRole === 'admin' || userRole === 'scheduler') {
+            if (profile?.role_tier === 'admin' || profile?.role_tier === 'scheduler') {
               setShowChecklist(true);
               setSelectedChecklistEventId(selectedEvent.id);
               return;
@@ -388,9 +364,9 @@ export default function CalendarPage() {
             setShowChecklist(false);
             setSelectedChecklistEventId(null);
           }}
-          userRole={userRole || ''}
-          userName={user?.email || ''}
-          userId={user?.id || ''}
+          userRole={profile?.role_tier || ''}
+          userName={profile?.email || ''}
+          userId={profile?.id || ''}
         />
       )}
     </main>
