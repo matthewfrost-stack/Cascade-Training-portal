@@ -125,7 +125,7 @@ function parseDdMmYyyy(input: string): string | null {
   const raw = cleanCell(input);
   if (!raw) return null;
 
-  const m = raw.match(/^(\d{1,2})\/(\d{1,2})\/(\d{2}|\d{4})$/);
+  const m = raw.match(/^(\d{1,2})[\/\.\-](\d{1,2})[\/\.\-](\d{2}|\d{4})$/);
   if (!m) return null;
 
   const day = Number(m[1]);
@@ -137,7 +137,6 @@ function parseDdMmYyyy(input: string): string | null {
   const dt = new Date(Date.UTC(year, month - 1, day));
   if (dt.getUTCFullYear() !== year || dt.getUTCMonth() !== month - 1 || dt.getUTCDate() !== day) return null;
 
-  // Return yyyy-mm-dd
   const yyyy = String(year);
   const mm = String(month).padStart(2, '0');
   const dd = String(day).padStart(2, '0');
@@ -189,9 +188,9 @@ function interpretCell(value: string): InterpretedCell {
   if (!v) return { kind: 'empty' };
 
   const lower = v.toLowerCase();
-  if (lower === 'allocated') return { kind: 'status', status: 'allocated' };
-  if (lower === 'not yet due') return { kind: 'status', status: 'not_yet_due' };
-  if (lower === 'n/a' || lower === 'na') return { kind: 'status', status: 'na' };
+  if (lower === 'allocated' || lower === 'booked' || lower === 'awaiting' || lower === 'appointment') return { kind: 'status', status: 'allocated' };
+  if (lower === 'not yet due' || lower === 'not yet due.') return { kind: 'status', status: 'not_yet_due' };
+  if (lower === 'n/a' || lower === 'na' || lower === 'not applicable') return { kind: 'status', status: 'na' };
 
   const dateIso = parseDdMmYyyy(v);
   if (dateIso) return { kind: 'date', dateIso };
@@ -225,7 +224,7 @@ export async function POST(request: NextRequest) {
     const locationName = locationNameErr ? '' : String(locationRow?.name || '');
 
     const csvText = await file.text();
-    const rows = parseLogicalRows(csvText, 50000);
+    const rows = parseLogicalRows(csvText, 100000);
 
     const headerIdx = rows.findIndex((r) => {
       const first = cleanCell(r[0] || '').toLowerCase();
