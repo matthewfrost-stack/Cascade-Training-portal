@@ -83,6 +83,7 @@ export default function MatrixSyncModal({ onClose }: { onClose: () => void }) {
       const form = new FormData();
       form.set('locationId', locationId);
       form.set('file', file);
+      form.set('replaceMissing', 'true');
       form.set('allowNewStaff', String(allowNewStaff));
 
       const res = await fetch('/api/training-matrix/import-csv', { method: 'POST', body: form });

@@ -33,3 +33,6 @@ ON CONFLICT (item_name) DO NOTHING;
 
 -- Disable RLS for this admin table (same approach as booking_checklists/checklist_completions)
 ALTER TABLE public.booking_checklist_template_items DISABLE ROW LEVEL SECURITY;
+
+-- Refresh PostgREST schema cache so the new table is discoverable by Supabase clients.
+NOTIFY pgrst, 'reload schema';
