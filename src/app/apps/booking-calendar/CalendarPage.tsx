@@ -125,30 +125,32 @@ export default function CalendarPage() {
   // We don't toggle dark mode here; we only react to the global control.
 
   useEffect(() => {
-    fetchUser();
-    fetchEvents();
-  }, [currentMonth]);
-
-  async function fetchUser() {
-    try {
-      const {
-        data: { session },
-      } = await supabase.auth.getSession();
+    // Use onAuthStateChange to wait for session restore from storage
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
       const currentUser = session?.user ?? null;
       setUser(currentUser);
       if (currentUser) {
-        const { data: profile } = await supabase
-          .from('profiles')
-          .select('role_tier')
-          .eq('id', currentUser.id)
-          .single();
-        if (profile) setUserRole(profile.role_tier);
+        try {
+          const { data: profile } = await supabase
+            .from('profiles')
+            .select('role_tier')
+            .eq('id', currentUser.id)
+            .single();
+          if (profile) setUserRole(profile.role_tier);
+        } catch (error) {
+          console.error('Error fetching user profile:', error);
+        }
       }
-    } catch (error) {
-      console.error('Error fetching user:', error);
-      setUser(null);
-    }
-  }
+    });
+
+    return () => {
+      subscription?.unsubscribe();
+    };
+  }, []);
+
+  useEffect(() => {
+    fetchEvents();
+  }, [currentMonth]);
 
   async function fetchEvents() {
     setLoading(true);
