@@ -278,6 +278,7 @@ export function MatrixProvider({ children }: { children: React.ReactNode }) {
           if (prev && locationIds.has(prev)) return prev;
           return uniqueLocations[0].id;
         });
+        setLoading(false);
       } else {
         setLocations([]);
         setSelectedLocation('');
