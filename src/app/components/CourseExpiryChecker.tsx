@@ -127,7 +127,6 @@ export default function CourseExpiryChecker({ isDark }: { isDark: boolean }) {
       } = await supabase.auth.getUser();
 
       if (!authUser) {
-        router.push('/login');
         return;
       }
 
@@ -139,17 +138,8 @@ export default function CourseExpiryChecker({ isDark }: { isDark: boolean }) {
 
   async function fetchLocations() {
     try {
-      const { data: sessionData } = await supabase.auth.getSession();
-      const token = sessionData.session?.access_token;
-      if (!token) {
-        console.warn('No session token available for scoped location fetch');
-        return;
-      }
-
       const response = await fetch('/api/locations/user-locations', {
-        headers: {
-          Authorization: `Bearer ${token}`,
-        },
+        credentials: 'include',
       });
 
       if (!response.ok) {
@@ -279,6 +269,7 @@ export default function CourseExpiryChecker({ isDark }: { isDark: boolean }) {
 
       const response = await fetch(`/api/courses/expiring?${params.toString()}`, {
         headers: await getAuthHeaders(),
+        credentials: 'include',
       });
 
       if (!response.ok) {
@@ -314,6 +305,7 @@ export default function CourseExpiryChecker({ isDark }: { isDark: boolean }) {
       const url = `/api/courses/allocated-training${params.toString() ? '?' + params.toString() : ''}`;
       const response = await fetch(url, {
         headers: await getAuthHeaders(),
+        credentials: 'include',
       });
 
       if (!response.ok) {
@@ -349,6 +341,7 @@ export default function CourseExpiryChecker({ isDark }: { isDark: boolean }) {
       const url = `/api/courses/expired${params.toString() ? '?' + params.toString() : ''}`;
       const response = await fetch(url, {
         headers: await getAuthHeaders(),
+        credentials: 'include',
       });
 
       if (!response.ok) {

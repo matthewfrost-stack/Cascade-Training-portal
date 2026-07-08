@@ -20,6 +20,7 @@ export async function requireRole(allowedRoles: RoleTier[]) {
   let user: { id: string } | null = null;
   let userError: unknown = null;
 
+  const cookieStore = await cookies();
   if (bearerToken) {
     const tokenClient = createClient(
       process.env.NEXT_PUBLIC_SUPABASE_URL || '',
@@ -35,8 +36,9 @@ export async function requireRole(allowedRoles: RoleTier[]) {
     const { data, error } = await tokenClient.auth.getUser();
     user = data.user;
     userError = error;
-  } else {
-    const cookieStore = await cookies();
+  }
+
+  if (!user) {
     const authClient = createServerClient(
       process.env.NEXT_PUBLIC_SUPABASE_URL || '',
       process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || '',
@@ -53,7 +55,7 @@ export async function requireRole(allowedRoles: RoleTier[]) {
     );
     const { data, error } = await authClient.auth.getUser();
     user = data.user;
-    userError = error;
+    userError = user ? null : error;
   }
 
   if (userError || !user) {

@@ -250,15 +250,8 @@ export function MatrixProvider({ children }: { children: React.ReactNode }) {
 
   const fetchLocations = async (): Promise<void> => {
     try {
-      const { data: sessionData } = await supabase.auth.getSession();
-      const token = sessionData.session?.access_token;
-      if (!token) {
-        setLoading(false);
-        return;
-      }
-
       const response = await fetch('/api/locations/user-locations', {
-        headers: { Authorization: `Bearer ${token}` },
+        credentials: 'include',
       });
 
       if (!response.ok) {
