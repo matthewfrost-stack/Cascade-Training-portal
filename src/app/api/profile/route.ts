@@ -24,6 +24,10 @@ async function getAuthenticatedUser(request?: Request) {
     request?.headers.get("Authorization");
   const bearerToken = authHeader?.replace(/^Bearer\s+/i, "").trim();
 
+  let user: Awaited<ReturnType<ReturnType<typeof createClient>["auth"]["getUser"]>>["data"]["user"] = null;
+  let error: unknown = null;
+
+  // Try the bearer token first.
   if (bearerToken) {
     const tokenClient = createClient(
       process.env.NEXT_PUBLIC_SUPABASE_URL || "",
@@ -37,26 +41,38 @@ async function getAuthenticatedUser(request?: Request) {
       },
     );
 
-    return tokenClient.auth.getUser();
+    const res = await tokenClient.auth.getUser();
+    user = res.data.user;
+    error = res.error;
   }
 
-  const cookieStore = await cookies();
-  const authClient = createServerClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL || "",
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || "",
-    {
-      cookies: {
-        getAll() {
-          return cookieStore.getAll();
-        },
-        setAll() {
-          // No-op in route handlers.
+  // Fall back to the cookie session if the bearer token was missing or stale.
+  // Without this, a client holding an expired access token gets a 401 here even
+  // though its auth cookies are still valid — which left the user with a null
+  // role (permissions off) while the cookie-backed data routes kept working.
+  if (!user) {
+    const cookieStore = await cookies();
+    const authClient = createServerClient(
+      process.env.NEXT_PUBLIC_SUPABASE_URL || "",
+      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || "",
+      {
+        cookies: {
+          getAll() {
+            return cookieStore.getAll();
+          },
+          setAll() {
+            // No-op in route handlers.
+          },
         },
       },
-    },
-  );
+    );
 
-  return authClient.auth.getUser();
+    const res = await authClient.auth.getUser();
+    user = res.data.user;
+    error = user ? null : res.error || error;
+  }
+
+  return { data: { user }, error };
 }
 
 export async function GET(request: Request) {

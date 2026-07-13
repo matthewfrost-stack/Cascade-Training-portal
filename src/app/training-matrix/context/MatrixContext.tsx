@@ -314,6 +314,15 @@ export function MatrixProvider({ children }: { children: React.ReactNode }) {
       }
 
       const payload = await response.json();
+
+      // Authoritative role from the server (requireRole). Use it so matrix
+      // permissions don't depend on the profile hook resolving role_tier —
+      // that hook can fall back to null when /api/profile is slow or the
+      // client session isn't attached, which showed the user as having no role.
+      if (payload.userRole) {
+        setUserRole((prev) => (prev === payload.userRole ? prev : payload.userRole));
+      }
+
       const scopedLocations = Array.isArray(payload.locations) ? payload.locations : [];
 
       if (scopedLocations.length > 0) {
