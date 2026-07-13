@@ -1,6 +1,7 @@
 'use client';
 import React, { createContext, useContext, useState, useEffect, useRef } from 'react';
 import { supabase } from '@/lib/supabase';
+import { useCurrentUserProfile } from '@/lib/useCurrentUserProfile';
 import { parseFirstThreeRowsFromCsvString, CsvHeaderRows } from './csvHeaderUtils';
 import { debugLog } from '@/lib/debug';
 import { Staff, Course, MatrixCell, RemovedCourseEntry } from '../types';
@@ -8,6 +9,31 @@ import { Staff, Course, MatrixCell, RemovedCourseEntry } from '../types';
 // Helper to get CSV URL for a location name (public folder)
 function getCsvUrlForLocation(locationName: string): string {
   return `/csv-import/${locationName} Training Matrix - Staff Matrix.csv`;
+}
+
+// Fetch training records via the authenticated server route. The browser anon
+// client cannot read staff_training_matrix under RLS, so reading it directly
+// silently returns zero rows and leaves every matrix cell blank. The server
+// route uses the service client and enforces role-based location scoping.
+async function fetchTrainingRecordsForLocation(locationId: string, signal?: AbortSignal): Promise<any[]> {
+  const { data: sessionData } = await supabase.auth.getSession();
+  const token = sessionData.session?.access_token;
+  const headers: Record<string, string> = {};
+  if (token) headers.Authorization = `Bearer ${token}`;
+
+  const response = await fetch(`/api/training-matrix/records?locationId=${encodeURIComponent(locationId)}`, {
+    credentials: 'include',
+    headers,
+    signal,
+  });
+
+  if (!response.ok) {
+    console.warn('Failed to load training records:', response.status);
+    return [];
+  }
+
+  const payload = await response.json();
+  return Array.isArray(payload.records) ? payload.records : [];
 }
 
 function normalizeCourseName(name: string): string {
@@ -21,6 +47,12 @@ interface MatrixContextType {
 const MatrixContext = createContext<MatrixContextType | undefined>(undefined);
 
 export function MatrixProvider({ children }: { children: React.ReactNode }) {
+  // Auth/role come from the shared hook (cookie-based /api/profile with session
+  // fallback, retries and onAuthStateChange) instead of a one-shot
+  // supabase.auth.getUser(). The old approach returned null when the browser
+  // client session wasn't restored, so user was never set, fetchLocations never
+  // ran, and the site selector stayed empty.
+  const { profile, isAuthenticated, loading: authLoading } = useCurrentUserProfile();
   const [user, setUser] = useState<any>(null);
   const [userRole, setUserRole] = useState<string>('');
   const [selectedLocation, setSelectedLocation] = useState<string>('');
@@ -95,9 +127,22 @@ export function MatrixProvider({ children }: { children: React.ReactNode }) {
   }
 
   useEffect(() => {
-    checkAuth();
     checkTheme();
   }, []);
+
+  // Sync auth/role from the shared profile hook. Setting user/userRole here is
+  // what triggers fetchLocations below.
+  useEffect(() => {
+    if (profile?.id) {
+      setUser((prev: any) => (prev?.id === profile.id ? prev : { id: profile.id }));
+      const nextRole = profile.role_tier || 'staff';
+      setUserRole((prev) => (prev === nextRole ? prev : nextRole));
+    } else if (!authLoading && !isAuthenticated) {
+      setUser(null);
+      setUserRole('');
+      setLoading(false);
+    }
+  }, [profile, authLoading, isAuthenticated]);
 
   useEffect(() => {
     const handleThemeChange = (event: any) => {
@@ -318,31 +363,15 @@ export function MatrixProvider({ children }: { children: React.ReactNode }) {
 
       const activeStaffLocationsData = staffLocationsData?.filter((sl: any) => !sl.profiles?.is_deleted) || [];
 
-      let allTrainingStaffIds: any[] = [];
-      let pageNum = 0;
-      const staffPageSize = 1000;
-      let hasMoreStaff = true;
-
-      while (hasMoreStaff) {
-        const { data: trainingStaffIds, error: trainingStaffIdError } = await supabase
-          .from('staff_training_matrix')
-          .select('staff_id')
-          .eq('completed_at_location_id', selectedLocation)
-          .range(pageNum * staffPageSize, (pageNum + 1) * staffPageSize - 1);
-
-        if (trainingStaffIdError) break;
-
-        if (!trainingStaffIds || trainingStaffIds.length === 0) {
-          hasMoreStaff = false;
-        } else {
-          allTrainingStaffIds = allTrainingStaffIds.concat(trainingStaffIds);
-          pageNum++;
-          if (trainingStaffIds.length < staffPageSize) hasMoreStaff = false;
-        }
-      }
+      // Training records come from the authenticated server route (service
+      // client) because the browser anon client is blocked by RLS on
+      // staff_training_matrix. Fetched once and reused for both the staff list
+      // and the matrix cells below.
+      const allTrainingData: any[] = await fetchTrainingRecordsForLocation(selectedLocation, signal);
+      if (signal?.aborted) return;
 
       const uniqueStaffIds = new Set<string>();
-      allTrainingStaffIds?.forEach((t: any) => { if (t.staff_id) uniqueStaffIds.add(t.staff_id); });
+      allTrainingData?.forEach((t: any) => { if (t.staff_id) uniqueStaffIds.add(t.staff_id); });
 
       const staffLocationsIds = new Set(activeStaffLocationsData.map((sl: any) => sl.staff_id));
       const filteredTrainingStaffIds = Array.from(uniqueStaffIds).filter(id => staffLocationsIds.has(id));
@@ -454,28 +483,7 @@ export function MatrixProvider({ children }: { children: React.ReactNode }) {
         });
       }
 
-      let allTrainingData: any[] = [];
-      let pageNumber = 0;
-      const pageSize = 1000;
-      let hasMore = true;
-
-      while (hasMore) {
-        const { data: pageData, error: pageError } = await supabase
-          .from('staff_training_matrix')
-          .select('id, staff_id, course_id, completion_date, expiry_date, status, completed_at_location_id')
-          .eq('completed_at_location_id', selectedLocation)
-          .range(pageNumber * pageSize, (pageNumber + 1) * pageSize - 1);
-
-        if (pageError) break;
-        if (!pageData || pageData.length === 0) {
-          hasMore = false;
-        } else {
-          allTrainingData = allTrainingData.concat(pageData);
-          pageNumber++;
-          if (pageData.length < pageSize) hasMore = false;
-        }
-      }
-
+      // allTrainingData was already loaded from the server route above.
       const staffFromTrainingSet = new Set<string>();
       allTrainingData?.forEach((t: any) => { if (t.completed_at_location_id === selectedLocation) staffFromTrainingSet.add(t.staff_id); });
 

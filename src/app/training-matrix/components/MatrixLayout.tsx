@@ -448,7 +448,7 @@ export function MatrixLayout() {
                           if (collapsedCategories.has(cat)) return null;
                           const catCourses = coursesByCategory[cat] || [];
                           return catCourses.map((course: any) => (
-                            <th key={`name-${course.id}`} draggable={!editingHeader} onDragStart={(e) => handleCourseDropStart(e, course.id)} onDragOver={handleCourseDragOver} onDrop={(e) => handleCourseDropEnd(e, course.id)} onClick={() => { setEditingHeader({ courseId: course.id, type: 'name' }); setEditHeaderValue(course.name); }} className={`px-3 py-1.5 text-center text-xs font-bold border-r border-b cursor-grab active:cursor-grabbing min-w-[160px] transition-all group/hdr ${thBg} hover:opacity-80`} title="Drag to reorder, click to edit">
+                            <th key={`name-${course.id}`} draggable={!editingHeader} onDragStart={(e) => handleCourseDropStart(e, course.id)} onDragOver={handleCourseDragOver} onDrop={(e) => handleCourseDropEnd(e, course.id)} onClick={() => { setEditingHeader({ courseId: course.id, type: 'name' }); setEditHeaderValue(course.name); }} className={`relative px-3 py-1.5 text-center text-xs font-bold border-r border-b cursor-grab active:cursor-grabbing min-w-[160px] transition-all group/hdr ${thBg} hover:opacity-80`} title="Drag to reorder, click to edit">
                               {editingHeader?.courseId === course.id && editingHeader?.type === 'name' ? (
                                 <input type="text" value={editHeaderValue} onChange={(e) => setEditHeaderValue(e.target.value)} onBlur={() => { if (editHeaderValue.trim()) { const u = courses.map((c: any) => c.id === course.id ? { ...c, name: editHeaderValue.trim() } : c); setCourses(u); saveCourseChanges(course.id, { name: editHeaderValue.trim() }, true); } setEditingHeader(null); }} onKeyDown={(e) => { if (e.key === 'Enter') { if (editHeaderValue.trim()) { const u = courses.map((c: any) => c.id === course.id ? { ...c, name: editHeaderValue.trim() } : c); setCourses(u); saveCourseChanges(course.id, { name: editHeaderValue.trim() }, true); } setEditingHeader(null); } if (e.key === 'Escape') setEditingHeader(null); }} className={`w-full text-xs px-1.5 py-0.5 rounded border ${isDark ? 'bg-gray-700 border-gray-600 text-white' : 'bg-white border-gray-400 text-gray-900'}`} autoFocus />
                               ) : (
@@ -456,9 +456,26 @@ export function MatrixLayout() {
                                   <span className="text-slate-400 font-extrabold text-[10px]">⋮⋮</span>
                                   <span className="block max-w-[100px] truncate" title={course.name}>{course.name}</span>
                                   <div className="flex items-center gap-0.5 opacity-0 group-hover/hdr:opacity-100 transition-opacity">
+                                    {canEditMatrix && <button onClick={(e) => { e.stopPropagation(); setEditingHeader({ courseId: course.id, type: 'category' }); setEditHeaderValue(course.category || ''); }} className="text-blue-500 hover:text-blue-400 text-xs font-bold" title="Assign to group">📁</button>}
                                     <button onClick={(e) => { e.stopPropagation(); selectAllInCourse(course.id); }} className="text-green-500 hover:text-green-400 text-xs font-bold" title="Select all">☑</button>
                                     <button onClick={(e) => { e.stopPropagation(); deselectAllInCourse(course.id); }} className="text-gray-500 text-xs font-bold" title="Deselect all">☐</button>
                                     <button onClick={(e) => { e.stopPropagation(); deleteCourse(course.id); }} className="text-red-500 hover:text-red-400 text-xs font-bold pl-0.5" title="Delete">✕</button>
+                                  </div>
+                                </div>
+                              )}
+                              {editingHeader?.courseId === course.id && editingHeader?.type === 'category' && (
+                                <div className={`absolute z-50 top-full left-1/2 -translate-x-1/2 mt-1 p-3 rounded-xl shadow-xl border flex flex-col gap-2 min-w-[200px] text-left ${isDark ? 'bg-gray-800 border-gray-700' : 'bg-white border-slate-300'}`} onClick={e => e.stopPropagation()}>
+                                  <span className="text-[10px] font-black uppercase tracking-widest text-slate-400">Course Group</span>
+                                  <input list="matrix-course-groups" type="text" value={editHeaderValue} onChange={(e) => setEditHeaderValue(e.target.value)} placeholder="Pick or type a new group" onKeyDown={(e) => { if (e.key === 'Enter') { const val = editHeaderValue.trim(); const u = courses.map((c: any) => c.id === course.id ? { ...c, category: val || undefined } : c); setCourses(u); if (selectedLocation) saveCategoryOverride(selectedLocation, course.id, val); saveCourseChanges(course.id, { category: val || null }, true); setEditingHeader(null); } if (e.key === 'Escape') setEditingHeader(null); }} className={`w-full text-xs px-2 py-1 rounded border ${isDark ? 'bg-gray-700 border-gray-600 text-white' : 'bg-white border-gray-400 text-gray-900'}`} autoFocus />
+                                  <datalist id="matrix-course-groups">
+                                    {categories.filter(c => c !== 'Uncategorized').map(c => <option key={c} value={c} />)}
+                                  </datalist>
+                                  <div className="flex gap-1 justify-between items-center">
+                                    <button onClick={() => { const u = courses.map((c: any) => c.id === course.id ? { ...c, category: undefined } : c); setCourses(u); if (selectedLocation) saveCategoryOverride(selectedLocation, course.id, ''); saveCourseChanges(course.id, { category: null }, true); setEditingHeader(null); }} className="text-[10px] text-slate-400 hover:text-red-400 font-bold" title="Remove from group">Clear</button>
+                                    <div className="flex gap-1">
+                                      <button onClick={() => { const val = editHeaderValue.trim(); const u = courses.map((c: any) => c.id === course.id ? { ...c, category: val || undefined } : c); setCourses(u); if (selectedLocation) saveCategoryOverride(selectedLocation, course.id, val); saveCourseChanges(course.id, { category: val || null }, true); setEditingHeader(null); }} className="px-2 py-0.5 bg-blue-600 hover:bg-blue-700 text-white rounded text-[10px] font-bold">Save</button>
+                                      <button onClick={() => setEditingHeader(null)} className="px-2 py-0.5 bg-gray-500 hover:bg-gray-600 text-white rounded text-[10px]">×</button>
+                                    </div>
                                   </div>
                                 </div>
                               )}
