@@ -5,6 +5,7 @@ import { format } from 'date-fns';
 import { supabase } from '@/lib/supabase';
 import { hasPermission } from '@/lib/permissions';
 import { getEmailTestHeaders } from '@/lib/emailTestMode';
+import { useCurrentUserProfile } from '@/lib/useCurrentUserProfile';
 import UniformButton from './UniformButton';
 
 interface BookingModalProps {
@@ -22,7 +23,11 @@ export default function BookingModal({ event, onClose, onRefresh, onOpenChecklis
   const [searchQuery, setSearchQuery] = useState('');
   const [loading, setLoading] = useState(false);
   const [isDark, setIsDark] = useState(true);
-  const [userRole, setUserRole] = useState<string | null>(null);
+  // Role via the shared hook (/api/profile with cookie fallback) instead of a
+  // client supabase.auth.getUser(), which returned null when the browser
+  // session wasn't attached and disabled booking/roster permissions.
+  const { profile } = useCurrentUserProfile();
+  const userRole = profile?.role_tier ?? null;
   const [userLocation, setUserLocation] = useState<string | null>(null);
   const [expandedLocations, setExpandedLocations] = useState<Set<string>>(new Set());
 
@@ -67,8 +72,19 @@ export default function BookingModal({ event, onClose, onRefresh, onOpenChecklis
 
   useEffect(() => {
     checkTheme();
-    fetchUserRole();
   }, [event.id]);
+
+  // Home location comes from the user's profile; fetch it by the hook-resolved
+  // id (anon read of profiles works without a client session).
+  useEffect(() => {
+    if (!profile?.id) return;
+    let active = true;
+    (async () => {
+      const { data } = await supabase.from('profiles').select('home_house').eq('id', profile.id).single();
+      if (active) setUserLocation(data?.home_house ?? null);
+    })();
+    return () => { active = false; };
+  }, [profile?.id]);
 
   useEffect(() => {
     if (userRole && userLocation !== undefined) {
@@ -90,15 +106,6 @@ export default function BookingModal({ event, onClose, onRefresh, onOpenChecklis
       const theme = localStorage.getItem('theme');
       const isDarkMode = theme === 'dark' || (!theme && window.matchMedia('(prefers-color-scheme: dark)').matches);
       setIsDark(isDarkMode);
-    }
-  }
-
-  async function fetchUserRole() {
-    const { data: { user } } = await supabase.auth.getUser();
-    if (user) {
-      const { data: profile } = await supabase.from('profiles').select('role_tier, home_house').eq('id', user.id).single();
-      setUserRole(profile?.role_tier || null);
-      setUserLocation(profile?.home_house || null);
     }
   }
 

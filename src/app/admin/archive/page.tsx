@@ -1,8 +1,9 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { supabase } from '@/lib/supabase';
+import { useCurrentUserProfile } from '@/lib/useCurrentUserProfile';
 
 interface ArchiveItem {
   id: string;
@@ -24,33 +25,31 @@ export default function ArchivePage() {
   const [restoringId, setRestoringId] = useState<string | null>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);
 
+  // Role via the shared hook (/api/profile with cookie fallback) instead of a
+  // client supabase.auth.getUser(), which returned null when the browser
+  // session wasn't attached and wrongly redirected admins away.
+  const { profile, isAuthenticated, loading: authLoading } = useCurrentUserProfile();
+  const initializedRef = useRef(false);
+
   useEffect(() => {
-    const init = async () => {
-      const { data: userData } = await supabase.auth.getUser();
-      if (!userData.user) {
-        router.push('/login');
-        return;
-      }
+    if (authLoading) return;
+    if (!isAuthenticated) {
+      router.push('/login');
+      return;
+    }
+    const role = profile?.role_tier;
+    if (!role) return; // wait for role to resolve (hook retries)
+    if (role !== 'admin') {
+      router.push('/');
+      return;
+    }
+    if (initializedRef.current) return;
+    initializedRef.current = true;
 
-      const { data: profile } = await supabase
-        .from('profiles')
-        .select('role_tier')
-        .eq('id', userData.user.id)
-        .single();
-
-      if (profile?.role_tier !== 'admin') {
-        router.push('/');
-        return;
-      }
-
-      const dark = document.documentElement.classList.contains('dark');
-      setIsDark(dark);
-      await loadItems();
-      setLoading(false);
-    };
-
-    init();
-  }, [router]);
+    const dark = document.documentElement.classList.contains('dark');
+    setIsDark(dark);
+    loadItems().finally(() => setLoading(false));
+  }, [authLoading, isAuthenticated, profile, router]);
 
   async function loadItems() {
     const { data: sessionData } = await supabase.auth.getSession();

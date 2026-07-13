@@ -1,8 +1,9 @@
 'use client';
 
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import { supabase } from '@/lib/supabase';
+import { useCurrentUserProfile } from '@/lib/useCurrentUserProfile';
 import BackButton from '@/app/components/BackButton';
 import UniformButton from '@/app/components/UniformButton';
 
@@ -59,23 +60,31 @@ export default function FeedbackResultsPage() {
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
 
+  // Role via the shared hook (/api/profile with cookie fallback) instead of a
+  // client supabase.auth.getUser(), which returned null when the browser
+  // session wasn't attached and wrongly redirected admins to /dashboard.
+  const { profile, isAuthenticated, loading: authLoading } = useCurrentUserProfile();
+  const initializedRef = useRef(false);
+
   useEffect(() => {
-    checkAuth();
     const isDarkMode = document.documentElement.classList.contains('dark');
     setIsDark(isDarkMode);
     const handleTheme = (e: any) => setIsDark(e.detail.isDark);
     window.addEventListener('themeChange', handleTheme);
     return () => window.removeEventListener('themeChange', handleTheme);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  async function checkAuth() {
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user) { router.push('/login'); return; }
-    const { data: profile } = await supabase.from('profiles').select('role_tier').eq('id', user.id).single();
-    if (profile?.role_tier !== 'admin') { router.push('/dashboard'); return; }
+  useEffect(() => {
+    if (authLoading) return;
+    if (!isAuthenticated) { router.push('/login'); return; }
+    const role = profile?.role_tier;
+    if (!role) return; // wait for role to resolve (hook retries)
+    if (role !== 'admin') { router.push('/dashboard'); return; }
+    if (initializedRef.current) return;
+    initializedRef.current = true;
     fetchFeedback();
-  }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [authLoading, isAuthenticated, profile, router]);
 
   async function deleteResponse(id: string) {
     setDeletingId(id);
