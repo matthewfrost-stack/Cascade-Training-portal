@@ -5,6 +5,7 @@ import UniformButton from './UniformButton';
 import { supabase } from '@/lib/supabase';
 import { hasPermission } from '@/lib/permissions';
 import { debugLog, debugWarn } from '@/lib/debug';
+import { useCurrentUserProfile } from '@/lib/useCurrentUserProfile';
 import AdminResetPasswordModal from './AdminResetPasswordModal';
 
 export default function AddStaffModal({ onClose, onRefresh }: { onClose: () => void; onRefresh: () => void }) {
@@ -13,8 +14,12 @@ export default function AddStaffModal({ onClose, onRefresh }: { onClose: () => v
   const [loading, setLoading] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [isDark, setIsDark] = useState(true);
-  const [userRole, setUserRole] = useState<string | null>(null);
-  const [roleLoading, setRoleLoading] = useState(true);
+  // Role comes from the shared profile hook (/api/profile with cookie fallback)
+  // instead of a client-side supabase.auth.getUser(), which returned null when
+  // the browser session wasn't attached — showing the role as "Unknown" and
+  // denying access even to admins.
+  const { profile, loading: roleLoading } = useCurrentUserProfile();
+  const userRole = profile?.role_tier ?? null;
   const [showBulkUpload, setShowBulkUpload] = useState(false);
   const [bulkLoading, setBulkLoading] = useState(false);
   const [bulkMessage, setBulkMessage] = useState('');
@@ -56,10 +61,9 @@ export default function AddStaffModal({ onClose, onRefresh }: { onClose: () => v
       .trim()
       .toLowerCase();
 
-  useEffect(() => { 
+  useEffect(() => {
     checkTheme();
-    fetchUserRole();
-    fetchInitialData(); 
+    fetchInitialData();
   }, []);
 
   useEffect(() => {
@@ -76,32 +80,6 @@ export default function AddStaffModal({ onClose, onRefresh }: { onClose: () => v
       const theme = localStorage.getItem('theme');
       const isDarkMode = theme === 'dark' || (!theme && window.matchMedia('(prefers-color-scheme: dark)').matches);
       setIsDark(isDarkMode);
-    }
-  }
-
-  async function fetchUserRole() {
-    try {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (user) {
-        const { data: profile, error } = await supabase
-          .from('profiles')
-          .select('role_tier')
-          .eq('id', user.id)
-          .single();
-        
-        if (error) {
-          console.error('Error fetching role:', error);
-          setRoleLoading(false);
-          return;
-        }
-        
-        debugLog('👤 User role loaded:', profile?.role_tier);
-        setUserRole(profile?.role_tier || null);
-      }
-      setRoleLoading(false);
-    } catch (err) {
-      console.error('Error fetching user role:', err);
-      setRoleLoading(false);
     }
   }
 
