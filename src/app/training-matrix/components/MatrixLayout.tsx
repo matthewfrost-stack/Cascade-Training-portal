@@ -1,6 +1,7 @@
 'use client';
 import React, { useState, useMemo } from 'react';
 import { useMatrix } from '../context/MatrixContext';
+import { GroupManagerModal } from './GroupManagerModal';
 import { Course, Staff, MatrixCell } from '../types';
 
 // Compact rollup component for collapsed categories
@@ -128,6 +129,7 @@ export function MatrixLayout() {
   const [collapsedDividers, setCollapsedDividers] = useState<Set<string>>(new Set());
   const [collapsedCategories, setCollapsedCategories] = useState<Set<string>>(new Set());
   const [searchQuery, setSearchQuery] = useState('');
+  const [groupModal, setGroupModal] = useState<{ type: 'staff' | 'course'; editKey: string | null } | null>(null);
 
   const checkStatus = (cell: any, course: any): 'valid' | 'expiring' | 'expired' => {
     if (course.never_expires || course.expiry_months === 9999 || course.expiry_months === null) return 'valid';
@@ -360,15 +362,7 @@ export function MatrixLayout() {
                           <button onClick={() => { setShowAddCourse(false); setNewCourseName(''); }} className="px-2.5 py-1.5 bg-red-600 hover:bg-red-700 text-white rounded-xl text-xs font-bold">✕</button>
                         </div>
                       )}
-                      {!showAddDivider ? (
-                        <button onClick={() => setShowAddDivider(true)} className="px-4 py-2 bg-purple-600 hover:bg-purple-700 text-white rounded-xl text-xs font-bold shadow-sm transition-all active:scale-95">+ Group</button>
-                      ) : (
-                        <div className="flex gap-1.5 items-center">
-                          <input type="text" value={newDividerName} onChange={(e) => setNewDividerName(e.target.value)} placeholder="Group name" className={`px-3 py-1.5 rounded-xl border text-xs focus:outline-none ${isDark ? 'bg-gray-800 border-gray-700 text-white' : 'bg-white border-gray-300 text-gray-800'}`} onKeyDown={(e) => { if (e.key === 'Enter') addNewDivider(); if (e.key === 'Escape') { setShowAddDivider(false); setNewDividerName(''); } }} autoFocus />
-                          <button onClick={addNewDivider} className="px-2.5 py-1.5 bg-green-600 hover:bg-green-700 text-white rounded-xl text-xs font-bold">✓</button>
-                          <button onClick={() => { setShowAddDivider(false); setNewDividerName(''); }} className="px-2.5 py-1.5 bg-red-600 hover:bg-red-700 text-white rounded-xl text-xs font-bold">✕</button>
-                        </div>
-                      )}
+                      <button onClick={() => setGroupModal({ type: 'staff', editKey: null })} className="px-4 py-2 bg-purple-600 hover:bg-purple-700 text-white rounded-xl text-xs font-bold shadow-sm transition-all active:scale-95">+ Group</button>
                     </>
                   )}
                 </div>
@@ -428,11 +422,14 @@ export function MatrixLayout() {
                             );
                           }
                           return (
-                            <th key={`cat-${cat}`} colSpan={catCourses.length} className={`px-3 py-1.5 text-center text-xs font-black border-r cursor-pointer select-none transition-all hover:opacity-80 ${thBg}`} onClick={() => toggleCategory(cat)} title="Click to collapse">
+                            <th key={`cat-${cat}`} colSpan={catCourses.length} className={`group/cat px-3 py-1.5 text-center text-xs font-black border-r cursor-pointer select-none transition-all hover:opacity-80 ${thBg}`} onClick={() => toggleCategory(cat)} title="Click to collapse">
                               <div className="flex items-center justify-center gap-1.5">
                                 <span className="opacity-60">➖</span>
                                 <span className="text-[10px] uppercase tracking-wide opacity-60">Category:</span>
                                 <span className="truncate max-w-[140px]">{cat}</span>
+                                {canEditMatrix && cat !== 'Uncategorized' && (
+                                  <button onClick={(e) => { e.stopPropagation(); setGroupModal({ type: 'course', editKey: cat }); }} className="text-blue-400 hover:text-blue-300 text-xs pl-1" title="Edit or delete group">✎</button>
+                                )}
                               </div>
                             </th>
                           );
@@ -528,6 +525,7 @@ export function MatrixLayout() {
                                     </div>
                                     <div className="flex items-center gap-2">
                                       <span className={`px-2 py-0.5 rounded-full text-[9px] font-black ${stats.complianceRate >= 90 ? 'bg-emerald-500/20 text-emerald-400' : stats.complianceRate >= 75 ? 'bg-amber-500/20 text-amber-500' : 'bg-red-500/20 text-red-500'}`}>{stats.complianceRate}%</span>
+                                      {canEditMatrix && <button onClick={(e) => { e.stopPropagation(); setGroupModal({ type: 'staff', editKey: staffMember.id }); }} className="text-blue-400 hover:text-blue-300 text-xs p-0.5" title="Edit or delete group">✎</button>}
                                       <button onClick={(e) => { e.stopPropagation(); deleteStaffMember(staffMember.id); }} className="opacity-0 group-hover/div:opacity-100 transition-opacity text-red-500 hover:text-red-400 text-[10px] p-0.5 hover:bg-red-500/10 rounded">✕</button>
                                     </div>
                                   </div>
@@ -672,6 +670,15 @@ export function MatrixLayout() {
             </div>
           </div>
         </div>
+      )}
+
+      {/* Group Manager Modal */}
+      {groupModal && (
+        <GroupManagerModal
+          initialType={groupModal.type}
+          editKey={groupModal.editKey}
+          onClose={() => setGroupModal(null)}
+        />
       )}
     </div>
   );

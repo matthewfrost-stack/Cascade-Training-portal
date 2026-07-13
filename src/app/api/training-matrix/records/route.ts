@@ -57,7 +57,17 @@ export async function GET(request: NextRequest) {
       }
     }
 
-    return NextResponse.json({ records, count: records.length });
+    // Dividers (staff groups) are read here too: location_matrix_dividers has a
+    // strict `auth.uid() IS NOT NULL` RLS read policy with no public fallback,
+    // so the browser anon client returns zero rows and no groups render.
+    const { data: dividers, error: divError } = await supabase
+      .from('location_matrix_dividers')
+      .select('id, name, display_order')
+      .eq('location_id', locationId)
+      .order('display_order', { ascending: true });
+    if (divError) console.error('Error fetching dividers:', divError);
+
+    return NextResponse.json({ records, dividers: dividers || [], count: records.length });
   } catch (error) {
     console.error('Error in training matrix records endpoint:', error);
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });

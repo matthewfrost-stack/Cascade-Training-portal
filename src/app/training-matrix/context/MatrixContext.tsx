@@ -15,7 +15,7 @@ function getCsvUrlForLocation(locationName: string): string {
 // client cannot read staff_training_matrix under RLS, so reading it directly
 // silently returns zero rows and leaves every matrix cell blank. The server
 // route uses the service client and enforces role-based location scoping.
-async function fetchTrainingRecordsForLocation(locationId: string, signal?: AbortSignal): Promise<any[]> {
+async function fetchTrainingRecordsForLocation(locationId: string, signal?: AbortSignal): Promise<{ records: any[]; dividers: any[] }> {
   const { data: sessionData } = await supabase.auth.getSession();
   const token = sessionData.session?.access_token;
   const headers: Record<string, string> = {};
@@ -29,11 +29,14 @@ async function fetchTrainingRecordsForLocation(locationId: string, signal?: Abor
 
   if (!response.ok) {
     console.warn('Failed to load training records:', response.status);
-    return [];
+    return { records: [], dividers: [] };
   }
 
   const payload = await response.json();
-  return Array.isArray(payload.records) ? payload.records : [];
+  return {
+    records: Array.isArray(payload.records) ? payload.records : [],
+    dividers: Array.isArray(payload.dividers) ? payload.dividers : [],
+  };
 }
 
 function normalizeCourseName(name: string): string {
@@ -345,14 +348,6 @@ export function MatrixProvider({ children }: { children: React.ReactNode }) {
 
       setLoading(true);
 
-      const { data: dividersData, error: dividersError } = await supabase
-        .from('location_matrix_dividers')
-        .select('id, name, display_order')
-        .eq('location_id', selectedLocation)
-        .order('display_order', { ascending: true });
-
-      if (dividersError) console.warn('Error fetching dividers:', dividersError);
-
       const { data: staffLocationsData, error: staffLocationsError } = await supabase
         .from('staff_locations')
         .select('staff_id, display_order, profiles(id, full_name, is_deleted)')
@@ -363,11 +358,11 @@ export function MatrixProvider({ children }: { children: React.ReactNode }) {
 
       const activeStaffLocationsData = staffLocationsData?.filter((sl: any) => !sl.profiles?.is_deleted) || [];
 
-      // Training records come from the authenticated server route (service
-      // client) because the browser anon client is blocked by RLS on
-      // staff_training_matrix. Fetched once and reused for both the staff list
-      // and the matrix cells below.
-      const allTrainingData: any[] = await fetchTrainingRecordsForLocation(selectedLocation, signal);
+      // Training records AND dividers come from the authenticated server route
+      // (service client) because the browser anon client is blocked by RLS on
+      // staff_training_matrix and location_matrix_dividers. Fetched once and
+      // reused for the staff list, groups, and the matrix cells below.
+      const { records: allTrainingData, dividers: dividersData } = await fetchTrainingRecordsForLocation(selectedLocation, signal);
       if (signal?.aborted) return;
 
       const uniqueStaffIds = new Set<string>();
@@ -782,6 +777,80 @@ export function MatrixProvider({ children }: { children: React.ReactNode }) {
     }
   };
 
+  // ---- Group management (staff dividers + course categories) ----------------
+  // Staff group membership is positional: a divider row starts a group and the
+  // staff rows that follow it (until the next divider) are its members. All the
+  // reordering + divider writes run through an authenticated server route
+  // because the browser anon client is blocked by RLS on divider/staff_locations
+  // writes. On success we reload authoritative state via fetchMatrixData.
+
+  const callStaffGroupApi = async (body: Record<string, any>) => {
+    const { data: sessionData } = await supabase.auth.getSession();
+    const token = sessionData.session?.access_token;
+    const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+    if (token) headers.Authorization = `Bearer ${token}`;
+
+    const res = await fetch('/api/training-matrix/staff-group', {
+      method: 'POST',
+      credentials: 'include',
+      headers,
+      body: JSON.stringify(body),
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.error || `Request failed (${res.status})`);
+    }
+    await fetchMatrixData();
+  };
+
+  const createStaffGroup = async (name: string, memberIds: string[]) => {
+    if (!name.trim() || !selectedLocation) return;
+    await callStaffGroupApi({ action: 'create', locationId: selectedLocation, name: name.trim(), memberIds });
+  };
+
+  const updateStaffGroup = async (dividerId: string, name: string, memberIds: string[]) => {
+    if (!selectedLocation) return;
+    await callStaffGroupApi({ action: 'update', locationId: selectedLocation, dividerId, name: name.trim(), memberIds });
+  };
+
+  const deleteStaffGroup = async (dividerId: string) => {
+    if (!selectedLocation) return;
+    await callStaffGroupApi({ action: 'delete', locationId: selectedLocation, dividerId });
+  };
+
+  // Course group membership lives in each course's `category`.
+  const setCourseGroup = async (name: string, originalName: string | null, courseIds: string[]) => {
+    if (!selectedLocation) return;
+    const target = name.trim();
+    const idSet = new Set(courseIds);
+    const changes: { id: string; category: string | null }[] = [];
+    courses.forEach((c: any) => {
+      const oldCat = c.category ?? null;
+      let newCat: string | null;
+      if (idSet.has(c.id)) newCat = target || null;
+      else if (originalName && oldCat === originalName) newCat = null; // removed from the group
+      else newCat = oldCat;
+      if (newCat !== oldCat) changes.push({ id: c.id, category: newCat });
+    });
+    if (changes.length === 0) return;
+
+    setCourses(courses.map((c: any) => {
+      const ch = changes.find(x => x.id === c.id);
+      return ch ? { ...c, category: ch.category || undefined } : c;
+    }));
+
+    for (const ch of changes) {
+      saveCategoryOverride(selectedLocation, ch.id, ch.category || '');
+      // category can be null (clears the group in the DB); saveCourseChanges
+      // forwards it to the update-course endpoint verbatim.
+      await saveCourseChanges(ch.id, { category: ch.category } as Partial<Course>, true);
+    }
+  };
+
+  const deleteCourseGroup = async (name: string) => {
+    await setCourseGroup('', name, []);
+  };
+
   const exportMatrixCsv = () => {
     if (!selectedLocation || staff.length === 0 || courses.length === 0) return;
     const header = ['Staff Name', ...courses.map(c => c.name)];
@@ -1048,7 +1117,8 @@ export function MatrixProvider({ children }: { children: React.ReactNode }) {
     fetchMatrixData, saveCourseChanges, getDateStatus, getDateColor, getStatusDisplay, canEditMatrix, handleCourseDropStart, handleCourseDragOver,
     handleCourseDropEnd, handleStaffDropStart, handleStaffDragOver, persistStaffOrdering, handleStaffDropEnd, addNewCourse, deleteCourse,
     undoRemoveCourse, addNewDivider, exportMatrixCsv, deleteStaffMember, toggleCellSelection, selectAllInCourse, deselectAllInCourse,
-    selectAllForStaff, clearAllSelections, applyBulkUpdate, updateAllExpiriesForCourse, handleSaveTraining
+    selectAllForStaff, clearAllSelections, applyBulkUpdate, updateAllExpiriesForCourse, handleSaveTraining,
+    createStaffGroup, updateStaffGroup, deleteStaffGroup, setCourseGroup, deleteCourseGroup
   };
 
   return <MatrixContext.Provider value={contextValue}>{children}</MatrixContext.Provider>;
