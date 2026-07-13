@@ -660,7 +660,7 @@ Charlie Scheduler,charlie@example.com,Banks House,manager`;
 
   const canManageStaff = hasPermission(userRole, 'STAFF_MANAGEMENT', 'canView');
 
-  if (roleLoading) {
+  if (roleLoading || userRole === null) {
     return (
       <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-md flex items-center justify-center p-4 z-50">
         <div style={{ backgroundColor: isDark ? '#1e293b' : '#ffffff' }} className="rounded-3xl p-8 w-full max-w-md text-center shadow-2xl">
