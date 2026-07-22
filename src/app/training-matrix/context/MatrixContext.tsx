@@ -1043,56 +1043,73 @@ export function MatrixProvider({ children }: { children: React.ReactNode }) {
         }
       }
 
-      debugLog('Saving training:', {
-        staffId,
-        courseId,
-        trainingId,
-        completion_date: completionDate,
-        expiry_date: expiryDateString,
-        status: status,
-        completed_at_location_id: selectedLocation,
-      });
+      // Get all locations for this staff member
+      const { data: staffLocs, error: staffLocsError } = await supabase
+        .from('staff_locations')
+        .select('location_id')
+        .eq('staff_id', staffId);
 
-      const upsertData: any = {
-        staff_id: staffId,
-        course_id: courseId,
-        completion_date: effectiveCompletionDate || null,
-        expiry_date: expiryDateString,
-        completed_at_location_id: selectedLocation,
-        status: status,
-        updated_at: new Date().toISOString(),
-      };
-
-      let { data, error } = await supabase
-        .from('staff_training_matrix')
-        .upsert(upsertData, { onConflict: 'staff_id,course_id,completed_at_location_id' })
-        .select();
-
-      if (error?.code === '42P10') {
-        const fallback = await supabase
-          .from('staff_training_matrix')
-          .upsert(upsertData, { onConflict: 'staff_id,course_id' })
-          .select();
-        data = fallback.data;
-        error = fallback.error;
+      const targetLocations = new Set<string>();
+      targetLocations.add(selectedLocation);
+      if (!staffLocsError && staffLocs) {
+        staffLocs.forEach((sl: any) => {
+          if (sl.location_id) targetLocations.add(sl.location_id);
+        });
       }
 
-      debugLog('Upsert response:', { data, error });
+      let savedRecord: any = null;
+      let saveError: any = null;
 
-      if (error) {
-        console.error('Save error:', error);
-        alert(`Error saving training: ${error.message}`);
+      for (const locId of targetLocations) {
+        const upsertData: any = {
+          staff_id: staffId,
+          course_id: courseId,
+          completion_date: effectiveCompletionDate || null,
+          expiry_date: expiryDateString,
+          completed_at_location_id: locId,
+          status: status,
+          updated_at: new Date().toISOString(),
+        };
+
+        debugLog('Upserting training for location:', locId);
+
+        let { data, error } = await supabase
+          .from('staff_training_matrix')
+          .upsert(upsertData, { onConflict: 'staff_id,course_id,completed_at_location_id' })
+          .select();
+
+        if (error?.code === '42P10') {
+          const fallback = await supabase
+            .from('staff_training_matrix')
+            .upsert(upsertData, { onConflict: 'staff_id,course_id' })
+            .select();
+          data = fallback.data;
+          error = fallback.error;
+        }
+
+        if (locId === selectedLocation) {
+          if (data && data.length > 0) {
+            savedRecord = data[0];
+          }
+          if (error) {
+            saveError = error;
+          }
+        }
+      }
+
+      if (saveError) {
+        console.error('Save error:', saveError);
+        alert(`Error saving training: ${saveError.message}`);
         return;
       }
       
-      if (!data || data.length === 0) {
+      if (!savedRecord) {
         console.error('No data returned from upsert');
         alert('Error: Record was not saved. Please try again.');
         return;
       }
 
-      if (data && data.length > 0) {
-        const savedRecord = data[0];
+      if (savedRecord) {
         const updatedMatrix = { ...matrixData };
         if (!updatedMatrix[staffId]) {
           updatedMatrix[staffId] = {};
@@ -1124,7 +1141,7 @@ export function MatrixProvider({ children }: { children: React.ReactNode }) {
     lastRemovedCourse, setLastRemovedCourse, selectedCells, setSelectedCells, bulkEditMode, setBulkEditMode, bulkEditStatus, setBulkEditStatus,
     bulkEditDate, setBulkEditDate, getCategoryOverrides, saveCategoryOverride, formatExpiryDisplay, checkAuth, checkTheme, fetchLocations,
     fetchMatrixData, saveCourseChanges, getDateStatus, getDateColor, getStatusDisplay, canEditMatrix, handleCourseDropStart, handleCourseDragOver,
-    handleCourseDropEnd, handleStaffDropStart, handleStaffDragOver, persistStaffOrdering, handleStaffDropEnd, addNewCourse, deleteCourse,
+    handleCourseDropEnd, handleStaffDropStart, handleStaffDragOver, persistStaffOrdering, persistCourseOrdering, handleStaffDropEnd, addNewCourse, deleteCourse,
     undoRemoveCourse, addNewDivider, exportMatrixCsv, deleteStaffMember, toggleCellSelection, selectAllInCourse, deselectAllInCourse,
     selectAllForStaff, clearAllSelections, applyBulkUpdate, updateAllExpiriesForCourse, handleSaveTraining,
     createStaffGroup, updateStaffGroup, deleteStaffGroup, setCourseGroup, deleteCourseGroup

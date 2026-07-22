@@ -177,8 +177,15 @@ export async function POST(request: NextRequest) {
     // Get all staff from database (only active staff)
     const { data: dbStaff } = await supabase
       .from('profiles')
-      .select('id, full_name')
+      .select('id, full_name, location')
       .eq('is_deleted', false);
+
+    // Get all locations to map names to IDs
+    const { data: allLocations } = await supabase.from('locations').select('id, name');
+    const locationNameToId = new Map<string, string>();
+    allLocations?.forEach(loc => {
+      locationNameToId.set(loc.name.toLowerCase().trim(), loc.id);
+    });
 
     const staffMap = new Map();
     const staffLocations = new Map();
@@ -186,7 +193,14 @@ export async function POST(request: NextRequest) {
     if (dbStaff && dbStaff.length > 0) {
       dbStaff.forEach(staff => {
         staffMap.set(staff.full_name.toLowerCase(), staff.id);
-        staffLocations.set(staff.id, []);
+        const initialLocs: any[] = [];
+        if (staff.location) {
+          const matchedId = locationNameToId.get(staff.location.toLowerCase().trim());
+          if (matchedId) {
+            initialLocs.push({ id: matchedId, name: staff.location.trim() });
+          }
+        }
+        staffLocations.set(staff.id, initialLocs);
       });
 
       // Get staff locations in a separate query for better reliability
@@ -201,7 +215,9 @@ export async function POST(request: NextRequest) {
           const locName = sl.locations?.name;
           if (locName) {
             const existing = staffLocations.get(staffId) || [];
-            staffLocations.set(staffId, [...existing, { id: locId, name: locName }]);
+            if (!existing.some((e: any) => e.id === locId)) {
+              staffLocations.set(staffId, [...existing, { id: locId, name: locName }]);
+            }
           }
         });
       }
@@ -398,10 +414,22 @@ export async function POST(request: NextRequest) {
     
     console.log(`Created ${updates.length} update records from Excel data`);
 
+    // Atlas exports can contain repeated course columns (aliases, renamed
+    // headers, or duplicate sections). Keep the populated value for each
+    // staff/course pair once so a duplicate cannot make an entire upsert batch
+    // fail or cause one matrix location to be skipped.
+    const uniqueUpdates: any[] = Array.from(
+      updates.reduce((map, update) => {
+        map.set(`${update.staff_id}|${update.course_id}`, update);
+        return map;
+      }, new Map<string, any>()).values()
+    );
+    console.log(`Using ${uniqueUpdates.length} unique populated staff/course values`);
+
     // Now process updates - check what's actually changed
     // Get unique staff IDs from the updates
-    const uniqueStaffIds = [...new Set(updates.map(u => u.staff_id))];
-    const uniqueCourseIds = [...new Set(updates.map(u => u.course_id))];
+    const uniqueStaffIds = [...new Set(uniqueUpdates.map(u => u.staff_id))];
+    const uniqueCourseIds = [...new Set(uniqueUpdates.map(u => u.course_id))];
     
     console.log(`Querying existing records for ${uniqueStaffIds.length} staff and ${uniqueCourseIds.length} courses...`);
     
@@ -474,15 +502,17 @@ export async function POST(request: NextRequest) {
       change: ImportChangeRecord;
     }> = [];
 
-    for (const update of updates) {
+    const processedLocationKeys = new Set<string>();
+    for (const update of uniqueUpdates) {
       const newDate = update.completion_date || null;
       if (!newDate) continue;
 
       const staffLocs = staffLocations.get(update.staff_id) || [];
-      const targetLocationIds: Array<string | undefined> =
-        staffLocs.length > 0
-          ? staffLocs.map((loc: any) => (typeof loc === 'string' ? undefined : loc.id))
-          : [undefined];
+      const targetLocationIds = Array.from(new Set(
+        staffLocs
+          .map((loc: any) => typeof loc === 'string' ? loc : loc?.id)
+          .filter(Boolean)
+      ));
 
       const locations = staffLocations.get(update.staff_id) || [];
       const locationNames = locations.map((l: any) => typeof l === 'string' ? l : l.name).join(', ');
@@ -501,6 +531,10 @@ export async function POST(request: NextRequest) {
 
       for (const locId of targetLocationIds) {
         const locationKey = locId || '';
+        const processedLocationKey = `${update.staff_id}|${update.course_id}|${locationKey}`;
+        if (processedLocationKeys.has(processedLocationKey)) continue;
+        processedLocationKeys.add(processedLocationKey);
+
         const existingKey = `${update.staff_id}|${update.course_id}|${locationKey}`;
         const existing = existingMap.get(existingKey);
         const oldDate = existing?.completion_date || null;
@@ -640,7 +674,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({
       success: true,
       summary: {
-        processed: updates.length,
+        processed: uniqueUpdates.length,
         updated: updatedCount,
         created: createdCount,
         changes: updatedRecords.length + createdRecords.length,

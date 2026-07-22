@@ -113,6 +113,22 @@ export async function POST(request: NextRequest) {
       }
     }
 
+    // Load staff_locations for all staff in this batch
+    const { data: staffLocsData, error: staffLocsError } = await supabaseAdmin
+      .from('staff_locations')
+      .select('staff_id, location_id')
+      .in('staff_id', staffIds);
+
+    const staffLocationsMap = new Map<string, Set<string>>();
+    if (!staffLocsError && staffLocsData) {
+      staffLocsData.forEach((sl: any) => {
+        if (!sl.staff_id || !sl.location_id) return;
+        const set = staffLocationsMap.get(sl.staff_id) || new Set<string>();
+        set.add(sl.location_id);
+        staffLocationsMap.set(sl.staff_id, set);
+      });
+    }
+
     for (const update of updates) {
       try {
         const { staffId, courseId, locationId, status, completion_date } = update as BulkUpdateRequest;
@@ -128,37 +144,50 @@ export async function POST(request: NextRequest) {
           }
         }
 
-        // Use upsert like handleSaveTraining does - more reliable than manual check
-        const upsertData: any = {
-          staff_id: staffId,
-          course_id: courseId,
-          completion_date: status === 'completed' ? completion_date : null,
-          expiry_date: expiryDate,
-          completed_at_location_id: locationId,
-          status: status,
-          updated_at: new Date().toISOString(),
-        };
+        const targetLocations = new Set<string>(staffLocationsMap.get(staffId) || []);
+        targetLocations.add(locationId);
 
-        console.log(`  📝 Upserting ${staffId} / ${courseId} / ${locationId}: status=${status}`);
+        let hasError = false;
+        let lastErrorMessage = '';
 
-        let { data, error } = await supabaseAdmin
-          .from('staff_training_matrix')
-          .upsert(upsertData, { onConflict: 'staff_id,course_id,completed_at_location_id' })
-          .select();
+        for (const locId of targetLocations) {
+          // Use upsert like handleSaveTraining does - more reliable than manual check
+          const upsertData: any = {
+            staff_id: staffId,
+            course_id: courseId,
+            completion_date: status === 'completed' ? completion_date : null,
+            expiry_date: expiryDate,
+            completed_at_location_id: locId,
+            status: status,
+            updated_at: new Date().toISOString(),
+          };
 
-        // Support deployments that still use the older two-column unique key
-        if (error?.code === '42P10') {
-          const fallback = await supabaseAdmin
+          console.log(`  📝 Upserting ${staffId} / ${courseId} / ${locId}: status=${status}`);
+
+          let { data, error } = await supabaseAdmin
             .from('staff_training_matrix')
-            .upsert(upsertData, { onConflict: 'staff_id,course_id' })
+            .upsert(upsertData, { onConflict: 'staff_id,course_id,completed_at_location_id' })
             .select();
-          data = fallback.data;
-          error = fallback.error;
+
+          // Support deployments that still use the older two-column unique key
+          if (error?.code === '42P10') {
+            const fallback = await supabaseAdmin
+              .from('staff_training_matrix')
+              .upsert(upsertData, { onConflict: 'staff_id,course_id' })
+              .select();
+            data = fallback.data;
+            error = fallback.error;
+          }
+
+          if (error) {
+            hasError = true;
+            lastErrorMessage = error.message || JSON.stringify(error);
+          }
         }
 
-        if (error) {
-          console.error(`Error upserting record for ${staffId}-${courseId}:`, JSON.stringify(error));
-          results.push({ staffId, courseId, success: false, error: error.message || JSON.stringify(error) });
+        if (hasError) {
+          console.error(`Error upserting record for ${staffId}-${courseId}:`, lastErrorMessage);
+          results.push({ staffId, courseId, success: false, error: lastErrorMessage });
         } else {
           successCount++;
           results.push({ staffId, courseId, success: true });

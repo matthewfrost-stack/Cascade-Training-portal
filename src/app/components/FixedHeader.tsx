@@ -57,7 +57,6 @@ export default function FixedHeader() {
   const {
     profile,
     isAuthenticated: profileIsAuthenticated,
-    loading,
   } = useCurrentUserProfile();
   const fullName = profile?.full_name || "";
   const email = profile?.email || "";
@@ -179,7 +178,7 @@ export default function FixedHeader() {
           >
             <div className="hidden min-w-0 text-right sm:block">
               <p className="truncate text-sm font-medium leading-none text-slate-900 dark:text-white">
-                {loading ? "Loading..." : fullName || email || "Profile"}
+                {fullName || email || "Profile"}
               </p>
               <p className="mt-1 truncate text-xs capitalize leading-none text-slate-500 dark:text-slate-400">
                 {roleTier || "User"}
@@ -302,7 +301,7 @@ export default function FixedHeader() {
 
               <div className="-mx-1 my-1 h-px bg-slate-200 dark:bg-slate-800" />
 
-              {!loading && isAuthenticated && (
+              {isAuthenticated && (
                 <div>
                   <button
                     type="button"

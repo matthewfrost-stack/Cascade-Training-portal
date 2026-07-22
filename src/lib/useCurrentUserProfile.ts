@@ -28,6 +28,7 @@ export function useCurrentUserProfile(): UseCurrentUserProfileState {
   const [loading, setLoading] = useState(true);
   const hasBootstrappedRef = useRef(false);
   const lastRouteWasAuthRef = useRef(true);
+  const lastKnownProfileRef = useRef<CurrentUserProfile | null>(null);
 
   const loadProfile = useCallback(async () => {
     let session: {
@@ -40,6 +41,29 @@ export function useCurrentUserProfile(): UseCurrentUserProfileState {
         };
       } | null;
     } | null = null;
+
+    const keepSessionProfile = () => {
+      if (!sessionUser) return;
+
+      // A failed/aborted profile request must not replace a known admin or
+      // scheduler role with the role-less session fallback.
+      const knownProfile = lastKnownProfileRef.current;
+      const fallbackProfile = knownProfile?.id === sessionUser.id
+        ? knownProfile
+        : {
+            id: sessionUser.id,
+            full_name: sessionUser.user_metadata?.full_name || null,
+            email: sessionUser.email || null,
+            phone_number: null,
+            avatar_path: null,
+            role_tier: null,
+            password_needs_change: null,
+          } satisfies CurrentUserProfile;
+
+      lastKnownProfileRef.current = fallbackProfile;
+      setIsAuthenticated(true);
+      setProfile(fallbackProfile);
+    };
     let sessionUser: {
       id: string;
       email?: string | null;
@@ -83,6 +107,7 @@ export function useCurrentUserProfile(): UseCurrentUserProfileState {
         if (response.ok) {
           const profileData = (result?.profile || null) as CurrentUserProfile | null;
           if (profileData) {
+            lastKnownProfileRef.current = profileData;
             setProfile(profileData);
             setIsAuthenticated(true);
             return;
@@ -92,16 +117,7 @@ export function useCurrentUserProfile(): UseCurrentUserProfileState {
         // If profile API fails but we have a session, fall back to session data
         // This prevents losing the user when the API temporarily fails
         if (sessionUser) {
-          setIsAuthenticated(true);
-          setProfile({
-            id: sessionUser.id,
-            full_name: sessionUser.user_metadata?.full_name || null,
-            email: sessionUser.email || null,
-            phone_number: null,
-            avatar_path: null,
-            role_tier: null,
-            password_needs_change: null,
-          });
+          keepSessionProfile();
           return;
         }
 
@@ -110,47 +126,56 @@ export function useCurrentUserProfile(): UseCurrentUserProfileState {
       } catch (fetchError) {
         clearTimeout(timeoutId);
         if (fetchError instanceof Error && fetchError.name === 'AbortError') {
-          throw new Error('Profile request timed out');
+          throw fetchError;
         }
         // If fetch fails but we have session user, keep them logged in
         if (sessionUser) {
-          setIsAuthenticated(true);
-          setProfile({
-            id: sessionUser.id,
-            full_name: sessionUser.user_metadata?.full_name || null,
-            email: sessionUser.email || null,
-            phone_number: null,
-            avatar_path: null,
-            role_tier: null,
-            password_needs_change: null,
-          });
-          console.warn("Profile API failed, using fallback session data", fetchError);
+          keepSessionProfile();
+          if (!(fetchError instanceof Error && fetchError.name === 'AbortError')) {
+            console.warn("Profile API failed, using fallback session data", fetchError);
+          }
           return;
         }
         throw fetchError;
       }
     } catch (error) {
-      console.error("Error loading current user profile:", error);
       // If there's an error but we have a session user, keep them authenticated
       // This prevents losing the user when the profile API fails
       if (sessionUser) {
-        setIsAuthenticated(true);
-        setProfile({
-          id: sessionUser.id,
-          full_name: sessionUser.user_metadata?.full_name || null,
-          email: sessionUser.email || null,
-          phone_number: null,
-          avatar_path: null,
-          role_tier: null,
-          password_needs_change: null,
-        });
+        keepSessionProfile();
+        if (!(error instanceof Error && error.name === 'AbortError')) {
+          console.warn("Error loading current user profile:", error);
+        }
         return;
       }
 
-      setProfile(null);
-      setIsAuthenticated(false);
+      if (!(error instanceof Error && error.name === 'AbortError')) {
+        console.error("Error loading current user profile:", error);
+      }
+
+      // A transient session read failure must not clear permissions while the
+      // user is returning to the app. SIGNED_OUT below is the authoritative
+      // path for clearing this state.
+      if (lastKnownProfileRef.current) {
+        setProfile(lastKnownProfileRef.current);
+        setIsAuthenticated(true);
+      } else {
+        setProfile(null);
+        setIsAuthenticated(false);
+      }
     }
   }, []);
+
+  const refreshSessionAndProfile = useCallback(async () => {
+    try {
+      // Refresh the Supabase session first so API requests made immediately
+      // after returning to a page carry a current access token.
+      await supabase.auth.refreshSession();
+    } catch (error) {
+      console.warn("Unable to refresh session on return:", error);
+    }
+    await loadProfile();
+  }, [loadProfile]);
 
   useEffect(() => {
     const currentPath = pathname ?? "";
@@ -161,17 +186,14 @@ export function useCurrentUserProfile(): UseCurrentUserProfileState {
 
     if (isAuthRoute) {
       lastRouteWasAuthRef.current = true;
+      lastKnownProfileRef.current = null;
       setProfile(null);
       setIsAuthenticated(false);
       setLoading(false);
-      return;
     }
+  }, [pathname]);
 
-    const shouldBootstrapProfile =
-      !hasBootstrappedRef.current || lastRouteWasAuthRef.current;
-    hasBootstrappedRef.current = true;
-    lastRouteWasAuthRef.current = false;
-
+  useEffect(() => {
     let mounted = true;
     let isInitialLoad = true;
 
@@ -186,6 +208,11 @@ export function useCurrentUserProfile(): UseCurrentUserProfileState {
         setLoading(false);
       }
     };
+
+    const shouldBootstrapProfile =
+      !hasBootstrappedRef.current || lastRouteWasAuthRef.current;
+    hasBootstrappedRef.current = true;
+    lastRouteWasAuthRef.current = false;
 
     if (shouldBootstrapProfile) {
       syncProfile();
@@ -203,7 +230,17 @@ export function useCurrentUserProfile(): UseCurrentUserProfileState {
           return;
         }
 
+        // Refreshing an access token does not change the user's profile or
+        // permissions, so do not show a loading state for TOKEN_REFRESHED.
+        if (
+          event === 'TOKEN_REFRESHED' ||
+          (event === 'SIGNED_IN' && lastKnownProfileRef.current?.id === session?.user?.id)
+        ) {
+          return;
+        }
+
         if (event === "SIGNED_OUT" || !session?.user) {
+          lastKnownProfileRef.current = null;
           setProfile(null);
           setIsAuthenticated(false);
           setLoading(false);
@@ -218,21 +255,14 @@ export function useCurrentUserProfile(): UseCurrentUserProfileState {
       mounted = false;
       authListener.subscription.unsubscribe();
     };
-  }, [loadProfile, pathname]);
+  }, [loadProfile]);
 
   useEffect(() => {
     let mounted = true;
 
     const handleVisibilityChange = async () => {
       if (document.visibilityState !== 'visible' || !mounted) return;
-      if (!hasBootstrappedRef.current || lastRouteWasAuthRef.current) return;
-      if (!isAuthenticated || !profile || profile.role_tier === null) {
-        setLoading(true);
-        await loadProfile();
-        if (mounted) {
-          setLoading(false);
-        }
-      }
+      await refreshSessionAndProfile();
     };
 
     document.addEventListener('visibilitychange', handleVisibilityChange);
@@ -241,7 +271,7 @@ export function useCurrentUserProfile(): UseCurrentUserProfileState {
       mounted = false;
       document.removeEventListener('visibilitychange', handleVisibilityChange);
     };
-  }, [isAuthenticated, profile, loadProfile]);
+  }, [refreshSessionAndProfile]);
 
   useEffect(() => {
     const currentPath = pathname ?? '';
@@ -250,12 +280,15 @@ export function useCurrentUserProfile(): UseCurrentUserProfileState {
       currentPath === "/auth/callback" ||
       currentPath.startsWith("/auth/");
 
-    if (isAuthRoute || loading || isAuthenticated) return;
+    if (isAuthRoute || loading) return;
 
-    loadProfile().catch((error) => {
+    refreshSessionAndProfile().catch((error) => {
       console.warn('Failed to refresh profile on navigation:', error);
     });
-  }, [pathname, isAuthenticated, loading, loadProfile]);
+  // `loading` is intentionally read from the render associated with a route
+  // change. Including it here would cause a refresh -> loading -> refresh loop.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pathname, refreshSessionAndProfile]);
 
   // Secondary effect: Refresh profile if critical fields are missing
   // This ensures permissions are restored even if API call initially failed.

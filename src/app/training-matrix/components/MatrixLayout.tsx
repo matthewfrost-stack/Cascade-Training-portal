@@ -121,7 +121,7 @@ export function MatrixLayout() {
     lastRemovedCourse, setLastRemovedCourse, selectedCells, setSelectedCells, bulkEditMode, setBulkEditMode, bulkEditStatus, setBulkEditStatus,
     bulkEditDate, setBulkEditDate, getCategoryOverrides, saveCategoryOverride, formatExpiryDisplay,
     fetchMatrixData, saveCourseChanges, getDateStatus, getDateColor, getStatusDisplay, canEditMatrix, handleCourseDropStart, handleCourseDragOver,
-    handleCourseDropEnd, handleStaffDropStart, handleStaffDragOver, persistStaffOrdering, handleStaffDropEnd, addNewCourse, deleteCourse,
+    handleCourseDropEnd, handleStaffDropStart, handleStaffDragOver, persistStaffOrdering, persistCourseOrdering, handleStaffDropEnd, addNewCourse, deleteCourse,
     undoRemoveCourse, addNewDivider, exportMatrixCsv, deleteStaffMember, toggleCellSelection, selectAllInCourse, deselectAllInCourse,
     selectAllForStaff, clearAllSelections, applyBulkUpdate, updateAllExpiriesForCourse, handleSaveTraining
   } = useMatrix();
@@ -130,6 +130,7 @@ export function MatrixLayout() {
   const [collapsedCategories, setCollapsedCategories] = useState<Set<string>>(new Set());
   const [searchQuery, setSearchQuery] = useState('');
   const [groupModal, setGroupModal] = useState<{ type: 'staff' | 'course'; editKey: string | null } | null>(null);
+  const [draggedCategory, setDraggedCategory] = useState<string | null>(null);
 
   const checkStatus = (cell: any, course: any): 'valid' | 'expiring' | 'expired' => {
     if (course.never_expires || course.expiry_months === 9999 || course.expiry_months === null) return 'valid';
@@ -236,6 +237,29 @@ export function MatrixLayout() {
   const toggleCategory = (cat: string) => setCollapsedCategories(prev => { const n = new Set(prev); n.has(cat) ? n.delete(cat) : n.add(cat); return n; });
   const toggleDivider = (id: string) => setCollapsedDividers(prev => { const n = new Set(prev); n.has(id) ? n.delete(id) : n.add(id); return n; });
 
+  const handleCategoryDrop = async (targetCat: string) => {
+    if (!canEditMatrix || !draggedCategory || draggedCategory === targetCat) return;
+
+    const draggedIndex = categories.indexOf(draggedCategory);
+    const targetIndex = categories.indexOf(targetCat);
+    if (draggedIndex === -1 || targetIndex === -1) return;
+
+    const newCategories = [...categories];
+    const [draggedItem] = newCategories.splice(draggedIndex, 1);
+    newCategories.splice(targetIndex, 0, draggedItem);
+
+    // Reorder courses array based on the new category sequence
+    const newCourses: Course[] = [];
+    newCategories.forEach((cat) => {
+      const catCourses = coursesByCategory[cat] || [];
+      newCourses.push(...catCourses);
+    });
+
+    setCourses(newCourses);
+    setDraggedCategory(null);
+    await persistCourseOrdering(newCourses);
+  };
+
   const dividerIds = staff.filter((s: any) => staffDividers.has(s.id)).map((s: any) => s.id);
   const allCatsCollapsed = collapsedCategories.size === categories.length;
   const allDividersCollapsed = collapsedDividers.size === dividerIds.length;
@@ -310,7 +334,7 @@ export function MatrixLayout() {
             {/* Toolbar */}
             <div className={`p-4 rounded-2xl border shadow-sm ${panelBg}`}>
               <div className="flex flex-col lg:flex-row items-start lg:items-center justify-between gap-4">
-                {/* Left: Search + Collapse toggles */}
+                {/* Left: Search + collapse toggles (groups first, categories second) */}
                 <div className="flex flex-wrap items-center gap-3">
                   <div className="relative w-64">
                     <span className="absolute left-3 top-1/2 -translate-y-1/2 text-sm text-gray-400 pointer-events-none">🔍</span>
@@ -323,16 +347,16 @@ export function MatrixLayout() {
                     />
                   </div>
                   <button
-                    onClick={() => allCatsCollapsed ? setCollapsedCategories(new Set()) : setCollapsedCategories(new Set(categories))}
-                    className={`px-3 py-2 rounded-xl text-xs font-bold border transition-all ${isDark ? 'bg-gray-800 border-gray-700 text-gray-300 hover:bg-gray-700' : 'bg-slate-100 border-slate-200 text-slate-700 hover:bg-slate-200'}`}
-                  >
-                    {allCatsCollapsed ? '⊞ Expand Categories' : '⊟ Collapse Categories'}
-                  </button>
-                  <button
                     onClick={() => allDividersCollapsed ? setCollapsedDividers(new Set()) : setCollapsedDividers(new Set(dividerIds))}
                     className={`px-3 py-2 rounded-xl text-xs font-bold border transition-all ${isDark ? 'bg-gray-800 border-gray-700 text-gray-300 hover:bg-gray-700' : 'bg-slate-100 border-slate-200 text-slate-700 hover:bg-slate-200'}`}
                   >
                     {allDividersCollapsed ? '⊞ Expand Groups' : '⊟ Collapse Groups'}
+                  </button>
+                  <button
+                    onClick={() => allCatsCollapsed ? setCollapsedCategories(new Set()) : setCollapsedCategories(new Set(categories))}
+                    className={`px-3 py-2 rounded-xl text-xs font-bold border transition-all ${isDark ? 'bg-gray-800 border-gray-700 text-gray-300 hover:bg-gray-700' : 'bg-slate-100 border-slate-200 text-slate-700 hover:bg-slate-200'}`}
+                  >
+                    {allCatsCollapsed ? '⊞ Expand Categories' : '⊟ Collapse Categories'}
                   </button>
                 </div>
 
@@ -412,7 +436,26 @@ export function MatrixLayout() {
                           const isCollapsed = collapsedCategories.has(cat);
                           if (isCollapsed) {
                             return (
-                              <th key={`cat-${cat}`} rowSpan={3} className={`px-3 py-2 text-center text-xs font-black border-r cursor-pointer select-none transition-all hover:opacity-80 min-w-[120px] ${thBg}`} onClick={() => toggleCategory(cat)} title="Click to expand">
+                              <th
+                                key={`cat-${cat}`}
+                                rowSpan={3}
+                                className={`px-3 py-2 text-center text-xs font-black border-r cursor-move select-none transition-all hover:opacity-80 min-w-[120px] ${thBg} ${draggedCategory === cat ? 'opacity-40' : ''}`}
+                                onClick={() => toggleCategory(cat)}
+                                title="Drag to move category, click to expand"
+                                draggable={canEditMatrix}
+                                onDragStart={(e) => {
+                                  e.stopPropagation();
+                                  setDraggedCategory(cat);
+                                  e.dataTransfer.effectAllowed = 'move';
+                                }}
+                                onDragOver={(e) => {
+                                  e.preventDefault();
+                                }}
+                                onDrop={(e) => {
+                                  e.preventDefault();
+                                  handleCategoryDrop(cat);
+                                }}
+                              >
                                 <div className="flex flex-col items-center gap-1">
                                   <span className="text-[10px] text-blue-400 uppercase font-extrabold">Collapsed</span>
                                   <span>➕</span>
@@ -422,7 +465,26 @@ export function MatrixLayout() {
                             );
                           }
                           return (
-                            <th key={`cat-${cat}`} colSpan={catCourses.length} className={`group/cat px-3 py-1.5 text-center text-xs font-black border-r cursor-pointer select-none transition-all hover:opacity-80 ${thBg}`} onClick={() => toggleCategory(cat)} title="Click to collapse">
+                            <th
+                              key={`cat-${cat}`}
+                              colSpan={catCourses.length}
+                              className={`group/cat px-3 py-1.5 text-center text-xs font-black border-r cursor-move select-none transition-all hover:opacity-80 ${thBg} ${draggedCategory === cat ? 'opacity-40' : ''}`}
+                              onClick={() => toggleCategory(cat)}
+                              title="Drag to move category, click to collapse"
+                              draggable={canEditMatrix}
+                              onDragStart={(e) => {
+                                e.stopPropagation();
+                                setDraggedCategory(cat);
+                                e.dataTransfer.effectAllowed = 'move';
+                              }}
+                              onDragOver={(e) => {
+                                e.preventDefault();
+                              }}
+                              onDrop={(e) => {
+                                e.preventDefault();
+                                handleCategoryDrop(cat);
+                              }}
+                            >
                               <div className="flex items-center justify-center gap-1.5">
                                 <span className="opacity-60">➖</span>
                                 <span className="text-[10px] uppercase tracking-wide opacity-60">Category:</span>

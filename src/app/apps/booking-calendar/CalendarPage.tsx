@@ -1,9 +1,9 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import Icon from '@/app/components/Icon';
 import { usePathname, useRouter } from 'next/navigation';
-import { format, startOfMonth, endOfMonth, startOfWeek, endOfWeek, eachDayOfInterval, isSameDay, isSameMonth, subMonths, addMonths } from 'date-fns';
+import { format, startOfMonth, endOfMonth, startOfWeek, endOfWeek, eachDayOfInterval, isSameDay, isSameMonth, subMonths, addMonths, parseISO } from 'date-fns';
 import ScheduleModal from '@/app/components/ScheduleModal';
 import UniformButton from '@/app/components/UniformButton';
 import BookingModal from '@/app/components/BookingModal';
@@ -16,7 +16,9 @@ export default function CalendarPage() {
   const router = useRouter();
   const pathname = usePathname();
   const { profile, isAuthenticated } = useCurrentUserProfile();
-  const [currentMonth, setCurrentMonth] = useState(new Date());
+  const [today, setToday] = useState(() => new Date());
+  const [currentMonth, setCurrentMonth] = useState(() => new Date());
+  const previousTodayRef = useRef(today);
   const [events, setEvents] = useState<any[]>([]);
   const [showSchedule, setShowSchedule] = useState(false);
   const [scheduleDefaultDate, setScheduleDefaultDate] = useState<string | null>(null);
@@ -26,6 +28,40 @@ export default function CalendarPage() {
   const [loading, setLoading] = useState(true);
   const [isDark, setIsDark] = useState(true);
   const [filterCourse, setFilterCourse] = useState<string>('all');
+
+  // Keep the calendar current if the page remains open across midnight.
+  useEffect(() => {
+    const refreshToday = () => setToday(new Date());
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'visible') refreshToday();
+    };
+
+    let timerId: number;
+    const scheduleNextRefresh = () => {
+      const now = new Date();
+      const nextMidnight = new Date(now);
+      nextMidnight.setHours(24, 0, 0, 25);
+      timerId = window.setTimeout(() => {
+        refreshToday();
+        scheduleNextRefresh();
+      }, nextMidnight.getTime() - now.getTime());
+    };
+
+    scheduleNextRefresh();
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    return () => {
+      window.clearTimeout(timerId);
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+    };
+  }, []);
+
+  useEffect(() => {
+    const previousToday = previousTodayRef.current;
+    if (isSameMonth(currentMonth, previousToday) && !isSameMonth(currentMonth, today)) {
+      setCurrentMonth(today);
+    }
+    previousTodayRef.current = today;
+  }, [today, currentMonth]);
 
   const isTestCourseName = (courseName?: string | null) =>
     !!courseName && /^e2e[-_ ]/i.test(courseName.trim());
@@ -240,7 +276,7 @@ export default function CalendarPage() {
                 <UniformButton
                   variant="secondary"
                   className="px-1 md:px-3 py-1 md:py-2 rounded-lg font-bold text-[7px] md:text-[10px] uppercase transition-all hover:shadow-md active:scale-95 duration-200"
-                  onClick={() => setCurrentMonth(new Date())}
+                  onClick={() => setCurrentMonth(today)}
                   title="Go back to today"
                 >
                   📅 Today
@@ -275,7 +311,7 @@ export default function CalendarPage() {
 
               <div className="grid grid-cols-7 gap-0" style={{ minHeight: '700px' }}>
                 {calendarDays.map((day, idx) => {
-                  const dayEvents = filteredEvents.filter(e => isSameDay(new Date(e.event_date), day));
+                  const dayEvents = filteredEvents.filter(e => isSameDay(parseISO(e.event_date), day));
                   const isCurrentMonth = isSameMonth(day, currentMonth);
 
                   return (
@@ -292,7 +328,7 @@ export default function CalendarPage() {
                       }}
                       className={`border p-2 sm:p-3 min-h-[110px] sm:min-h-[140px] flex flex-col ${!isCurrentMonth ? 'opacity-40' : ''} ${canSchedule ? 'cursor-pointer' : ''}`}
                     >
-                      <span style={{ color: isSameDay(day, new Date()) ? '#3b82f6' : (isDark ? '#94a3b8' : '#64748b') }} className="text-xs sm:text-sm font-black mb-2">
+                      <span style={{ color: isSameDay(day, today) ? '#3b82f6' : (isDark ? '#94a3b8' : '#64748b') }} className="text-xs sm:text-sm font-black mb-2">
                         {format(day, 'd')}
                       </span>
                       <div className="flex-1 space-y-1">
