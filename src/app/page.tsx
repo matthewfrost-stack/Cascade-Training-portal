@@ -3,15 +3,13 @@
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import TileButton from '@/app/components/TileButton';
+import { supabase } from '@/lib/supabase';
 import { hasPermission } from '@/lib/permissions';
-import { useCurrentUserProfile } from '@/lib/useCurrentUserProfile';
 
 export default function LandingPage() {
   const router = useRouter();
   const [isDark, setIsDark] = useState(true);
-  const { profile } = useCurrentUserProfile();
-  const userRole = profile?.role_tier ?? null;
-  const canAdmin = hasPermission(userRole, 'STAFF_MANAGEMENT', 'canView');
+  const [userRole, setUserRole] = useState<string | null>(null);
 
   useEffect(() => {
     const checkTheme = () => {
@@ -26,6 +24,26 @@ export default function LandingPage() {
       window.removeEventListener('storage', checkTheme);
     };
   }, []);
+
+  useEffect(() => {
+    const loadRole = async () => {
+      try {
+        const {
+          data: { user },
+        } = await supabase.auth.getUser();
+        if (!user) return;
+        const { data: profile } = await supabase.from('profiles').select('*').eq('id', user.id).single();
+        const role = (profile?.role_tier ?? null) as string | null;
+        setUserRole(role);
+      } catch (error) {
+        console.error('Error loading landing page role:', error);
+        setUserRole(null);
+      }
+    };
+    loadRole();
+  }, [router]);
+
+  const canAdmin = hasPermission(userRole, 'STAFF_MANAGEMENT', 'canView');
 
   return (
     <main
@@ -48,7 +66,7 @@ export default function LandingPage() {
               </p>
             </div>
 
-            <div className={`mt-8 grid gap-4 md:gap-6 ${canAdmin ? 'md:grid-cols-2' : 'md:grid-cols-1'}`}>
+            <div className={`mt-8 grid gap-4 md:gap-6 ${canAdmin ? 'md:grid-cols-3' : 'md:grid-cols-2'}`}>
               <TileButton
                 title="Training"
                 description="Open the training dashboard."
@@ -57,11 +75,18 @@ export default function LandingPage() {
                 onClick={() => router.push('/dashboard')}
               />
 
+              <TileButton
+                title="Template Gallery"
+                description="Search, view, print, or download templates."
+                emoji="📄"
+                showChevron
+                onClick={() => router.push('/templates')}
+              />
 
               {canAdmin && (
                 <TileButton
                   title="Admin"
-                  description="Manage training staff and system tools."
+                  description="Manage staff and system tools."
                   emoji="🛠️"
                   showChevron
                   onClick={() => router.push('/admin-tools')}

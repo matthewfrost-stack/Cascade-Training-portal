@@ -313,21 +313,6 @@ export async function POST(request: NextRequest) {
       staffMap.set(normalizeStaffName(String(s.full_name)), String(s.id));
     });
 
-    // Load staff_locations to resolve all locations per staff member.
-    const { data: allStaffLocs, error: allStaffLocsErr } = await authz.service
-      .from('staff_locations')
-      .select('staff_id, location_id');
-
-    const staffLocationsMap = new Map<string, Set<string>>();
-    if (!allStaffLocsErr && allStaffLocs) {
-      allStaffLocs.forEach((sl: any) => {
-        if (!sl.staff_id || !sl.location_id) return;
-        const set = staffLocationsMap.get(sl.staff_id) || new Set<string>();
-        set.add(sl.location_id);
-        staffLocationsMap.set(sl.staff_id, set);
-      });
-    }
-
     const { data: existingDividers, error: existingDividersErr } = await authz.service
       .from('location_matrix_dividers')
       .select('id, name')
@@ -729,35 +714,29 @@ export async function POST(request: NextRequest) {
         summary.processedCells++;
 
         const trainingKey = `${staffId}|${mapping.courseId}`;
-        seenTrainingKeys.add(trainingKey);
-
-        const staffLocs = staffLocationsMap.get(staffId) || new Set<string>();
-        // Ensure at least the current uploaded locationId is included
-        const targetLocations = new Set<string>(staffLocs);
-        targetLocations.add(locationId);
-
-        for (const locId of targetLocations) {
-          if (interpreted.kind === 'status') {
-            upserts.push({
-              staff_id: staffId,
-              course_id: mapping.courseId,
-              completion_date: null,
-              expiry_date: null,
-              status: interpreted.status,
-              completed_at_location_id: locId,
-            });
-          } else {
-            const expiryIso = computeExpiryDateIso(interpreted.dateIso, mapping.expiryMonths, mapping.neverExpires);
-            upserts.push({
-              staff_id: staffId,
-              course_id: mapping.courseId,
-              completion_date: interpreted.dateIso,
-              expiry_date: expiryIso,
-              status: 'completed',
-              completed_at_location_id: locId,
-            });
-          }
+        if (interpreted.kind === 'status') {
+          seenTrainingKeys.add(trainingKey);
+          upserts.push({
+            staff_id: staffId,
+            course_id: mapping.courseId,
+            completion_date: null,
+            expiry_date: null,
+            status: interpreted.status,
+            completed_at_location_id: locationId,
+          });
+          continue;
         }
+
+        const expiryIso = computeExpiryDateIso(interpreted.dateIso, mapping.expiryMonths, mapping.neverExpires);
+        seenTrainingKeys.add(trainingKey);
+        upserts.push({
+          staff_id: staffId,
+          course_id: mapping.courseId,
+          completion_date: interpreted.dateIso,
+          expiry_date: expiryIso,
+          status: 'completed',
+          completed_at_location_id: locationId,
+        });
       }
     }
 

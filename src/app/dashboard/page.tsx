@@ -10,17 +10,30 @@ export default function DashboardPage() {
   const router = useRouter();
   const [isDark, setIsDark] = useState(true);
   const [showMatrixSyncModal, setShowMatrixSyncModal] = useState(false);
-  const { profile, loading } = useCurrentUserProfile();
+  const { profile, loading, isAuthenticated } = useCurrentUserProfile();
   const userRole = profile?.role_tier ?? null;
 
   useEffect(() => {
     checkTheme();
-    // Middleware already guards unauthenticated access server-side.
-    // Only redirect for password_needs_change here (a client-specific concern).
-    if (!loading && profile?.password_needs_change) {
-      router.push('/auth/change-password-required');
-    }
-  }, [loading, profile, router]);
+    const runAuthCheck = async () => {
+      try {
+        if (!isAuthenticated && !loading) {
+          router.push('/login');
+          return;
+        }
+
+        if (profile?.password_needs_change) {
+          router.push('/auth/change-password-required');
+          return;
+        }
+      } catch (error) {
+        console.error('Auth check error:', error);
+        router.push('/login');
+      }
+    };
+
+    runAuthCheck();
+  }, [isAuthenticated, loading, profile, router]);
 
   useEffect(() => {
     const handleThemeChange = (event: Event) => {
