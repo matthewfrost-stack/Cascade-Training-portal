@@ -508,10 +508,10 @@ export async function POST(request: NextRequest) {
       if (!newDate) continue;
 
       const staffLocs = staffLocations.get(update.staff_id) || [];
-      const targetLocationIds = Array.from(new Set(
+      const targetLocationIds: string[] = Array.from(new Set(
         staffLocs
           .map((loc: any) => typeof loc === 'string' ? loc : loc?.id)
-          .filter(Boolean)
+          .filter((id: any): id is string => Boolean(id))
       ));
 
       const locations = staffLocations.get(update.staff_id) || [];
