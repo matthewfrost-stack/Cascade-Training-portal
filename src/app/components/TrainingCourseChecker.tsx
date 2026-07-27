@@ -6,6 +6,7 @@ import UniformButton from './UniformButton';
 import BackButton from '@/app/components/BackButton';
 import { supabase } from '@/lib/supabase';
 import { ClockIcon, ExclamationCircleIcon, CalendarIcon } from '@/app/components/icons';
+import { HoverPopoverCard, RecordDetailModal, DisplayRecordItem } from './RecordHoverPopoverModal';
 
 interface CourseRecord {
   name: string;
@@ -31,6 +32,7 @@ interface CourseStats {
   courseName: string;
   totals: Counts;
   locations: Record<string, Counts>;
+  records: DisplayRecordItem[];
 }
 
 function emptyCounts(): Counts {
@@ -240,6 +242,7 @@ export default function TrainingCourseChecker({ isDark }: { isDark: boolean }) {
           courseName: canonicalCourseName(courseName),
           totals: emptyCounts(),
           locations: {},
+          records: [],
         };
         statsMap.set(courseKey, stats);
         return stats;
@@ -262,6 +265,14 @@ export default function TrainingCourseChecker({ isDark }: { isDark: boolean }) {
         applyExpiryBuckets(stats.totals, expiryDate, thresholds);
         const locationCounts = ensureLocation(stats, location);
         applyExpiryBuckets(locationCounts, expiryDate, thresholds);
+
+        stats.records.push({
+          staffName: record.name || 'Unknown Staff',
+          courseName: canonicalCourseName(record.course || 'Unknown Course'),
+          location,
+          date: record.expiry,
+          type: 'expiring',
+        });
       }
 
       for (const record of allocatedData) {
@@ -271,6 +282,14 @@ export default function TrainingCourseChecker({ isDark }: { isDark: boolean }) {
         stats.totals.allocated += 1;
         const locationCounts = ensureLocation(stats, location);
         locationCounts.allocated += 1;
+
+        stats.records.push({
+          staffName: record.name || 'Unknown Staff',
+          courseName: canonicalCourseName(record.course || 'Unknown Course'),
+          location,
+          date: record.expiry || (record as any).allocatedTrainingDate,
+          type: 'allocated',
+        });
       }
 
       for (const record of expiredData) {
@@ -280,6 +299,14 @@ export default function TrainingCourseChecker({ isDark }: { isDark: boolean }) {
         stats.totals.expired += 1;
         const locationCounts = ensureLocation(stats, location);
         locationCounts.expired += 1;
+
+        stats.records.push({
+          staffName: record.name || 'Unknown Staff',
+          courseName: canonicalCourseName(record.course || 'Unknown Course'),
+          location,
+          date: record.expiry,
+          type: 'expired',
+        });
       }
 
       const stats = Array.from(statsMap.values()).sort((a, b) =>
@@ -356,17 +383,32 @@ export default function TrainingCourseChecker({ isDark }: { isDark: boolean }) {
     return filtered;
   }, [expiringWindow, filteredStats, minDemand, normalizedSearch, sortDir, sortKey]);
 
+  const [detailModal, setDetailModal] = useState<{
+    isOpen: boolean;
+    title: string;
+    records: DisplayRecordItem[];
+  }>({
+    isOpen: false,
+    title: '',
+    records: [],
+  });
+
   const tnaSummary = useMemo(() => {
     const totalPeople = tnaRows.reduce((sum, row) => sum + row.total, 0);
     const totalExpiring = tnaRows.reduce((sum, row) => sum + row.expiring, 0);
     const totalExpired = tnaRows.reduce((sum, row) => sum + row.expired, 0);
+    const allExpiringRecords = courseStats.flatMap(c => c.records.filter(r => r.type === 'expiring'));
+    const allExpiredRecords = courseStats.flatMap(c => c.records.filter(r => r.type === 'expired'));
+
     return {
       totalPeople,
       totalCourses: tnaRows.length,
       totalExpiring,
       totalExpired,
+      allExpiringRecords,
+      allExpiredRecords,
     };
-  }, [tnaRows]);
+  }, [tnaRows, courseStats]);
 
   const maxTotal = useMemo(() => {
     return Math.max(1, ...tnaRows.map(row => row.total));
@@ -435,12 +477,40 @@ export default function TrainingCourseChecker({ isDark }: { isDark: boolean }) {
                 <p className={`text-xs ${isDark ? 'text-gray-400' : 'text-gray-500'} mt-0.5`}>Courses With Demand</p>
               </div>
               <div className="text-center">
-                <p className="text-2xl font-bold text-yellow-600 dark:text-yellow-400">{tnaSummary.totalExpiring.toLocaleString()}</p>
-                <p className={`text-xs ${isDark ? 'text-gray-400' : 'text-gray-500'} mt-0.5`}>Expiring in Period</p>
+                <HoverPopoverCard
+                  title="Expiring in Period"
+                  records={tnaSummary.allExpiringRecords}
+                  accentColor="yellow"
+                  isDark={isDark}
+                  onCardClick={() =>
+                    setDetailModal({
+                      isOpen: true,
+                      title: 'Expiring Courses Breakdown',
+                      records: tnaSummary.allExpiringRecords,
+                    })
+                  }
+                >
+                  <p className="text-2xl font-bold text-yellow-600 dark:text-yellow-400 hover:underline">{tnaSummary.totalExpiring.toLocaleString()}</p>
+                  <p className={`text-xs ${isDark ? 'text-gray-400' : 'text-gray-500'} mt-0.5`}>Expiring in Period</p>
+                </HoverPopoverCard>
               </div>
               <div className="text-center">
-                <p className="text-2xl font-bold text-red-600 dark:text-red-400">{tnaSummary.totalExpired.toLocaleString()}</p>
-                <p className={`text-xs ${isDark ? 'text-gray-400' : 'text-gray-500'} mt-0.5`}>Currently Expired</p>
+                <HoverPopoverCard
+                  title="Currently Expired"
+                  records={tnaSummary.allExpiredRecords}
+                  accentColor="red"
+                  isDark={isDark}
+                  onCardClick={() =>
+                    setDetailModal({
+                      isOpen: true,
+                      title: 'Expired Courses Breakdown',
+                      records: tnaSummary.allExpiredRecords,
+                    })
+                  }
+                >
+                  <p className="text-2xl font-bold text-red-600 dark:text-red-400 hover:underline">{tnaSummary.totalExpired.toLocaleString()}</p>
+                  <p className={`text-xs ${isDark ? 'text-gray-400' : 'text-gray-500'} mt-0.5`}>Currently Expired</p>
+                </HoverPopoverCard>
               </div>
             </div>
 
@@ -617,6 +687,15 @@ export default function TrainingCourseChecker({ isDark }: { isDark: boolean }) {
           </div>
         )}
       </div>
+
+      {/* Click-to-expand Detail Modal */}
+      <RecordDetailModal
+        isOpen={detailModal.isOpen}
+        onClose={() => setDetailModal(prev => ({ ...prev, isOpen: false }))}
+        title={detailModal.title}
+        records={detailModal.records}
+        isDark={isDark}
+      />
     </div>
   );
 }

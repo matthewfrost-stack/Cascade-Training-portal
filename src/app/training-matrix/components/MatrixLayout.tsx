@@ -3,6 +3,7 @@ import React, { useState, useMemo } from 'react';
 import { useMatrix } from '../context/MatrixContext';
 import { GroupManagerModal } from './GroupManagerModal';
 import { Course, Staff, MatrixCell } from '../types';
+import { HoverPopoverCard, RecordDetailModal, DisplayRecordItem } from '@/app/components/RecordHoverPopoverModal';
 
 // Compact rollup component for collapsed categories
 interface SummaryCellProps {
@@ -214,24 +215,79 @@ export function MatrixLayout() {
     return result;
   }, [staff, staffDividers, searchQuery]);
 
+  const [matrixDetailModal, setMatrixDetailModal] = useState<{
+    isOpen: boolean;
+    title: string;
+    records: DisplayRecordItem[];
+  }>({
+    isOpen: false,
+    title: '',
+    records: [],
+  });
+
   const dashboardStats = useMemo(() => {
     const activeStaff = staff.filter((s: any) => !staffDividers.has(s.id));
-    if (activeStaff.length === 0 || courses.length === 0) return { compliance: 0, expired: 0, staffCount: 0, allocated: 0 };
+    if (activeStaff.length === 0 || courses.length === 0) {
+      return { compliance: 0, expired: 0, staffCount: 0, allocated: 0, expiredList: [], allocatedList: [] };
+    }
     let total = 0; let compliant = 0; let expired = 0; let allocated = 0;
+    const expiredList: DisplayRecordItem[] = [];
+    const allocatedList: DisplayRecordItem[] = [];
+
     activeStaff.forEach((m: any) => {
       courses.forEach((c: any) => {
         total++;
         const cell = matrixData[m.id]?.[c.id];
-        if (cell?.status === 'allocated' || cell?.status === 'booked' || cell?.status === 'awaiting') allocated++;
+        if (cell?.status === 'allocated' || cell?.status === 'booked' || cell?.status === 'awaiting') {
+          allocated++;
+          allocatedList.push({
+            staffId: m.id,
+            staffName: m.name,
+            courseId: c.id,
+            courseName: c.name,
+            status: cell.status,
+            date: cell.completion_date || undefined,
+            type: 'allocated',
+          });
+        }
         else if (cell?.status === 'na' || cell?.status === 'not_yet_due') compliant++;
         else if (cell?.completion_date) {
           const s = checkStatus(cell, c);
           if (s === 'valid' || s === 'expiring') compliant++;
-          else expired++;
-        } else expired++;
+          else {
+            expired++;
+            expiredList.push({
+              staffId: m.id,
+              staffName: m.name,
+              courseId: c.id,
+              courseName: c.name,
+              status: 'expired',
+              date: cell.completion_date,
+              type: 'expired',
+            });
+          }
+        } else {
+          expired++;
+          expiredList.push({
+            staffId: m.id,
+            staffName: m.name,
+            courseId: c.id,
+            courseName: c.name,
+            status: 'missing',
+            date: undefined,
+            type: 'missing',
+          });
+        }
       });
     });
-    return { compliance: total > 0 ? Math.round((compliant / total) * 100) : 0, expired, staffCount: activeStaff.length, allocated };
+    return {
+      compliance: total > 0 ? Math.round((compliant / total) * 100) : 0,
+      expired,
+      staffCount: activeStaff.length,
+      allocated,
+      expiredList,
+      allocatedList,
+    };
   }, [staff, courses, matrixData, staffDividers]);
 
   const toggleCategory = (cat: string) => setCollapsedCategories(prev => { const n = new Set(prev); n.has(cat) ? n.delete(cat) : n.add(cat); return n; });
@@ -305,29 +361,60 @@ export function MatrixLayout() {
             {/* Metrics Row */}
             {!loading && (
               <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-                {[
-                  {
-                    label: 'Site Compliance',
-                    value: `${dashboardStats.compliance}%`,
-                    sub: dashboardStats.compliance >= 80 ? 'Good standing' : 'Needs attention',
-                    accent: dashboardStats.compliance >= 90 ? 'bg-emerald-500' : dashboardStats.compliance >= 75 ? 'bg-amber-500' : 'bg-red-500',
-                    bar: true
-                  },
-                  { label: 'Action Required', value: dashboardStats.expired, sub: dashboardStats.expired > 0 ? 'Expired records' : 'Fully compliant!', accent: '', bar: false },
-                  { label: 'Total Staff', value: dashboardStats.staffCount, sub: 'Active at this site', accent: '', bar: false },
-                  { label: 'Allocated', value: dashboardStats.allocated, sub: 'Upcoming sessions', accent: '', bar: false },
-                ].map((card, idx) => (
-                  <div key={idx} className={`p-5 rounded-2xl border shadow-sm ${panelBg}`}>
-                    <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">{card.label}</p>
-                    <p className={`text-3xl font-black tracking-tight mt-1 ${idx === 1 && dashboardStats.expired > 0 ? 'text-red-500' : ''}`}>{card.value}</p>
-                    <p className="text-[10px] text-slate-500 mt-1">{card.sub}</p>
-                    {card.bar && (
-                      <div className={`w-full h-1.5 rounded-full mt-3 overflow-hidden ${isDark ? 'bg-gray-800' : 'bg-slate-200'}`}>
-                        <div className={`h-full rounded-full transition-all duration-500 ${card.accent}`} style={{ width: `${dashboardStats.compliance}%` }} />
-                      </div>
-                    )}
+                <div className={`p-5 rounded-2xl border shadow-sm ${panelBg}`}>
+                  <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">Site Compliance</p>
+                  <p className="text-3xl font-black tracking-tight mt-1">{dashboardStats.compliance}%</p>
+                  <p className="text-[10px] text-slate-500 mt-1">{dashboardStats.compliance >= 80 ? 'Good standing' : 'Needs attention'}</p>
+                  <div className={`w-full h-1.5 rounded-full mt-3 overflow-hidden ${isDark ? 'bg-gray-800' : 'bg-slate-200'}`}>
+                    <div className={`h-full rounded-full transition-all duration-500 ${dashboardStats.compliance >= 90 ? 'bg-emerald-500' : dashboardStats.compliance >= 75 ? 'bg-amber-500' : 'bg-red-500'}`} style={{ width: `${dashboardStats.compliance}%` }} />
                   </div>
-                ))}
+                </div>
+
+                <HoverPopoverCard
+                  title="Action Required Records"
+                  records={dashboardStats.expiredList}
+                  accentColor="red"
+                  isDark={isDark}
+                  onCardClick={() =>
+                    setMatrixDetailModal({
+                      isOpen: true,
+                      title: 'Action Required (Expired / Missing Records)',
+                      records: dashboardStats.expiredList,
+                    })
+                  }
+                >
+                  <div className={`p-5 rounded-2xl border shadow-sm ${panelBg} hover:border-red-500/50 transition-colors`}>
+                    <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">Action Required</p>
+                    <p className={`text-3xl font-black tracking-tight mt-1 ${dashboardStats.expired > 0 ? 'text-red-500' : ''}`}>{dashboardStats.expired}</p>
+                    <p className="text-[10px] text-slate-500 mt-1">{dashboardStats.expired > 0 ? 'Expired records (Click to expand)' : 'Fully compliant!'}</p>
+                  </div>
+                </HoverPopoverCard>
+
+                <div className={`p-5 rounded-2xl border shadow-sm ${panelBg}`}>
+                  <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">Total Staff</p>
+                  <p className="text-3xl font-black tracking-tight mt-1">{dashboardStats.staffCount}</p>
+                  <p className="text-[10px] text-slate-500 mt-1">Active at this site</p>
+                </div>
+
+                <HoverPopoverCard
+                  title="Allocated Training Sessions"
+                  records={dashboardStats.allocatedList}
+                  accentColor="amber"
+                  isDark={isDark}
+                  onCardClick={() =>
+                    setMatrixDetailModal({
+                      isOpen: true,
+                      title: 'Allocated Training Sessions',
+                      records: dashboardStats.allocatedList,
+                    })
+                  }
+                >
+                  <div className={`p-5 rounded-2xl border shadow-sm ${panelBg} hover:border-amber-500/50 transition-colors`}>
+                    <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">Allocated</p>
+                    <p className="text-3xl font-black tracking-tight mt-1">{dashboardStats.allocated}</p>
+                    <p className="text-[10px] text-slate-500 mt-1">Upcoming sessions (Click to expand)</p>
+                  </div>
+                </HoverPopoverCard>
               </div>
             )}
 
@@ -742,6 +829,16 @@ export function MatrixLayout() {
           onClose={() => setGroupModal(null)}
         />
       )}
+
+      {/* Click-to-expand Detail Modal */}
+      <RecordDetailModal
+        isOpen={matrixDetailModal.isOpen}
+        onClose={() => setMatrixDetailModal(prev => ({ ...prev, isOpen: false }))}
+        title={matrixDetailModal.title}
+        records={matrixDetailModal.records}
+        isDark={isDark}
+        onSelectStaff={(staffName) => setSearchQuery(staffName)}
+      />
     </div>
   );
 }
