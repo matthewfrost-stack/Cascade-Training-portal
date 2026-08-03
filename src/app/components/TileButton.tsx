@@ -49,7 +49,7 @@ export default function TileButton({
       type="button"
       onClick={onClick}
       disabled={disabled}
-      className={`group text-left border shadow-lg transition-all focus-visible:outline-none focus-visible:ring-2 disabled:opacity-60 disabled:cursor-not-allowed flex flex-col justify-between ${
+      className={`group text-left border shadow-lg transition-all focus-visible:outline-none focus-visible:ring-2 disabled:opacity-60 disabled:cursor-not-allowed flex h-full w-full flex-col justify-between ${
         sizeStyles[size]
       } bg-white border-slate-200 hover:bg-slate-50 dark:bg-slate-950/40 dark:border-slate-800 dark:hover:bg-slate-950/60 ${
         accentStyles[accent]

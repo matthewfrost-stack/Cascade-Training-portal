@@ -1,0 +1,26 @@
+# Ignore build outputs & dependencies
+node_modules/
+dist/
+.next/
+build/
+
+# Ignore large media assets
+*.mp4
+*.webm
+*.mp3
+public/assets/videos/
+
+# Ignore log files & coverage reports
+*.log
+coverage/
+
+# Ignore git internals
+.git/
+
+# Ignore Supabase local dev
+.supabase/
+
+# Ignore environment secrets
+.env
+.env.local
+.env.*.local

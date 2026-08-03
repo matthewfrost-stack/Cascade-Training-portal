@@ -32,6 +32,8 @@ export function useCurrentUserProfile(): UseCurrentUserProfileState {
   const loadProfile = useCallback(async () => {
     let session: {
       access_token?: string | null;
+      refresh_token?: string | null;
+      expires_at?: number | null;
       user?: {
         id: string;
         email?: string | null;
@@ -48,19 +50,49 @@ export function useCurrentUserProfile(): UseCurrentUserProfileState {
       };
     } | null = null;
 
+    const setFallbackProfile = (user: typeof sessionUser | null) => {
+      if (!user) {
+        setProfile(null);
+        setIsAuthenticated(false);
+        return;
+      }
+
+      setIsAuthenticated(true);
+      setProfile({
+        id: user.id,
+        full_name: user.user_metadata?.full_name || null,
+        email: user.email || null,
+        phone_number: null,
+        avatar_path: null,
+        role_tier: null,
+        password_needs_change: null,
+      });
+    };
+
     try {
-      const { data } = await supabase.auth.getSession();
-      session = data.session || null;
+      const { data: sessionData } = await supabase.auth.getSession();
+      session = sessionData.session || null;
       sessionUser = session?.user || null;
+
+      const isExpired = Boolean(session?.expires_at && session.expires_at <= Math.floor(Date.now() / 1000) + 30);
+      if (isExpired && session?.refresh_token) {
+        const { data: refreshedSessionData, error: refreshError } = await supabase.auth.refreshSession();
+        if (refreshError) {
+          console.warn('Failed to refresh Supabase session:', refreshError);
+        } else if (refreshedSessionData.session) {
+          session = refreshedSessionData.session;
+          sessionUser = refreshedSessionData.session.user || sessionUser;
+        }
+      }
 
       const controller = new AbortController();
       const timeoutId = setTimeout(() => controller.abort(), 8000);
 
       try {
-        const response = await fetch("/api/profile", {
-          method: "GET",
-          cache: "no-store",
-          credentials: "include",
+        const response = await fetch('/api/profile', {
+          method: 'GET',
+          cache: 'no-store',
+          credentials: 'include',
           signal: controller.signal,
           headers: session?.access_token
             ? {
@@ -77,9 +109,10 @@ export function useCurrentUserProfile(): UseCurrentUserProfileState {
         } catch {
           const body = await response
             .text()
-            .catch(() => "<unable to read response body>");
+            .catch(() => '<unable to read response body>');
           throw new Error(`Invalid JSON response from profile endpoint: ${body}`);
         }
+
         if (response.ok) {
           const profileData = (result?.profile || null) as CurrentUserProfile | null;
           if (profileData) {
@@ -89,66 +122,55 @@ export function useCurrentUserProfile(): UseCurrentUserProfileState {
           }
         }
 
-        // If profile API fails but we have a session, fall back to session data
-        // This prevents losing the user when the API temporarily fails
-        if (sessionUser) {
-          setIsAuthenticated(true);
-          setProfile({
-            id: sessionUser.id,
-            full_name: sessionUser.user_metadata?.full_name || null,
-            email: sessionUser.email || null,
-            phone_number: null,
-            avatar_path: null,
-            role_tier: null,
-            password_needs_change: null,
-          });
+        if (response.status === 401 || response.status === 403) {
+          if (session?.refresh_token) {
+            const { data: refreshedSessionData, error: refreshError } = await supabase.auth.refreshSession();
+            if (!refreshError && refreshedSessionData.session?.access_token) {
+              const retryResponse = await fetch('/api/profile', {
+                method: 'GET',
+                cache: 'no-store',
+                credentials: 'include',
+                signal: controller.signal,
+                headers: {
+                  Authorization: `Bearer ${refreshedSessionData.session.access_token}`,
+                },
+              });
+
+              if (retryResponse.ok) {
+                const retryResult = await retryResponse.json().catch(() => null);
+                const retryProfileData = (retryResult?.profile || null) as CurrentUserProfile | null;
+                if (retryProfileData) {
+                  setProfile(retryProfileData);
+                  setIsAuthenticated(true);
+                  return;
+                }
+              }
+            }
+          }
+
+          console.warn('Profile API returned unauthorized; preserving session auth state.');
+          setFallbackProfile(sessionUser);
           return;
         }
 
-        setProfile(null);
-        setIsAuthenticated(false);
+        setFallbackProfile(sessionUser);
       } catch (fetchError) {
         clearTimeout(timeoutId);
         if (fetchError instanceof Error && fetchError.name === 'AbortError') {
           throw new Error('Profile request timed out');
         }
-        // If fetch fails but we have session user, keep them logged in
+
         if (sessionUser) {
-          setIsAuthenticated(true);
-          setProfile({
-            id: sessionUser.id,
-            full_name: sessionUser.user_metadata?.full_name || null,
-            email: sessionUser.email || null,
-            phone_number: null,
-            avatar_path: null,
-            role_tier: null,
-            password_needs_change: null,
-          });
-          console.warn("Profile API failed, using fallback session data", fetchError);
+          console.warn('Profile API failed, using fallback session data', fetchError);
+          setFallbackProfile(sessionUser);
           return;
         }
+
         throw fetchError;
       }
     } catch (error) {
-      console.error("Error loading current user profile:", error);
-      // If there's an error but we have a session user, keep them authenticated
-      // This prevents losing the user when the profile API fails
-      if (sessionUser) {
-        setIsAuthenticated(true);
-        setProfile({
-          id: sessionUser.id,
-          full_name: sessionUser.user_metadata?.full_name || null,
-          email: sessionUser.email || null,
-          phone_number: null,
-          avatar_path: null,
-          role_tier: null,
-          password_needs_change: null,
-        });
-        return;
-      }
-
-      setProfile(null);
-      setIsAuthenticated(false);
+      console.error('Error loading current user profile:', error);
+      setFallbackProfile(sessionUser);
     }
   }, []);
 

@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import MatrixSyncModal from '@/app/components/MatrixSyncModal';
 import { hasPermission } from '@/lib/permissions';
 import { useCurrentUserProfile } from '@/lib/useCurrentUserProfile';
+import { supabase } from '@/lib/supabase';
 
 export default function DashboardPage() {
   const router = useRouter();
@@ -14,26 +15,47 @@ export default function DashboardPage() {
   const userRole = profile?.role_tier ?? null;
 
   useEffect(() => {
-    checkTheme();
-    const runAuthCheck = async () => {
-      try {
-        if (!isAuthenticated && !loading) {
-          router.push('/login');
-          return;
-        }
+    let active = true;
 
-        if (profile?.password_needs_change) {
-          router.push('/auth/change-password-required');
-          return;
-        }
-      } catch (error) {
-        console.error('Auth check error:', error);
-        router.push('/login');
+    const runAuthCheck = async () => {
+      if (!active || loading) return;
+
+      const {
+        data: { session },
+      } = await supabase.auth.getSession();
+
+      if (!active) return;
+
+      if (!session?.user) {
+        router.replace('/login');
+        return;
+      }
+
+      if (!isAuthenticated) {
+        window.setTimeout(async () => {
+          if (!active) return;
+
+          const { data: fallbackSessionData } = await supabase.auth.getSession();
+          if (!active) return;
+
+          if (!fallbackSessionData.session?.user) {
+            router.replace('/login');
+          }
+        }, 1000);
+        return;
+      }
+
+      if (profile?.password_needs_change) {
+        router.replace('/auth/change-password-required');
       }
     };
 
-    runAuthCheck();
-  }, [isAuthenticated, loading, profile, router]);
+    void runAuthCheck();
+
+    return () => {
+      active = false;
+    };
+  }, [isAuthenticated, loading, profile?.password_needs_change, router]);
 
   useEffect(() => {
     const handleThemeChange = (event: Event) => {
@@ -44,13 +66,6 @@ export default function DashboardPage() {
     window.addEventListener('themeChange', handleThemeChange);
     return () => window.removeEventListener('themeChange', handleThemeChange);
   }, []);
-
-  const checkTheme = (): void => {
-    if (typeof window !== 'undefined') {
-      const isDarkMode = document.documentElement.classList.contains('dark');
-      setIsDark(isDarkMode);
-    }
-  };
 
   if (loading) {
     return (

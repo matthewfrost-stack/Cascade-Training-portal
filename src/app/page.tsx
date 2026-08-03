@@ -66,21 +66,14 @@ export default function LandingPage() {
               </p>
             </div>
 
-            <div className={`mt-8 grid gap-4 md:gap-6 ${canAdmin ? 'md:grid-cols-3' : 'md:grid-cols-2'}`}>
+            <div className={`mt-8 grid gap-4 md:gap-6 items-stretch ${canAdmin ? 'md:grid-cols-3' : 'md:grid-cols-2'}`}>
               <TileButton
                 title="Training"
                 description="Open the training dashboard."
                 emoji="🎓"
                 showChevron
                 onClick={() => router.push('/dashboard')}
-              />
-
-              <TileButton
-                title="Template Gallery"
-                description="Search, view, print, or download templates."
-                emoji="📄"
-                showChevron
-                onClick={() => router.push('/templates')}
+                className="min-h-[200px] md:min-h-[220px] !p-8 md:!p-10"
               />
 
               {canAdmin && (
@@ -90,6 +83,7 @@ export default function LandingPage() {
                   emoji="🛠️"
                   showChevron
                   onClick={() => router.push('/admin-tools')}
+                  className="min-h-[200px] md:min-h-[220px] !p-8 md:!p-10"
                 />
               )}
             </div>

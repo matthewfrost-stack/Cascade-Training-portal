@@ -251,7 +251,22 @@ export default function FixedHeader() {
           setNotifications(relevantNotifications.slice(0, 20));
         }
       } catch (error) {
-        console.error('Error loading notifications:', error);
+        const errorMessage =
+          error instanceof Error
+            ? error.message
+            : typeof error === 'string'
+            ? error
+            : error
+            ? JSON.stringify(error)
+            : 'Unknown error';
+        const isMissingNotificationsTable = /PGRST205|Could not find the table|does not exist/i.test(errorMessage);
+
+        if (isMissingNotificationsTable) {
+          if (active) setNotifications([]);
+          return;
+        }
+
+        console.error('Error loading notifications:', errorMessage, error);
         if (active) setNotifications([]);
       } finally {
         if (active) setNotificationsLoading(false);
