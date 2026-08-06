@@ -1,95 +1,162 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
+import MatrixSyncModal from '@/app/components/MatrixSyncModal';
 import TileButton from '@/app/components/TileButton';
-import { supabase } from '@/lib/supabase';
 import { hasPermission } from '@/lib/permissions';
+import { useCurrentUserProfile } from '@/lib/useCurrentUserProfile';
+import { supabase } from '@/lib/supabase';
 
 export default function LandingPage() {
   const router = useRouter();
   const [isDark, setIsDark] = useState(true);
-  const [userRole, setUserRole] = useState<string | null>(null);
+  const [showMatrixSyncModal, setShowMatrixSyncModal] = useState(false);
+  const { profile, loading, isAuthenticated } = useCurrentUserProfile();
+  const userRole = profile?.role_tier ?? null;
 
   useEffect(() => {
-    const checkTheme = () => {
-      setIsDark(document.documentElement.classList.contains('dark'));
-    };
+    let active = true;
 
-    checkTheme();
-    window.addEventListener('themeChange', checkTheme);
-    window.addEventListener('storage', checkTheme);
-    return () => {
-      window.removeEventListener('themeChange', checkTheme);
-      window.removeEventListener('storage', checkTheme);
-    };
-  }, []);
+    const runAuthCheck = async () => {
+      if (!active || loading) return;
 
-  useEffect(() => {
-    const loadRole = async () => {
-      try {
-        const {
-          data: { user },
-        } = await supabase.auth.getUser();
-        if (!user) return;
-        const { data: profile } = await supabase.from('profiles').select('*').eq('id', user.id).single();
-        const role = (profile?.role_tier ?? null) as string | null;
-        setUserRole(role);
-      } catch (error) {
-        console.error('Error loading landing page role:', error);
-        setUserRole(null);
+      const {
+        data: { session },
+      } = await supabase.auth.getSession();
+
+      if (!active) return;
+
+      if (!session?.user) {
+        router.replace('/login');
+        return;
+      }
+
+      if (!isAuthenticated) {
+        window.setTimeout(async () => {
+          if (!active) return;
+
+          const { data: fallbackSessionData } = await supabase.auth.getSession();
+          if (!active) return;
+
+          if (!fallbackSessionData.session?.user) {
+            router.replace('/login');
+          }
+        }, 1000);
+        return;
+      }
+
+      if (profile?.password_needs_change) {
+        router.replace('/auth/change-password-required');
       }
     };
-    loadRole();
-  }, [router]);
 
-  const canAdmin = hasPermission(userRole, 'STAFF_MANAGEMENT', 'canView');
+    void runAuthCheck();
+
+    return () => {
+      active = false;
+    };
+  }, [isAuthenticated, loading, profile?.password_needs_change, router]);
+
+  useEffect(() => {
+    const handleThemeChange = (event: Event) => {
+      const themeEvent = event as CustomEvent<{ isDark: boolean }>;
+      setIsDark(themeEvent.detail.isDark);
+    };
+
+    window.addEventListener('themeChange', handleThemeChange);
+    return () => window.removeEventListener('themeChange', handleThemeChange);
+  }, []);
+
+  if (loading) {
+    return (
+      <div className={`min-h-screen flex items-center justify-center transition-colors duration-500 ${isDark ? 'bg-gray-900' : 'bg-gray-50'}`}>
+        <div className="text-center">
+          <div className="inline-block animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600"></div>
+          <p className={`mt-4 ${isDark ? 'text-gray-200' : 'text-gray-800'}`}>Loading portal...</p>
+        </div>
+      </div>
+    );
+  }
 
   return (
-    <main
-      style={{ backgroundColor: isDark ? '#0f172a' : '#f1f5f9' }}
-      className="min-h-screen px-4 pb-10 pt-28 sm:pt-10 transition-colors duration-300"
-    >
-      <div className="max-w-5xl mx-auto">
-        <div
-          style={{
-            backgroundColor: isDark ? '#111827' : '#ffffff',
-            borderColor: isDark ? '#1f2937' : '#e2e8f0',
-          }}
-          className="rounded-[32px] border shadow-2xl overflow-hidden"
-        >
-          <div className="p-6 md:p-10">
-            <div className="text-center sm:text-left">
-              <h1 className="text-2xl md:text-4xl font-black tracking-tight">Cascade Portal</h1>
-              <p className={`mt-2 text-sm md:text-base ${isDark ? 'text-slate-300' : 'text-slate-600'}`}>
-                Choose where you want to go.
+    <div className={`min-h-screen transition-colors duration-500 ${isDark ? 'bg-gray-900' : 'bg-gray-50'}`}>
+      {/* Main Content Header */}
+      <div className={`border-b transition-colors duration-300 ${isDark ? 'border-gray-800 bg-gray-800' : 'border-gray-200 bg-white'}`}>
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 sm:py-10">
+          <div className="flex justify-between items-center">
+            <div>
+              <h1 className={`text-3xl font-bold transition-colors duration-300 ${isDark ? 'text-white' : 'text-gray-900'}`}>
+                Training Portal
+              </h1>
+              <p className={`mt-1 text-sm ${isDark ? 'text-gray-400' : 'text-gray-600'}`}>
+                Manage staff training, course compliance, and calendar bookings
               </p>
-            </div>
-
-            <div className={`mt-8 grid gap-4 md:gap-6 items-stretch ${canAdmin ? 'md:grid-cols-3' : 'md:grid-cols-2'}`}>
-              <TileButton
-                title="Training"
-                description="Open the training dashboard."
-                emoji="🎓"
-                showChevron
-                onClick={() => router.push('/dashboard')}
-                className="min-h-[200px] md:min-h-[220px] !p-8 md:!p-10"
-              />
-
-              {canAdmin && (
-                <TileButton
-                  title="Admin"
-                  description="Manage staff and system tools."
-                  emoji="🛠️"
-                  showChevron
-                  onClick={() => router.push('/admin-tools')}
-                  className="min-h-[200px] md:min-h-[220px] !p-8 md:!p-10"
-                />
-              )}
             </div>
           </div>
         </div>
       </div>
-    </main>
+
+      {/* Main Content Apps */}
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-10 sm:py-12">
+        <div className="mb-8">
+          <h2 className={`text-2xl font-bold transition-colors duration-300 ${isDark ? 'text-gray-100' : 'text-gray-900'}`}>
+            Select an App
+          </h2>
+          <p className={`mt-2 transition-colors duration-300 ${isDark ? 'text-gray-400' : 'text-gray-600'}`}>
+            Choose which training tool you&apos;d like to access
+          </p>
+        </div>
+
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 items-stretch">
+          {hasPermission(userRole, 'STAFF_MANAGEMENT', 'canView') && (
+            <TileButton
+              title="Matrix Sync"
+              description="Sync via Atlas upload or a full matrix CSV per location."
+              emoji="📥"
+              accent="blue"
+              actionText="Open Sync"
+              onClick={() => setShowMatrixSyncModal(true)}
+            />
+          )}
+
+          {/* Training Matrix Card */}
+          <TileButton
+            title="Training Matrix"
+            description="View all staff training records, completion dates, and manage certification expiry dates across all locations."
+            emoji="📊"
+            accent="purple"
+            actionText="Open App"
+            onClick={() => router.push('/training-matrix')}
+          />
+
+          {/* Course Expiry Checker Card */}
+          <TileButton
+            title="Course Expiry Checker"
+            description="Track staff training certifications, expiry dates, and manage course compliance across your organization."
+            emoji="📅"
+            accent="blue"
+            actionText="Open App"
+            onClick={() => router.push('/apps/expiry-checker')}
+          />
+
+          {/* Booking Calendar Card */}
+          <TileButton
+            title="Booking Calendar"
+            description="Schedule training events, manage staff bookings, and track attendance for courses."
+            emoji="📆"
+            accent="emerald"
+            actionText="Open App"
+            onClick={() => router.push('/apps/booking-calendar')}
+          />
+        </div>
+      </div>
+
+      {showMatrixSyncModal && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <MatrixSyncModal onClose={() => setShowMatrixSyncModal(false)} />
+        </div>
+      )}
+    </div>
   );
 }

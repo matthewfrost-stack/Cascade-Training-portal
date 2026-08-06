@@ -123,18 +123,25 @@ export default function CourseExpiryChecker({ isDark }: { isDark: boolean }) {
   const checkAuth = async (): Promise<void> => {
     try {
       const {
-        data: { user: authUser },
-      } = await supabase.auth.getUser();
+        data: { session },
+      } = await supabase.auth.getSession();
 
-      if (!authUser) {
+      if (session?.user) {
+        setUser(session.user);
         return;
       }
 
-      setUser(authUser);
+      const {
+        data: { user: authUser },
+      } = await supabase.auth.getUser();
+
+      if (authUser) {
+        setUser(authUser);
+      }
     } catch (error) {
       console.error('Auth error:', error);
     }
-  }
+  };
 
   async function fetchLocations() {
     try {

@@ -245,23 +245,42 @@ export function useCurrentUserProfile(): UseCurrentUserProfileState {
   useEffect(() => {
     let mounted = true;
 
-    const handleVisibilityChange = async () => {
-      if (document.visibilityState !== 'visible' || !mounted) return;
+    const handleFocusOrVisibility = async () => {
+      if (typeof document !== 'undefined' && document.visibilityState !== 'visible') return;
+      if (!mounted) return;
       if (!hasBootstrappedRef.current || lastRouteWasAuthRef.current) return;
+
+      // Silently re-verify session and profile state when tab/window gains focus
       if (!isAuthenticated || !profile || profile.role_tier === null) {
         setLoading(true);
         await loadProfile();
         if (mounted) {
           setLoading(false);
         }
+      } else {
+        await loadProfile();
       }
     };
 
-    document.addEventListener('visibilitychange', handleVisibilityChange);
+    const handleStorageChange = (e: StorageEvent) => {
+      if (e.key && e.key.includes('auth-token')) {
+        handleFocusOrVisibility();
+      }
+    };
+
+    if (typeof window !== 'undefined') {
+      document.addEventListener('visibilitychange', handleFocusOrVisibility);
+      window.addEventListener('focus', handleFocusOrVisibility);
+      window.addEventListener('storage', handleStorageChange);
+    }
 
     return () => {
       mounted = false;
-      document.removeEventListener('visibilitychange', handleVisibilityChange);
+      if (typeof window !== 'undefined') {
+        document.removeEventListener('visibilitychange', handleFocusOrVisibility);
+        window.removeEventListener('focus', handleFocusOrVisibility);
+        window.removeEventListener('storage', handleStorageChange);
+      }
     };
   }, [isAuthenticated, profile, loadProfile]);
 

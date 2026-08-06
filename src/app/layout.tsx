@@ -38,8 +38,8 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
           <UpdateNotification />
           <FixedHeader />
           <SlideOutNav />
-          {/* Main content area with top padding for fixed header */}
-          <div id="app-scroll" className="min-h-screen pt-16">
+          {/* Main content area with top padding for fixed header and left padding for side emoji rail */}
+          <div id="app-scroll" className="min-h-screen pt-14 pl-16">
             {children}
           </div>
         </NavDrawerProvider>

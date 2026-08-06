@@ -327,16 +327,18 @@ export default function FixedHeader() {
 
   return (
     <header className="fixed top-0 left-0 right-0 z-50 border-b border-slate-200 bg-white/95 shadow-sm backdrop-blur dark:border-slate-800 dark:bg-slate-950/95">
-      <div className="flex h-14 items-center justify-between gap-3 px-4 sm:px-6">
-        <UniformButton
-          variant="secondary"
-          className="no-ui-motion border p-2 shadow-sm"
-          onClick={toggle}
-          title="Menu"
-          aria-label="Menu"
-        >
-          <Icon name="menu" className="h-6 w-6" />
-        </UniformButton>
+      <div className="flex h-14 items-center justify-between pr-4 sm:pr-6">
+        <div className="w-16 flex items-center justify-center shrink-0">
+          <button
+            type="button"
+            onClick={toggle}
+            title="Menu"
+            aria-label="Menu"
+            className="w-10 h-10 rounded-xl border-2 border-transparent hover:bg-slate-100 dark:hover:bg-slate-900 flex items-center justify-center text-slate-700 dark:text-slate-300 transition-all duration-200 opacity-80 hover:opacity-100"
+          >
+            <Icon name="menu" className="h-6 w-6 stroke-[2.5]" />
+          </button>
+        </div>
 
         <div className="flex-1" />
 

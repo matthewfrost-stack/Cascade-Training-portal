@@ -85,26 +85,26 @@ Permissions are declared centrally in `src/lib/permissions.ts` and checked every
 ### Theme
 The app supports dark and light modes. The active theme is stored as a class on `<html>` (`.dark`). Components listen for a custom `themeChange` DOM event to re-render on toggle. Dark mode is the default.
 
+### Auth & Session Synchronization Across Windows/Tabs
+Client auth state and role permissions are managed via `useCurrentUserProfile()` (`src/lib/useCurrentUserProfile.ts`).
+- **Session Auto-Refresh**: Tokens approaching expiration are automatically refreshed via `supabase.auth.refreshSession()`.
+- **Window/Tab Focus Sync**: Subscribes to `visibilitychange`, `focus`, and `storage` events to ensure user role permissions and access rights remain active when switching between browser windows and tabs without getting reset or lost.
+- **Graceful Fallbacks**: If the `/api/profile` endpoint encounters transient network errors, active session state is preserved so permission checks do not crash or flash "Access Denied".
+
 ---
 
 ## 5. Key Pages
 
-### Home (`/`)
+### Home & Training Dashboard (`/` & `/dashboard`)
 `src/app/page.tsx`
 
-The landing page after login. Displays tile buttons to navigate to:
-- **Training** → `/dashboard`
-- **Template Gallery** → `/templates`
-- **Admin** → `/admin-tools` _(admin-only tile)_
-
----
-
-### Dashboard (`/dashboard`)
-`src/app/dashboard/page.tsx`
-
-The Training hub. Shows a grid of cards leading to the four main training tools:
-1. **Matrix Sync** – opens an import modal (admin only)
+The root landing page after login is the **Training Dashboard**. It displays a responsive grid of cards leading directly to all core training tools:
+1. **Matrix Sync** – opens an import modal (admin view)
 2. **Training Matrix** – `/training-matrix`
+3. **Course Expiry Checker** – `/apps/expiry-checker`
+4. **Booking Calendar** – `/apps/booking-calendar`
+
+Navigation across all pages includes an **always-visible side emoji strip** on the left screen edge (🏠 Home, 📊 Matrix, 📆 Calendar, 📅 Expiry, 🛠️ Admin) and compact drawer buttons when expanded.
 3. **Course Expiry Checker** – `/apps/expiry-checker`
 4. **Booking Calendar** – `/apps/booking-calendar`
 

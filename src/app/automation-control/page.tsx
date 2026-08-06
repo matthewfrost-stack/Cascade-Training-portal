@@ -13,6 +13,14 @@ export default function AutomationControlPage() {
     const runAuthCheck = async () => {
       try {
         const {
+          data: { session },
+        } = await supabase.auth.getSession();
+
+        if (session?.user) {
+          return;
+        }
+
+        const {
           data: { user },
         } = await supabase.auth.getUser();
 

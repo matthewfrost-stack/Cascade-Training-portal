@@ -83,11 +83,15 @@ export default function AnalyticsDashboard() {
 
   async function checkAuth() {
     try {
-      const { data: { user: currentUser } } = await supabase.auth.getUser();
-      if (!currentUser) {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (session?.user) {
+        setUser(session.user);
         return;
       }
-      setUser(currentUser);
+      const { data: { user: currentUser } } = await supabase.auth.getUser();
+      if (currentUser) {
+        setUser(currentUser);
+      }
     } catch (err) {
       console.error("Error checking auth:", err);
     }

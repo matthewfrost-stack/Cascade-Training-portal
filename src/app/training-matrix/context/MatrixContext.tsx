@@ -267,19 +267,27 @@ export function MatrixProvider({ children }: { children: React.ReactNode }) {
 
   const checkAuth = async (): Promise<void> => {
     try {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) {
+      let activeUser = null;
+      const { data: { session } } = await supabase.auth.getSession();
+      if (session?.user) {
+        activeUser = session.user;
+      } else {
+        const { data: { user } } = await supabase.auth.getUser();
+        activeUser = user;
+      }
+
+      if (!activeUser) {
         // Middleware handles unauthenticated redirects — do not push to /login
         // from the client side as it creates a redirect loop (middleware bounces
         // authenticated sessions back to / before the client token refreshes).
         setLoading(false);
         return;
       }
-      setUser(user);
+      setUser(activeUser);
       const { data: profile } = await supabase
         .from('profiles')
         .select('role_tier')
-        .eq('id', user.id)
+        .eq('id', activeUser.id)
         .single();
       setUserRole(profile?.role_tier || 'staff');
     } catch (error) {
