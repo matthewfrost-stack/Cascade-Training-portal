@@ -1,6 +1,6 @@
 'use client';
 
-import { Fragment, useEffect, useMemo, useState } from 'react';
+import { Fragment, useEffect, useMemo, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import UniformButton from './UniformButton';
 import BackButton from '@/app/components/BackButton';
@@ -131,6 +131,95 @@ async function getAuthHeaders(): Promise<Record<string, string>> {
   return { Authorization: `Bearer ${token}` };
 }
 
+function formatDate(value?: string): string {
+  if (!value) return '';
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return value;
+  return date.toLocaleDateString('en-GB', { day: '2-digit', month: '2-digit', year: 'numeric' });
+}
+
+/**
+ * Icon + count in the location breakdown that reveals who is behind the number
+ * on hover. Positioned fixed so the panel isn't clipped by the table's
+ * horizontal scroll container.
+ */
+function SymbolHoverCount({
+  icon,
+  count,
+  records,
+  title,
+  toneClass,
+  dateLabel,
+  isDark,
+}: {
+  icon: React.ReactNode;
+  count: number;
+  records: DisplayRecordItem[];
+  title: string;
+  toneClass: string;
+  dateLabel: string;
+  isDark: boolean;
+}) {
+  const anchorRef = useRef<HTMLSpanElement | null>(null);
+  const [coords, setCoords] = useState<{ top: number; left: number } | null>(null);
+
+  const openTooltip = () => {
+    const rect = anchorRef.current?.getBoundingClientRect();
+    if (!rect) return;
+    const centre = rect.left + rect.width / 2;
+    setCoords({
+      top: rect.bottom + 8,
+      left: Math.min(Math.max(centre, 140), window.innerWidth - 140),
+    });
+  };
+
+  const preview = records.slice(0, 12);
+  const remaining = records.length - preview.length;
+
+  return (
+    <span
+      ref={anchorRef}
+      onMouseEnter={openTooltip}
+      onMouseLeave={() => setCoords(null)}
+      className={`inline-flex items-center gap-0.5 ${toneClass} ${records.length > 0 ? 'cursor-help' : ''}`}
+    >
+      {icon}
+      {count}
+      {coords && records.length > 0 && (
+        <span
+          style={{ position: 'fixed', top: coords.top, left: coords.left, transform: 'translateX(-50%)' }}
+          className={`z-[9999] block w-64 rounded-xl border p-3 text-left shadow-2xl pointer-events-none ${
+            isDark ? 'bg-slate-900 border-slate-700 text-slate-100' : 'bg-white border-slate-200 text-slate-800'
+          }`}
+        >
+          <span
+            className={`block text-[10px] font-black uppercase tracking-wider pb-1.5 mb-1.5 border-b ${
+              isDark ? 'border-slate-700' : 'border-slate-200'
+            }`}
+          >
+            {title} · {records.length}
+          </span>
+          <span className="block max-h-52 overflow-hidden">
+            {preview.map((record, idx) => (
+              <span key={idx} className="flex items-baseline justify-between gap-2 text-[11px] py-0.5">
+                <span className="truncate font-semibold">{record.staffName}</span>
+                {record.date && (
+                  <span className="font-mono text-[10px] whitespace-nowrap opacity-70">
+                    {dateLabel} {formatDate(record.date)}
+                  </span>
+                )}
+              </span>
+            ))}
+          </span>
+          {remaining > 0 && (
+            <span className="block text-[10px] text-center opacity-60 mt-1.5">+ {remaining} more</span>
+          )}
+        </span>
+      )}
+    </span>
+  );
+}
+
 export default function TrainingCourseChecker({ isDark }: { isDark: boolean }) {
   const router = useRouter();
   const [loading, setLoading] = useState(false);
@@ -144,6 +233,9 @@ export default function TrainingCourseChecker({ isDark }: { isDark: boolean }) {
   const [sortKey, setSortKey] = useState<'course' | 'total' | 'expiring' | 'expired' | 'allocated'>('total');
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('desc');
   const [hasLoaded, setHasLoaded] = useState(false);
+  // The day the counts were bucketed against, so the hover lists resolve the
+  // same expiry cutoffs the totals were built from.
+  const [breakdownAsOf, setBreakdownAsOf] = useState<number | null>(null);
 
   useEffect(() => {
     const loadAtlasCourses = async () => {
@@ -191,6 +283,7 @@ export default function TrainingCourseChecker({ isDark }: { isDark: boolean }) {
       const atlasList = await ensureAtlasCourses();
       const today = new Date();
       today.setHours(0, 0, 0, 0);
+      setBreakdownAsOf(today.getTime());
       const startDate = today.toISOString().split('T')[0];
       const endDate = addMonths(today, 12).toISOString().split('T')[0];
 
@@ -330,6 +423,10 @@ export default function TrainingCourseChecker({ isDark }: { isDark: boolean }) {
 
   const tnaRows = useMemo(() => {
     const expiringKey = expiringWindow === 3 ? 'within3' : expiringWindow === 6 ? 'within6' : 'within12';
+    const asOf = new Date(breakdownAsOf ?? Date.now());
+    asOf.setHours(0, 0, 0, 0);
+    const expiringCutoff = addMonths(asOf, expiringWindow);
+
     const rows = filteredStats.map(course => {
     const expiring = course.totals[expiringKey];
     const expired = course.totals.expired;
@@ -341,12 +438,21 @@ export default function TrainingCourseChecker({ isDark }: { isDark: boolean }) {
         const locExpiring = counts[expiringKey];
         const locExpired = counts.expired;
         const locAllocated = counts.allocated;
+        const locRecords = course.records.filter(record => (record.location || 'Unknown Location') === location);
+        const withinWindow = (record: DisplayRecordItem) => {
+          const date = new Date(record.date || '');
+          return !Number.isNaN(date.getTime()) && date <= expiringCutoff;
+        };
+
         return {
           location,
           expiring: locExpiring,
           expired: locExpired,
           allocated: locAllocated,
           total: locExpiring + locExpired + locAllocated,
+          expiringRecords: locRecords.filter(r => r.type === 'expiring' && withinWindow(r)),
+          expiredRecords: locRecords.filter(r => r.type === 'expired'),
+          allocatedRecords: locRecords.filter(r => r.type === 'allocated'),
         };
       })
       .sort((a, b) => b.total - a.total);
@@ -381,7 +487,7 @@ export default function TrainingCourseChecker({ isDark }: { isDark: boolean }) {
     });
 
     return filtered;
-  }, [expiringWindow, filteredStats, minDemand, normalizedSearch, sortDir, sortKey]);
+  }, [breakdownAsOf, expiringWindow, filteredStats, minDemand, normalizedSearch, sortDir, sortKey]);
 
   const [detailModal, setDetailModal] = useState<{
     isOpen: boolean;
@@ -656,9 +762,33 @@ export default function TrainingCourseChecker({ isDark }: { isDark: boolean }) {
                                       {loc.location}
                                     </p>
                                     <div className="flex gap-3 mt-1 text-xs">
-                                      <span className="inline-flex items-center gap-0.5 text-blue-600 dark:text-blue-400"><ClockIcon className="w-3 h-3" />{loc.expiring}</span>
-                                      <span className="inline-flex items-center gap-0.5 text-red-600 dark:text-red-400"><ExclamationCircleIcon className="w-3 h-3" />{loc.expired}</span>
-                                      <span className="inline-flex items-center gap-0.5 text-yellow-600 dark:text-yellow-400"><CalendarIcon className="w-3 h-3" />{loc.allocated}</span>
+                                      <SymbolHoverCount
+                                        icon={<ClockIcon className="w-3 h-3" />}
+                                        count={loc.expiring}
+                                        records={loc.expiringRecords}
+                                        title={`Expiring — ${loc.location}`}
+                                        toneClass="text-blue-600 dark:text-blue-400"
+                                        dateLabel="expires"
+                                        isDark={isDark}
+                                      />
+                                      <SymbolHoverCount
+                                        icon={<ExclamationCircleIcon className="w-3 h-3" />}
+                                        count={loc.expired}
+                                        records={loc.expiredRecords}
+                                        title={`Expired — ${loc.location}`}
+                                        toneClass="text-red-600 dark:text-red-400"
+                                        dateLabel="expired"
+                                        isDark={isDark}
+                                      />
+                                      <SymbolHoverCount
+                                        icon={<CalendarIcon className="w-3 h-3" />}
+                                        count={loc.allocated}
+                                        records={loc.allocatedRecords}
+                                        title={`Allocated — ${loc.location}`}
+                                        toneClass="text-yellow-600 dark:text-yellow-400"
+                                        dateLabel="booked"
+                                        isDark={isDark}
+                                      />
                                       <span className={`font-bold ml-auto ${isDark ? 'text-gray-300' : 'text-gray-700'}`}>= {loc.total}</span>
                                     </div>
                                   </div>

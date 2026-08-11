@@ -43,6 +43,11 @@ type HeaderProfileRow = {
   avatar_path?: string | null;
 };
 
+// The IT ticket tables are optional and absent on some deployments. Once a
+// query proves they're missing, stop polling — otherwise the browser logs a
+// 404 for every 30-second refresh for the rest of the session.
+let notificationTablesMissing = false;
+
 function getStoredThemeMode(): ThemeMode {
   if (typeof window === 'undefined') return 'system';
   const theme = localStorage.getItem('theme');
@@ -186,10 +191,14 @@ export default function FixedHeader() {
 
   useEffect(() => {
     if (!isAuthenticated || !currentUserId || !roleTier) return;
+    if (notificationTablesMissing) return;
 
     let active = true;
+    let intervalId: number | undefined = undefined;
 
     const loadNotifications = async () => {
+      if (notificationTablesMissing) return;
+
       try {
         setNotificationsLoading(true);
 
@@ -262,6 +271,8 @@ export default function FixedHeader() {
         const isMissingNotificationsTable = /PGRST205|Could not find the table|does not exist/i.test(errorMessage);
 
         if (isMissingNotificationsTable) {
+          notificationTablesMissing = true;
+          if (intervalId !== undefined) window.clearInterval(intervalId);
           if (active) setNotifications([]);
           return;
         }
@@ -274,7 +285,7 @@ export default function FixedHeader() {
     };
 
     loadNotifications();
-    const interval = window.setInterval(loadNotifications, 30000);
+    intervalId = window.setInterval(loadNotifications, 30000);
 
     const handleVisibility = () => {
       if (document.visibilityState === 'visible') {
@@ -286,7 +297,7 @@ export default function FixedHeader() {
 
     return () => {
       active = false;
-      window.clearInterval(interval);
+      if (intervalId !== undefined) window.clearInterval(intervalId);
       document.removeEventListener('visibilitychange', handleVisibility);
     };
   }, [currentUserId, fullName, isAuthenticated, roleTier]);
@@ -327,18 +338,16 @@ export default function FixedHeader() {
 
   return (
     <header className="fixed top-0 left-0 right-0 z-50 border-b border-slate-200 bg-white/95 shadow-sm backdrop-blur dark:border-slate-800 dark:bg-slate-950/95">
-      <div className="flex h-14 items-center justify-between pr-4 sm:pr-6">
-        <div className="w-16 flex items-center justify-center shrink-0">
-          <button
-            type="button"
-            onClick={toggle}
-            title="Menu"
-            aria-label="Menu"
-            className="w-10 h-10 rounded-xl border-2 border-transparent hover:bg-slate-100 dark:hover:bg-slate-900 flex items-center justify-center text-slate-700 dark:text-slate-300 transition-all duration-200 opacity-80 hover:opacity-100"
-          >
-            <Icon name="menu" className="h-6 w-6 stroke-[2.5]" />
-          </button>
-        </div>
+      <div className="flex h-14 items-center justify-between gap-3 px-4 sm:px-6">
+        <UniformButton
+          variant="secondary"
+          className="no-ui-motion border p-2 shadow-sm"
+          onClick={toggle}
+          title="Menu"
+          aria-label="Menu"
+        >
+          <Icon name="menu" className="h-6 w-6" />
+        </UniformButton>
 
         <div className="flex-1" />
 

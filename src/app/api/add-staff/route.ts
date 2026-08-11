@@ -11,6 +11,10 @@ interface StaffMember {
   location_id?: string;
   role_tier: 'staff' | 'scheduler' | 'manager' | 'admin';
   password?: string;
+  managed_houses?: string[];
+  // Bulk uploads set this to false so importing a CSV doesn't fire a setup
+  // email at every person at once. Admins set those passwords via Reset Password.
+  send_invite?: boolean;
 }
 
 const isUuid = (value: string): boolean =>
@@ -197,6 +201,7 @@ export async function POST(request: NextRequest) {
               email: emailToCheck,
               location: normalizedLocationName,
               role_tier: staff.role_tier,
+              managed_houses: staff.managed_houses ?? [],
               password_needs_change: needsPasswordChange,
               is_deleted: false,
               deleted_at: null,
@@ -234,7 +239,7 @@ export async function POST(request: NextRequest) {
         }
 
         // If we created a temp password, send a password setup link so they can set their own.
-        if (needsPasswordChange) {
+        if (needsPasswordChange && staff.send_invite !== false) {
           try {
             const { data: linkData, error: linkError } = await supabaseAdmin.auth.admin.generateLink({
               type: 'magiclink',

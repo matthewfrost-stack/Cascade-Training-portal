@@ -4,7 +4,7 @@ import { useState, useEffect } from 'react';
 import UniformButton from './UniformButton';
 import { supabase } from '@/lib/supabase';
 import { hasPermission } from '@/lib/permissions';
-import { debugLog, debugWarn } from '@/lib/debug';
+import { debugLog } from '@/lib/debug';
 import { useCurrentUserProfile } from '@/lib/useCurrentUserProfile';
 import AdminResetPasswordModal from './AdminResetPasswordModal';
 
@@ -431,7 +431,9 @@ export default function AddStaffModal({ onClose, onRefresh }: { onClose: () => v
           location: normalizedLocationName || row.home_house,
           location_id: normalizedLocationId || undefined,
           role_tier: row.role_tier || 'staff',
-          managed_houses: []
+          managed_houses: [],
+          // Don't email a setup link to every row of the CSV at once.
+          send_invite: false
         };
 
         // For schedulers and managers, set their primary location as a managed location by default
@@ -460,73 +462,55 @@ export default function AddStaffModal({ onClose, onRefresh }: { onClose: () => v
       }
 
       debugLog('Bulk upload data:', staffData);
-      const { data, error } = await supabase.from('profiles').insert(staffData).select();
-      
-      if (error) {
-        console.error('Supabase error details:', error);
-        let message = `❌ Upload failed: ${error.message}`;
-        if (skippedInternalDuplicates > 0) {
-          message += `\n(${skippedInternalDuplicates} duplicates within file skipped)`;
-        }
-        if (skippedDuplicates > 0) {
-          message += `\n(${skippedDuplicates} duplicates in database skipped)`;
-        }
-        if (errorCount > 0) {
-          message += `\n(${errorCount} invalid rows skipped)`;
-        }
-        setBulkMessage(message);
-      } else {
-        debugLog('Upload success:', data);
-        // Check if locations were actually inserted
-        if (data && data.length > 0) {
-          debugLog('📍 Checking inserted records:');
-          data.forEach((record, idx) => {
-            debugLog(`  Record ${idx + 1}: ${record.full_name} - location: ${record.location}`);
-          });
-          const locationsPresent = data.some(record => record.location);
-          if (!locationsPresent) {
-            debugWarn('⚠️ WARNING: All location values are NULL in inserted records. This is likely an RLS policy issue.');
-          }
 
-          // Ensure every inserted staff member is linked in staff_locations for matrix placement.
-          const staffLocationRows = data
-            .map((record: any) => {
-              const locationId = resolveLocationId(record.location || '');
-              if (!locationId) return null;
-              return {
-                staff_id: record.id,
-                location_id: locationId,
-                display_order: 9999,
-              };
-            })
-            .filter((row: any) => row !== null);
+      // Bulk uploads go through the same endpoint as the single-add form.
+      // Inserting straight into `profiles` from the browser created staff rows
+      // with no matching auth.users record, so those people had no login
+      // account and admin password resets failed for them — manually added
+      // staff worked because this endpoint creates the auth user first and
+      // reuses its id as the profile id. It also links staff_locations.
+      const response = await fetch('/api/add-staff', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(staffData)
+      });
 
-          if (staffLocationRows.length > 0) {
-            const { error: staffLocError } = await supabase
-              .from('staff_locations')
-              .upsert(staffLocationRows, { onConflict: 'staff_id,location_id' });
+      const result = await response.json();
+      debugLog('Bulk upload result:', result);
 
-            if (staffLocError) {
-              console.error('Error creating staff_locations for bulk upload:', staffLocError);
-            }
-          }
-        }
-        
-        let message = `✅ Successfully uploaded ${staffData.length} staff members`;
-        if (skippedInternalDuplicates > 0) {
-          message += ` (${skippedInternalDuplicates} duplicates in file skipped)`;
-        }
-        if (skippedDuplicates > 0) {
-          message += ` (${skippedDuplicates} duplicates in database skipped)`;
-        }
-        if (errorCount > 0) {
-          message += ` (${errorCount} invalid rows skipped)`;
-        }
-        setBulkMessage(message);
-        
-        await fetchInitialData();
-        onRefresh();
-        
+      if (!Array.isArray(result?.results)) {
+        setBulkMessage(`❌ Upload failed: ${result?.error || 'Unknown server error'}`);
+        return;
+      }
+
+      const created = result.results.filter((r: any) => r.success);
+      const failed = result.results.filter((r: any) => !r.success);
+
+      let message = created.length > 0
+        ? `✅ Uploaded ${created.length} staff member${created.length === 1 ? '' : 's'} with login accounts`
+        : `❌ No staff members were created`;
+      if (skippedInternalDuplicates > 0) {
+        message += ` (${skippedInternalDuplicates} duplicates in file skipped)`;
+      }
+      if (skippedDuplicates > 0) {
+        message += ` (${skippedDuplicates} duplicates in database skipped)`;
+      }
+      if (errorCount > 0) {
+        message += ` (${errorCount} invalid rows skipped)`;
+      }
+      if (failed.length > 0) {
+        message += `\n\n${failed.length} row${failed.length === 1 ? '' : 's'} failed:\n`;
+        message += failed.slice(0, 3).map((f: any) => `• ${f.email}: ${f.error}`).join('\n');
+      }
+      if (created.length > 0) {
+        message += `\n\nUse Reset Password to give them a password.`;
+      }
+      setBulkMessage(message);
+
+      await fetchInitialData();
+      onRefresh();
+
+      if (failed.length === 0 && created.length > 0) {
         setTimeout(() => {
           setShowBulkUpload(false);
           setBulkMessage('');

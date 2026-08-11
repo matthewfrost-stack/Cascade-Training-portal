@@ -20,6 +20,11 @@ interface HoverPopoverCardProps {
   onCardClick?: () => void;
   accentColor?: 'red' | 'blue' | 'yellow' | 'purple' | 'amber';
   isDark?: boolean;
+  /**
+   * These cards sit at the top of their pages, so the preview drops down by
+   * default — opening upwards pushed it off the top of the viewport.
+   */
+  placement?: 'top' | 'bottom';
 }
 
 export function HoverPopoverCard({
@@ -29,6 +34,7 @@ export function HoverPopoverCard({
   onCardClick,
   accentColor = 'blue',
   isDark = true,
+  placement = 'bottom',
 }: HoverPopoverCardProps) {
   const [isHovered, setIsHovered] = useState(false);
 
@@ -58,7 +64,11 @@ export function HoverPopoverCard({
 
       {/* Popover preview on hover */}
       {isHovered && records.length > 0 && (
-        <div className="absolute left-1/2 -translate-x-1/2 bottom-full mb-2 z-[9999] w-72 sm:w-80 pointer-events-none animate-in fade-in zoom-in-95 duration-150">
+        <div
+          className={`absolute left-1/2 -translate-x-1/2 z-[9999] w-72 sm:w-80 pointer-events-none animate-in fade-in zoom-in-95 duration-150 ${
+            placement === 'top' ? 'bottom-full mb-2' : 'top-full mt-2'
+          }`}
+        >
           <div
             className={`p-3.5 rounded-2xl border shadow-2xl backdrop-blur-xl ${
               isDark
