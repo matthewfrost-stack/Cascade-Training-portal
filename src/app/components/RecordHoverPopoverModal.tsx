@@ -38,9 +38,6 @@ export function HoverPopoverCard({
 }: HoverPopoverCardProps) {
   const [isHovered, setIsHovered] = useState(false);
 
-  const previewRecords = records.slice(0, 6);
-  const remainingCount = Math.max(0, records.length - previewRecords.length);
-
   const accentStyles = {
     red: 'border-red-500/40 text-red-500 bg-red-500/10',
     blue: 'border-blue-500/40 text-blue-500 bg-blue-500/10',
@@ -64,9 +61,12 @@ export function HoverPopoverCard({
 
       {/* Popover preview on hover */}
       {isHovered && records.length > 0 && (
+        // The offset is padding rather than margin so the gap between card and
+        // popover stays inside the hover target — a margin gap drops the hover
+        // and closes the popover before the pointer can reach it to scroll.
         <div
-          className={`absolute left-1/2 -translate-x-1/2 z-[9999] w-72 sm:w-80 pointer-events-none animate-in fade-in zoom-in-95 duration-150 ${
-            placement === 'top' ? 'bottom-full mb-2' : 'top-full mt-2'
+          className={`absolute left-1/2 -translate-x-1/2 z-[9999] w-72 sm:w-80 animate-in fade-in zoom-in-95 duration-150 ${
+            placement === 'top' ? 'bottom-full pb-2' : 'top-full pt-2'
           }`}
         >
           <div
@@ -86,8 +86,8 @@ export function HoverPopoverCard({
               </span>
             </div>
 
-            <div className="space-y-1.5 max-h-48 overflow-y-auto pr-1">
-              {previewRecords.map((item, idx) => (
+            <div className="space-y-1.5 max-h-72 overflow-y-auto overscroll-contain pr-1">
+              {records.map((item, idx) => (
                 <div
                   key={idx}
                   className={`p-2 rounded-lg text-xs border flex items-center justify-between gap-2 ${
@@ -111,9 +111,9 @@ export function HoverPopoverCard({
               ))}
             </div>
 
-            {remainingCount > 0 && (
+            {onCardClick && (
               <p className="text-[10px] text-center font-medium text-slate-400 mt-2">
-                + {remainingCount} more record{remainingCount > 1 ? 's' : ''} (Click to expand)
+                Scroll for more · Click to expand
               </p>
             )}
           </div>

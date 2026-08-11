@@ -161,20 +161,34 @@ function SymbolHoverCount({
   isDark: boolean;
 }) {
   const anchorRef = useRef<HTMLSpanElement | null>(null);
-  const [coords, setCoords] = useState<{ top: number; left: number } | null>(null);
+  const [coords, setCoords] = useState<{
+    left: number;
+    top?: number;
+    bottom?: number;
+    listMaxHeight: number;
+    above: boolean;
+  } | null>(null);
 
   const openTooltip = () => {
     const rect = anchorRef.current?.getBoundingClientRect();
     if (!rect) return;
+
     const centre = rect.left + rect.width / 2;
+    const left = Math.min(Math.max(centre, 150), window.innerWidth - 150);
+    // Reserve room for the panel's own header/padding, then flip above the
+    // symbol when the space underneath is too tight to be worth scrolling.
+    const chrome = 64;
+    const spaceBelow = window.innerHeight - rect.bottom - 24;
+    const spaceAbove = rect.top - 24;
+    const above = spaceBelow < 180 && spaceAbove > spaceBelow;
+
     setCoords({
-      top: rect.bottom + 8,
-      left: Math.min(Math.max(centre, 140), window.innerWidth - 140),
+      left,
+      above,
+      ...(above ? { bottom: window.innerHeight - rect.top } : { top: rect.bottom }),
+      listMaxHeight: Math.max(120, (above ? spaceAbove : spaceBelow) - chrome),
     });
   };
-
-  const preview = records.slice(0, 12);
-  const remaining = records.length - preview.length;
 
   return (
     <span
@@ -186,34 +200,49 @@ function SymbolHoverCount({
       {icon}
       {count}
       {coords && records.length > 0 && (
+        // The 8px offset is padding on this wrapper, not a margin, so the gap
+        // between symbol and panel stays inside the hover target and the
+        // pointer can reach the panel to scroll it.
         <span
-          style={{ position: 'fixed', top: coords.top, left: coords.left, transform: 'translateX(-50%)' }}
-          className={`z-[9999] block w-64 rounded-xl border p-3 text-left shadow-2xl pointer-events-none ${
-            isDark ? 'bg-slate-900 border-slate-700 text-slate-100' : 'bg-white border-slate-200 text-slate-800'
-          }`}
+          style={{
+            position: 'fixed',
+            left: coords.left,
+            top: coords.top,
+            bottom: coords.bottom,
+            transform: 'translateX(-50%)',
+            paddingTop: coords.above ? 0 : 8,
+            paddingBottom: coords.above ? 8 : 0,
+          }}
+          className="z-[9999] block w-72"
         >
           <span
-            className={`block text-[10px] font-black uppercase tracking-wider pb-1.5 mb-1.5 border-b ${
-              isDark ? 'border-slate-700' : 'border-slate-200'
+            className={`block rounded-xl border p-3 text-left shadow-2xl ${
+              isDark ? 'bg-slate-900 border-slate-700 text-slate-100' : 'bg-white border-slate-200 text-slate-800'
             }`}
           >
-            {title} · {records.length}
+            <span
+              className={`block text-[10px] font-black uppercase tracking-wider pb-1.5 mb-1.5 border-b ${
+                isDark ? 'border-slate-700' : 'border-slate-200'
+              }`}
+            >
+              {title} · {records.length}
+            </span>
+            <span
+              className="block overflow-y-auto overscroll-contain pr-1"
+              style={{ maxHeight: coords.listMaxHeight }}
+            >
+              {records.map((record, idx) => (
+                <span key={idx} className="flex items-baseline justify-between gap-2 text-[11px] py-0.5">
+                  <span className="truncate font-semibold">{record.staffName}</span>
+                  {record.date && (
+                    <span className="font-mono text-[10px] whitespace-nowrap opacity-70">
+                      {dateLabel} {formatDate(record.date)}
+                    </span>
+                  )}
+                </span>
+              ))}
+            </span>
           </span>
-          <span className="block max-h-52 overflow-hidden">
-            {preview.map((record, idx) => (
-              <span key={idx} className="flex items-baseline justify-between gap-2 text-[11px] py-0.5">
-                <span className="truncate font-semibold">{record.staffName}</span>
-                {record.date && (
-                  <span className="font-mono text-[10px] whitespace-nowrap opacity-70">
-                    {dateLabel} {formatDate(record.date)}
-                  </span>
-                )}
-              </span>
-            ))}
-          </span>
-          {remaining > 0 && (
-            <span className="block text-[10px] text-center opacity-60 mt-1.5">+ {remaining} more</span>
-          )}
         </span>
       )}
     </span>
