@@ -83,6 +83,30 @@ export function useCurrentUserProfile(): UseCurrentUserProfileState {
       });
     };
 
+    const loadDirectProfile = async (user: typeof sessionUser | null) => {
+      if (!user) return false;
+
+      const { data: directProfile, error: directProfileError } = await supabase
+        .from('profiles')
+        .select('id, full_name, email, phone_number, avatar_path, role_tier, password_needs_change')
+        .eq('id', user.id)
+        .maybeSingle();
+
+      if (directProfileError || !directProfile) return false;
+
+      commitProfile({
+        id: directProfile.id,
+        full_name: directProfile.full_name || user.user_metadata?.full_name || null,
+        email: directProfile.email || user.email || null,
+        phone_number: directProfile.phone_number || null,
+        avatar_path: directProfile.avatar_path || null,
+        role_tier: directProfile.role_tier || null,
+        password_needs_change: directProfile.password_needs_change || false,
+      });
+      setIsAuthenticated(true);
+      return true;
+    };
+
     try {
       const { data: sessionData } = await supabase.auth.getSession();
       session = sessionData.session || null;
@@ -163,10 +187,12 @@ export function useCurrentUserProfile(): UseCurrentUserProfileState {
           }
 
           console.warn('Profile API returned unauthorized; preserving session auth state.');
+          if (await loadDirectProfile(sessionUser)) return;
           setFallbackProfile(sessionUser);
           return;
         }
 
+        if (await loadDirectProfile(sessionUser)) return;
         setFallbackProfile(sessionUser);
       } catch (fetchError) {
         clearTimeout(timeoutId);
@@ -175,6 +201,7 @@ export function useCurrentUserProfile(): UseCurrentUserProfileState {
         }
 
         if (sessionUser) {
+          if (await loadDirectProfile(sessionUser)) return;
           console.warn('Profile API failed, using fallback session data', fetchError);
           setFallbackProfile(sessionUser);
           return;
@@ -184,6 +211,7 @@ export function useCurrentUserProfile(): UseCurrentUserProfileState {
       }
     } catch (error) {
       console.error('Error loading current user profile:', error);
+      if (await loadDirectProfile(sessionUser)) return;
       setFallbackProfile(sessionUser);
     }
   }, [commitProfile]);

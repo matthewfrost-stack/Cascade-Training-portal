@@ -1,5 +1,5 @@
 'use client';
-import React, { useState, useMemo } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { useMatrix } from '../context/MatrixContext';
 import { GroupManagerModal } from './GroupManagerModal';
 import { Course, Staff, MatrixCell } from '../types';
@@ -93,7 +93,7 @@ function CategorySummaryCell({ staffMember, coursesInCat, matrixData, isDark, on
         </div>
       </div>
       {/* Tooltip */}
-      <div className={`absolute left-1/2 bottom-full mb-2 -translate-x-1/2 hidden group-hover/cell:flex flex-col w-64 rounded-xl shadow-2xl p-3 border text-left z-50 pointer-events-none ${isDark ? 'bg-gray-800 border-gray-700 text-slate-100' : 'bg-white border-slate-200 text-slate-800'}`}>
+      <div className={`absolute left-1/2 top-full mt-2 -translate-x-1/2 hidden group-hover/cell:flex flex-col w-64 max-h-64 rounded-xl shadow-2xl p-3 border text-left z-[60] pointer-events-none ${isDark ? 'bg-gray-800 border-gray-700 text-slate-100' : 'bg-white border-slate-200 text-slate-800'}`}>
         <div className={`font-extrabold text-xs border-b pb-1.5 mb-1.5 flex justify-between ${isDark ? 'border-gray-700' : 'border-slate-200'}`}>
           <span>{coursesInCat[0]?.category || 'Category'}</span>
           <span className="text-[10px] text-slate-500">{complianceRate}% Compliant</span>
@@ -132,6 +132,52 @@ export function MatrixLayout() {
   const [searchQuery, setSearchQuery] = useState('');
   const [groupModal, setGroupModal] = useState<{ type: 'staff' | 'course'; editKey: string | null } | null>(null);
   const [draggedCategory, setDraggedCategory] = useState<string | null>(null);
+  const bottomScrollRef = useRef<HTMLDivElement>(null);
+  const [matrixScrollMetrics, setMatrixScrollMetrics] = useState({ contentWidth: 0, viewportWidth: 0 });
+
+  useEffect(() => {
+    const tableScrollContainer = tableScrollContainerRef.current;
+    if (!tableScrollContainer) return;
+
+    const updateMetrics = () => {
+      setMatrixScrollMetrics({
+        contentWidth: tableScrollContainer.scrollWidth,
+        viewportWidth: tableScrollContainer.clientWidth,
+      });
+    };
+
+    const syncBottomScroll = () => {
+      const bottomScrollContainer = bottomScrollRef.current;
+      if (bottomScrollContainer && Math.abs(bottomScrollContainer.scrollLeft - tableScrollContainer.scrollLeft) > 1) {
+        bottomScrollContainer.scrollLeft = tableScrollContainer.scrollLeft;
+      }
+    };
+
+    const syncTableScroll = () => {
+      const bottomScrollContainer = bottomScrollRef.current;
+      if (bottomScrollContainer && Math.abs(tableScrollContainer.scrollLeft - bottomScrollContainer.scrollLeft) > 1) {
+        tableScrollContainer.scrollLeft = bottomScrollContainer.scrollLeft;
+      }
+    };
+
+    tableScrollContainer.addEventListener('scroll', syncBottomScroll, { passive: true });
+    const bottomScrollContainer = bottomScrollRef.current;
+    bottomScrollContainer?.addEventListener('scroll', syncTableScroll, { passive: true });
+    window.addEventListener('resize', updateMetrics);
+    updateMetrics();
+
+    const resizeObserver = typeof ResizeObserver !== 'undefined'
+      ? new ResizeObserver(updateMetrics)
+      : null;
+    resizeObserver?.observe(tableScrollContainer);
+
+    return () => {
+      tableScrollContainer.removeEventListener('scroll', syncBottomScroll);
+      bottomScrollContainer?.removeEventListener('scroll', syncTableScroll);
+      window.removeEventListener('resize', updateMetrics);
+      resizeObserver?.disconnect();
+    };
+  }, [tableScrollContainerRef, loading, staff.length, courses.length, collapsedCategories.size, matrixScrollMetrics.contentWidth]);
 
   const checkStatus = (cell: any, course: any): 'valid' | 'expiring' | 'expired' => {
     if (course.never_expires || course.expiry_months === 9999 || course.expiry_months === null) return 'valid';
@@ -332,7 +378,7 @@ export function MatrixLayout() {
   const stickyLeft = isDark ? 'bg-gray-900 border-gray-800 text-white' : 'bg-white border-gray-200 text-gray-800';
 
   return (
-    <div className={`min-h-screen transition-colors duration-200 ${bg}`}>
+    <div className={`min-h-screen pb-5 transition-colors duration-200 ${bg}`}>
       {/* Top header */}
       <div className={`p-5 border-b shadow-sm ${headerBg}`}>
         <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 max-w-[1900px] mx-auto">
@@ -839,6 +885,17 @@ export function MatrixLayout() {
         isDark={isDark}
         onSelectStaff={(staffName) => setSearchQuery(staffName)}
       />
+
+      {matrixScrollMetrics.contentWidth > matrixScrollMetrics.viewportWidth && (
+        <div
+          ref={bottomScrollRef}
+          className={`fixed bottom-0 left-16 right-0 z-40 h-5 overflow-x-auto overflow-y-hidden border-t shadow-[0_-2px_8px_rgba(0,0,0,0.18)] ${isDark ? 'border-gray-700 bg-gray-900' : 'border-slate-300 bg-white'}`}
+          aria-label="Scroll training matrix horizontally"
+          title="Scroll matrix left or right"
+        >
+          <div style={{ width: matrixScrollMetrics.contentWidth, height: 1 }} />
+        </div>
+      )}
     </div>
   );
 }

@@ -1,6 +1,6 @@
 #!/bin/bash
 export NEXT_PUBLIC_SUPABASE_URL=https://ykrmrwgnbuigdzodnliw.supabase.co
-export SUPABASE_SERVICE_ROLE_KEY="eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inlrcm1yd2duYnVpZ2R6b2RubGl3Iiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc2ODQ2MDgzMCwiZXhwIjoyMDg0MDM2ODMwfQ.wlJhJ4dN1y94WgLoiBU0pWvqf0AkdW06XE7jtU_1Rcc"
+: "${SUPABASE_SERVICE_ROLE_KEY:?Set SUPABASE_SERVICE_ROLE_KEY before running this migration check}"
 
 node --input-type=module << 'EONODE'
 import { createClient } from '@supabase/supabase-js';
