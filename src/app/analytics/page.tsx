@@ -269,7 +269,12 @@ export default function AnalyticsDashboard() {
         }
       });
       
-      return Object.values(stats).sort((a: any, b: any) => b.booked - a.booked);
+      return Object.values(stats).sort((a: any, b: any) => {
+        const attendanceRateA = a.booked > 0 ? a.attended / a.booked : 0;
+        const attendanceRateB = b.booked > 0 ? b.attended / b.booked : 0;
+
+        return attendanceRateA - attendanceRateB || b.booked - a.booked || a.key.localeCompare(b.key);
+      });
     } catch (error) {
       console.error('Error in processStats:', error);
       return [];

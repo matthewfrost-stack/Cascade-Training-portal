@@ -13,6 +13,28 @@ export interface DisplayRecordItem {
   type?: 'expiring' | 'expired' | 'allocated' | 'missing';
 }
 
+function recordPriority(record: DisplayRecordItem): number {
+  switch (record.type || record.status) {
+    case 'missing':
+      return 0;
+    case 'expired':
+      return 1;
+    case 'expiring':
+      return 2;
+    case 'allocated':
+      return 3;
+    default:
+      return 4;
+  }
+}
+
+function sortRecords(records: DisplayRecordItem[]): DisplayRecordItem[] {
+  return records
+    .map((record, index) => ({ record, index }))
+    .sort((a, b) => recordPriority(a.record) - recordPriority(b.record) || a.index - b.index)
+    .map(({ record }) => record);
+}
+
 interface HoverPopoverCardProps {
   title: string;
   records: DisplayRecordItem[];
@@ -37,6 +59,7 @@ export function HoverPopoverCard({
   placement = 'bottom',
 }: HoverPopoverCardProps) {
   const [isHovered, setIsHovered] = useState(false);
+  const sortedRecords = sortRecords(records);
 
   const accentStyles = {
     red: 'border-red-500/40 text-red-500 bg-red-500/10',
@@ -48,7 +71,7 @@ export function HoverPopoverCard({
 
   return (
     <div
-      className="relative inline-block w-full"
+      className="relative inline-block h-full w-full"
       onMouseEnter={() => setIsHovered(true)}
       onMouseLeave={() => setIsHovered(false)}
     >
@@ -60,7 +83,7 @@ export function HoverPopoverCard({
       </div>
 
       {/* Popover preview on hover */}
-      {isHovered && records.length > 0 && (
+      {isHovered && sortedRecords.length > 0 && (
         // The offset is padding rather than margin so the gap between card and
         // popover stays inside the hover target — a margin gap drops the hover
         // and closes the popover before the pointer can reach it to scroll.
@@ -81,13 +104,13 @@ export function HoverPopoverCard({
                 <span className={`w-2 h-2 rounded-full ${accentStyles}`} />
                 {title}
               </span>
-              <span className="text-[11px] font-bold px-2 py-0.5 rounded-full bg-slate-800 text-slate-300">
+              <span className="whitespace-nowrap text-[11px] font-bold px-2 py-0.5 rounded-full bg-slate-800 text-slate-300">
                 {records.length} {records.length === 1 ? 'record' : 'records'}
               </span>
             </div>
 
             <div className="space-y-1.5 max-h-72 overflow-y-auto overscroll-contain pr-1">
-              {records.map((item, idx) => (
+                {sortedRecords.map((item, idx) => (
                 <div
                   key={idx}
                   className={`p-2 rounded-lg text-xs border flex items-center justify-between gap-2 ${

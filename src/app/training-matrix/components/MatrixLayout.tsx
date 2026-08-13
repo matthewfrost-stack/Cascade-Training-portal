@@ -15,6 +15,15 @@ interface SummaryCellProps {
   checkStatus: (cell: any, course: any) => 'valid' | 'expiring' | 'expired';
 }
 
+function detailPriority(statusText: string): number {
+  if (statusText.startsWith('Missing')) return 0;
+  if (statusText.startsWith('Expired')) return 1;
+  if (statusText.startsWith('Expiring')) return 2;
+  if (statusText.startsWith('Allocated')) return 3;
+  if (statusText.startsWith('Not Yet Due')) return 4;
+  return 5;
+}
+
 function CategorySummaryCell({ staffMember, coursesInCat, matrixData, isDark, onExpandClick, checkStatus }: SummaryCellProps) {
   let valid = 0;
   let expiring = 0;
@@ -75,7 +84,7 @@ function CategorySummaryCell({ staffMember, coursesInCat, matrixData, isDark, on
       else { statusText = `Expired (${cell.expiry_date ? new Date(cell.expiry_date).toLocaleDateString('en-GB') : ''})`; statusColor = 'text-red-500'; }
     }
     return { name: course.name, statusText, statusColor };
-  });
+  }).sort((a, b) => detailPriority(a.statusText) - detailPriority(b.statusText));
 
   return (
     <td
@@ -93,12 +102,12 @@ function CategorySummaryCell({ staffMember, coursesInCat, matrixData, isDark, on
         </div>
       </div>
       {/* Tooltip */}
-      <div className={`absolute left-1/2 top-full mt-2 -translate-x-1/2 hidden group-hover/cell:flex flex-col w-64 max-h-64 rounded-xl shadow-2xl p-3 border text-left z-[60] pointer-events-none ${isDark ? 'bg-gray-800 border-gray-700 text-slate-100' : 'bg-white border-slate-200 text-slate-800'}`}>
+      <div className={`absolute left-1/2 top-full mt-2 -translate-x-1/2 hidden group-hover/cell:flex flex-col w-64 max-h-64 rounded-xl shadow-2xl p-3 border text-left z-[60] pointer-events-auto ${isDark ? 'bg-gray-800 border-gray-700 text-slate-100' : 'bg-white border-slate-200 text-slate-800'}`}>
         <div className={`font-extrabold text-xs border-b pb-1.5 mb-1.5 flex justify-between ${isDark ? 'border-gray-700' : 'border-slate-200'}`}>
           <span>{coursesInCat[0]?.category || 'Category'}</span>
           <span className="text-[10px] text-slate-500">{complianceRate}% Compliant</span>
         </div>
-        <div className="space-y-1.5 max-h-48 overflow-y-auto">
+        <div className="space-y-1.5 max-h-48 overflow-y-auto overscroll-contain pr-1">
           {details.map((d, idx) => (
             <div key={idx} className="flex justify-between gap-2 text-[10px]">
               <span className="truncate flex-1 font-semibold opacity-80" title={d.name}>{d.name}</span>
@@ -406,8 +415,8 @@ export function MatrixLayout() {
           <>
             {/* Metrics Row */}
             {!loading && (
-              <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-                <div className={`p-5 rounded-2xl border shadow-sm ${panelBg}`}>
+              <div className="grid grid-cols-2 items-stretch gap-4 lg:grid-cols-4">
+                <div className={`h-full min-h-[140px] p-5 rounded-2xl border shadow-sm ${panelBg}`}>
                   <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">Site Compliance</p>
                   <p className="text-3xl font-black tracking-tight mt-1">{dashboardStats.compliance}%</p>
                   <p className="text-[10px] text-slate-500 mt-1">{dashboardStats.compliance >= 80 ? 'Good standing' : 'Needs attention'}</p>
@@ -429,14 +438,14 @@ export function MatrixLayout() {
                     })
                   }
                 >
-                  <div className={`p-5 rounded-2xl border shadow-sm ${panelBg} hover:border-red-500/50 transition-colors`}>
+                  <div className={`h-full min-h-[140px] p-5 rounded-2xl border shadow-sm ${panelBg} hover:border-red-500/50 transition-colors`}>
                     <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">Action Required</p>
                     <p className={`text-3xl font-black tracking-tight mt-1 ${dashboardStats.expired > 0 ? 'text-red-500' : ''}`}>{dashboardStats.expired}</p>
                     <p className="text-[10px] text-slate-500 mt-1">{dashboardStats.expired > 0 ? 'Expired records (Click to expand)' : 'Fully compliant!'}</p>
                   </div>
                 </HoverPopoverCard>
 
-                <div className={`p-5 rounded-2xl border shadow-sm ${panelBg}`}>
+                <div className={`h-full min-h-[140px] p-5 rounded-2xl border shadow-sm ${panelBg}`}>
                   <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">Total Staff</p>
                   <p className="text-3xl font-black tracking-tight mt-1">{dashboardStats.staffCount}</p>
                   <p className="text-[10px] text-slate-500 mt-1">Active at this site</p>
@@ -455,7 +464,7 @@ export function MatrixLayout() {
                     })
                   }
                 >
-                  <div className={`p-5 rounded-2xl border shadow-sm ${panelBg} hover:border-amber-500/50 transition-colors`}>
+                  <div className={`h-full min-h-[140px] p-5 rounded-2xl border shadow-sm ${panelBg} hover:border-amber-500/50 transition-colors`}>
                     <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">Allocated</p>
                     <p className="text-3xl font-black tracking-tight mt-1">{dashboardStats.allocated}</p>
                     <p className="text-[10px] text-slate-500 mt-1">Upcoming sessions (Click to expand)</p>
