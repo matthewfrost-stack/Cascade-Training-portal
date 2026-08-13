@@ -45,7 +45,7 @@ export default function ExpiryCheckerPage() {
   }
 
   return (
-    <div className={`min-h-screen transition-colors duration-500 ${isDark ? 'dark' : ''}`}>
+    <div className="min-h-screen transition-colors duration-500">
       <CourseExpiryChecker isDark={isDark} />
     </div>
   );

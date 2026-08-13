@@ -133,7 +133,9 @@ export async function POST(request: NextRequest) {
       try {
         const { staffId, courseId, locationId, status, completion_date } = update as BulkUpdateRequest;
 
-        // Calculate expiry date if status is 'completed'
+        // Calculate expiry date if status is 'completed'. Allocated records
+        // retain their existing completion/expiry information so changing the
+        // status does not erase the certification date shown in the matrix.
         let expiryDate = null;
         if (status === 'completed' && completion_date) {
           const course = courseMap.get(courseId);
@@ -151,12 +153,37 @@ export async function POST(request: NextRequest) {
         let lastErrorMessage = '';
 
         for (const locId of targetLocations) {
+          let existingRecord: { completion_date: string | null; expiry_date: string | null } | null = null;
+          if (status === 'allocated') {
+            const { data: existing } = await supabaseAdmin
+              .from('staff_training_matrix')
+              .select('completion_date, expiry_date')
+              .eq('staff_id', staffId)
+              .eq('course_id', courseId)
+              .eq('completed_at_location_id', locId)
+              .maybeSingle();
+            existingRecord = existing;
+          }
+
+          const course = courseMap.get(courseId);
+          const allocatedExpiry = status === 'allocated'
+            ? existingRecord?.expiry_date || (
+              existingRecord?.completion_date && course && !course.never_expires && course.expiry_months
+                ? (() => {
+                    const completionDate = new Date(existingRecord.completion_date);
+                    completionDate.setMonth(completionDate.getMonth() + course.expiry_months);
+                    return completionDate.toISOString().split('T')[0];
+                  })()
+                : null
+            )
+            : null;
+
           // Use upsert like handleSaveTraining does - more reliable than manual check
           const upsertData: any = {
             staff_id: staffId,
             course_id: courseId,
-            completion_date: status === 'completed' ? completion_date : null,
-            expiry_date: expiryDate,
+            completion_date: status === 'completed' ? completion_date : status === 'allocated' ? existingRecord?.completion_date || null : null,
+            expiry_date: status === 'completed' ? expiryDate : allocatedExpiry,
             completed_at_location_id: locId,
             status: status,
             updated_at: new Date().toISOString(),

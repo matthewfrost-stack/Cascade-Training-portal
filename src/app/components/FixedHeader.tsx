@@ -339,15 +339,17 @@ export default function FixedHeader() {
   return (
     <header className="fixed top-0 left-0 right-0 z-50 border-b border-slate-200 bg-white/95 shadow-sm backdrop-blur dark:border-slate-800 dark:bg-slate-950/95">
       <div className="flex h-14 items-center justify-between gap-3 px-4 sm:px-6">
-        <UniformButton
-          variant="secondary"
-          className="no-ui-motion border p-2 shadow-sm"
-          onClick={toggle}
-          title="Menu"
-          aria-label="Menu"
-        >
-          <Icon name="menu" className="h-6 w-6" />
-        </UniformButton>
+        <div className="flex h-14 w-16 shrink-0 items-center justify-center -ml-4 sm:-ml-6">
+          <UniformButton
+            variant="secondary"
+            className="no-ui-motion border p-2 shadow-sm"
+            onClick={toggle}
+            title="Menu"
+            aria-label="Menu"
+          >
+            <Icon name="menu" className="h-6 w-6" />
+          </UniformButton>
+        </div>
 
         <div className="flex-1" />
 

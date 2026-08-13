@@ -55,18 +55,6 @@ export default function AdminPage() {
   useEffect(() => {
     // Only run on client side
     if (typeof window !== 'undefined') {
-      const html = document.documentElement;
-      if (isDark) {
-        html.classList.add('dark');
-      } else {
-        html.classList.remove('dark');
-      }
-    }
-  }, [isDark]);
-
-  useEffect(() => {
-    // Only run on client side
-    if (typeof window !== 'undefined') {
       const handleThemeChange = (event: Event) => {
         const themeEvent = event as CustomEvent<{ isDark: boolean }>;
         debugLog('Theme change detected:', themeEvent.detail.isDark);

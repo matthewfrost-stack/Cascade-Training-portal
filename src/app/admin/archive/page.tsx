@@ -48,7 +48,15 @@ export default function ArchivePage() {
 
     const dark = document.documentElement.classList.contains('dark');
     setIsDark(dark);
+    const syncTheme = () => setIsDark(document.documentElement.classList.contains('dark'));
+    window.addEventListener('themeChange', syncTheme);
+    window.addEventListener('storage', syncTheme);
     loadItems().finally(() => setLoading(false));
+
+    return () => {
+      window.removeEventListener('themeChange', syncTheme);
+      window.removeEventListener('storage', syncTheme);
+    };
   }, [authLoading, isAuthenticated, profile, router]);
 
   async function loadItems() {

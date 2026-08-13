@@ -28,6 +28,12 @@ export function useCurrentUserProfile(): UseCurrentUserProfileState {
   const [loading, setLoading] = useState(true);
   const hasBootstrappedRef = useRef(false);
   const lastRouteWasAuthRef = useRef(true);
+  const profileRef = useRef<CurrentUserProfile | null>(null);
+
+  const commitProfile = useCallback((nextProfile: CurrentUserProfile | null) => {
+    profileRef.current = nextProfile;
+    setProfile(nextProfile);
+  }, []);
 
   const loadProfile = useCallback(async () => {
     let session: {
@@ -52,13 +58,21 @@ export function useCurrentUserProfile(): UseCurrentUserProfileState {
 
     const setFallbackProfile = (user: typeof sessionUser | null) => {
       if (!user) {
-        setProfile(null);
+        commitProfile(null);
         setIsAuthenticated(false);
         return;
       }
 
+      // A tab switch can briefly interrupt the profile request while the
+      // Supabase client refreshes its session. Keep the last known role for
+      // the same user instead of dropping permissions during that interval.
+      if (profileRef.current?.id === user.id) {
+        setIsAuthenticated(true);
+        return;
+      }
+
       setIsAuthenticated(true);
-      setProfile({
+      commitProfile({
         id: user.id,
         full_name: user.user_metadata?.full_name || null,
         email: user.email || null,
@@ -116,7 +130,7 @@ export function useCurrentUserProfile(): UseCurrentUserProfileState {
         if (response.ok) {
           const profileData = (result?.profile || null) as CurrentUserProfile | null;
           if (profileData) {
-            setProfile(profileData);
+            commitProfile(profileData);
             setIsAuthenticated(true);
             return;
           }
@@ -140,7 +154,7 @@ export function useCurrentUserProfile(): UseCurrentUserProfileState {
                 const retryResult = await retryResponse.json().catch(() => null);
                 const retryProfileData = (retryResult?.profile || null) as CurrentUserProfile | null;
                 if (retryProfileData) {
-                  setProfile(retryProfileData);
+                  commitProfile(retryProfileData);
                   setIsAuthenticated(true);
                   return;
                 }
@@ -172,7 +186,7 @@ export function useCurrentUserProfile(): UseCurrentUserProfileState {
       console.error('Error loading current user profile:', error);
       setFallbackProfile(sessionUser);
     }
-  }, []);
+  }, [commitProfile]);
 
   useEffect(() => {
     const currentPath = pathname ?? "";
@@ -183,7 +197,7 @@ export function useCurrentUserProfile(): UseCurrentUserProfileState {
 
     if (isAuthRoute) {
       lastRouteWasAuthRef.current = true;
-      setProfile(null);
+      commitProfile(null);
       setIsAuthenticated(false);
       setLoading(false);
       return;
@@ -225,14 +239,22 @@ export function useCurrentUserProfile(): UseCurrentUserProfileState {
           return;
         }
 
-        if (event === "SIGNED_OUT" || !session?.user) {
-          setProfile(null);
+        if (event === "SIGNED_OUT") {
+          commitProfile(null);
           setIsAuthenticated(false);
           setLoading(false);
           return;
         }
 
-        await syncProfile();
+        // A transient callback without a session can occur while another tab
+        // is refreshing the shared token. Keep the current profile until an
+        // explicit SIGNED_OUT event confirms that the user has signed out.
+        if (!session?.user) return;
+
+        // Do not await network work inside Supabase's auth callback. Auth
+        // callbacks run under the client's internal lock; awaiting getSession
+        // or refreshSession here can deadlock when a tab regains focus.
+        void syncProfile();
       },
     );
 
@@ -240,7 +262,7 @@ export function useCurrentUserProfile(): UseCurrentUserProfileState {
       mounted = false;
       authListener.subscription.unsubscribe();
     };
-  }, [loadProfile, pathname]);
+  }, [commitProfile, loadProfile, pathname]);
 
   useEffect(() => {
     let mounted = true;

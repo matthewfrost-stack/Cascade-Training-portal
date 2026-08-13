@@ -731,9 +731,9 @@ export function MatrixLayout() {
                                       {isEditing ? (
                                         <span className={`px-2 py-1 rounded-lg text-[10px] font-black uppercase tracking-wider ${isDark ? 'bg-blue-950/30 text-blue-400' : 'bg-blue-50 text-blue-600'}`}>Editing</span>
                                       ) : cell?.status === 'allocated' || cell?.status === 'booked' || cell?.status === 'awaiting' ? (
-                                        <div className={`py-1 rounded-lg text-[10px] font-bold shadow-sm ${statusDisplay.color}`}>
-                                          <div>Allocated</div>
-                                          {cell?.expiry_date && <div className="opacity-75 font-normal">{new Date(cell.expiry_date).toLocaleDateString('en-GB')}</div>}
+                                        <div className={`flex flex-col items-center py-1 rounded-lg text-[10px] font-bold shadow-sm ${statusDisplay.color}`}>
+                                          <span>Allocated</span>
+                                          {cell?.expiry_date && <span className="opacity-75 font-normal">Exp: {new Date(cell.expiry_date).toLocaleDateString('en-GB')}</span>}
                                         </div>
                                       ) : cell?.status === 'not_yet_due' ? (
                                         <div className={`py-1 rounded-lg text-[10px] font-bold shadow-sm ${statusDisplay.color}`}>Not Yet Due</div>

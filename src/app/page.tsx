@@ -59,13 +59,18 @@ export default function LandingPage() {
   }, [isAuthenticated, loading, profile?.password_needs_change, router]);
 
   useEffect(() => {
-    const handleThemeChange = (event: Event) => {
-      const themeEvent = event as CustomEvent<{ isDark: boolean }>;
-      setIsDark(themeEvent.detail.isDark);
+    const syncTheme = () => setIsDark(document.documentElement.classList.contains('dark'));
+    syncTheme();
+    const handleThemeChange = () => {
+      syncTheme();
     };
 
     window.addEventListener('themeChange', handleThemeChange);
-    return () => window.removeEventListener('themeChange', handleThemeChange);
+    window.addEventListener('storage', syncTheme);
+    return () => {
+      window.removeEventListener('themeChange', handleThemeChange);
+      window.removeEventListener('storage', syncTheme);
+    };
   }, []);
 
   if (loading) {

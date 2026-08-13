@@ -45,7 +45,7 @@ export default function TrainingCourseCheckerPage() {
   };
 
   return (
-    <div className={`min-h-screen transition-colors duration-500 ${isDark ? 'dark' : ''}`}>
+    <div className="min-h-screen transition-colors duration-500">
       <TrainingCourseChecker isDark={isDark} />
     </div>
   );

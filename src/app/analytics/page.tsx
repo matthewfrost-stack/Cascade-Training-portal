@@ -27,15 +27,6 @@ export default function AnalyticsDashboard() {
   }, []);
 
   useEffect(() => {
-    const html = document.documentElement;
-    if (isDark) {
-      html.classList.add('dark');
-    } else {
-      html.classList.remove('dark');
-    }
-  }, [isDark]);
-
-  useEffect(() => {
     const handleThemeChange = (event: any) => {
       setIsDark(event.detail.isDark);
     };

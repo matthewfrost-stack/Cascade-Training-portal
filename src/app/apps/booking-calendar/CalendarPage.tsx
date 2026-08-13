@@ -231,8 +231,7 @@ export default function CalendarPage() {
                 {canViewAdmin && (
                   <button
                     onClick={() => {
-                      console.log('Training Dashboard button clicked, routing to /admin');
-                      router.push(`/admin`);
+                      router.push('/analytics?from=/apps/booking-calendar');
                     }}
                     title="Training Dashboard"
                     className="cursor-pointer bg-emerald-600 text-white px-1 md:px-4 py-1 md:py-2 rounded-lg md:rounded-xl font-black text-[7px] md:text-[10px] uppercase hover:bg-emerald-700 hover:shadow-md hover:scale-105 active:scale-95 transition-all duration-200"

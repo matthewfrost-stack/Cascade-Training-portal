@@ -1,32 +1,13 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useEffect } from 'react';
 import CalendarPage from './CalendarPage';
 import { supabase } from '@/lib/supabase';
 
 export default function BookingCalendarPage() {
-  const [isDark, setIsDark] = useState(true);
-
   useEffect(() => {
     checkAuth();
-    checkTheme();
   }, []);
-
-  useEffect(() => {
-    const handleThemeChange = (event: any) => {
-      setIsDark(event.detail.isDark);
-    };
-
-    window.addEventListener('themeChange', handleThemeChange);
-    return () => window.removeEventListener('themeChange', handleThemeChange);
-  }, []);
-
-  const checkTheme = (): void => {
-    if (typeof window !== 'undefined') {
-      const isDarkMode = document.documentElement.classList.contains('dark');
-      setIsDark(isDarkMode);
-    }
-  }
 
   const checkAuth = async (): Promise<void> => {
     try {
@@ -47,7 +28,7 @@ export default function BookingCalendarPage() {
   }
 
   return (
-    <div className={`min-h-screen transition-colors duration-500 ${isDark ? 'dark' : ''}`}>
+    <div className="min-h-screen transition-colors duration-500">
       <div className="relative">
         <CalendarPage />
       </div>

@@ -945,11 +945,16 @@ export function MatrixProvider({ children }: { children: React.ReactNode }) {
         return { staffId, courseId, locationId: selectedLocation, status: bulkEditStatus, completion_date: bulkEditDate || null };
       });
 
-      await fetch('/api/bulk-update-training', {
+      const response = await fetch('/api/bulk-update-training', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ updates }),
       });
+
+      if (!response.ok) {
+        const result = await response.json().catch(() => null);
+        throw new Error(result?.error || 'Unable to update the selected training records');
+      }
 
       setBulkEditMode(false);
       setBulkEditStatus(null);
