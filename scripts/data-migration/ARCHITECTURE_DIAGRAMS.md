@@ -32,6 +32,30 @@
         └───────────────────────┘
 ```
 
+## 📌 Current Booking Calendar Controls
+
+The booking calendar event flow currently includes:
+
+```text
+Calendar event card
+  ├── Course name
+  ├── Training venue
+  ├── Time
+  └── Booking count / capacity
+          │
+          ▼
+     Booking modal
+          ├── Add staff
+          └── Roster
+                ├── Attendance and lateness
+                ├── Export CSV
+                └── Settings (admin/scheduler)
+                      ├── Date-specific booking limit
+                      └── Message shown at top of roster
+```
+
+The checklist template is managed from `/admin`. Admins can add, edit, reorder, activate/deactivate, configure invoice-input rows, and remove template items.
+
 ## 🔄 User Authentication Flow
 
 ```
@@ -362,5 +386,5 @@ Total App      → ~250KB (minified)
 
 ---
 
-**Last Updated**: January 27, 2026
-**Version**: 1.0.0
+**Last Updated**: August 19, 2026
+**Version**: 1.1.0

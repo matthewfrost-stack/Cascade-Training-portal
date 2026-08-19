@@ -1,5 +1,22 @@
 # New Features & Fixes
 
+> This file contains earlier feature notes. For the current implementation and hand-off status, use [PROJECT_SUMMARY.md](../../PROJECT_SUMMARY.md) and [LOCAL_QUICK_START.md](./LOCAL_QUICK_START.md).
+
+## Current UI Updates (19 August 2026)
+
+- **Roster Settings:** Admins and schedulers can set a date-specific booking limit and a message shown at the top of the roster from `BookingModal`.
+- **Calendar venues:** Booking calendar event cards show the training venue.
+- **Checklist template removal:** Admins can permanently remove obsolete template items after confirmation.
+
+Current implementation files:
+
+- `src/app/components/BookingModal.tsx`
+- `src/app/components/RosterSettingsModal.tsx`
+- `src/app/components/ChecklistTemplateModal.tsx`
+- `src/app/apps/booking-calendar/CalendarPage.tsx`
+
+These updates reuse existing `course_event_overrides`, `training_events.notes`, and checklist-template fields. No new migration is required.
+
 ## 1. Fixed Data Loading for All Users
 
 **Problem**: Only admins could see roster data.

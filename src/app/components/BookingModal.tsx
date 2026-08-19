@@ -7,6 +7,7 @@ import { hasPermission } from '@/lib/permissions';
 import { getEmailTestHeaders } from '@/lib/emailTestMode';
 import { useCurrentUserProfile } from '@/lib/useCurrentUserProfile';
 import UniformButton from './UniformButton';
+import RosterSettingsModal from './RosterSettingsModal';
 
 interface BookingModalProps {
   event: any;
@@ -30,6 +31,14 @@ export default function BookingModal({ event, onClose, onRefresh, onOpenChecklis
   const userRole = profile?.role_tier ?? null;
   const [userLocation, setUserLocation] = useState<string | null>(null);
   const [expandedLocations, setExpandedLocations] = useState<Set<string>>(new Set());
+  const courseDefaultCapacity = Number(event?.courses?.max_attendees) || 10;
+  const initialCapacityOverride = event?.course_event_overrides?.[0]?.max_attendees;
+  const [rosterSettings, setRosterSettings] = useState({
+    maxAttendees: Number(initialCapacityOverride) || courseDefaultCapacity,
+    hasCapacityOverride: Number.isInteger(Number(initialCapacityOverride)),
+    message: String(event?.notes || '').trim(),
+  });
+  const [showRosterSettings, setShowRosterSettings] = useState(false);
 
   const ABSENCE_REASONS = ["Appointment", "Needed in home", "Rostering", "Transport issues", "Not started yet", "Childcare", "Sickness", "Holiday"];
   const LATE_REASONS = ["Traffic", "Handover delayed", "Public Transport", "Personal", "Other"];
@@ -206,6 +215,31 @@ export default function BookingModal({ event, onClose, onRefresh, onOpenChecklis
     const availableStaff = staffData.filter(s => !bookedIds.includes(s.id)) || [];
     setStaff(availableStaff);
     await fetchRoster();
+    await fetchRosterSettings();
+  }
+
+  async function fetchRosterSettings() {
+    const [{ data: overrides }, { data: eventSettings }] = await Promise.all([
+      supabase
+        .from('course_event_overrides')
+        .select('max_attendees')
+        .eq('course_id', event.course_id)
+        .eq('event_date', event.event_date)
+        .order('id', { ascending: false })
+        .limit(1),
+      supabase
+        .from('training_events')
+        .select('notes')
+        .eq('id', event.id)
+        .maybeSingle(),
+    ]);
+
+    const overrideCapacity = overrides?.[0]?.max_attendees;
+    setRosterSettings({
+      maxAttendees: Number(overrideCapacity) || courseDefaultCapacity,
+      hasCapacityOverride: Number.isInteger(Number(overrideCapacity)),
+      message: String(eventSettings?.notes ?? event?.notes ?? '').trim(),
+    });
   }
 
   async function fetchRoster() {
@@ -540,7 +574,7 @@ export default function BookingModal({ event, onClose, onRefresh, onOpenChecklis
         </div>
 
         <div className="px-4 sm:px-8 pb-6 sm:pb-8 flex-1 overflow-y-auto">
-          {String(event?.notes || '').trim() && (
+          {rosterSettings.message && (
             <div
               style={{
                 backgroundColor: isDark ? '#0f172a' : '#fff7ed',
@@ -549,8 +583,8 @@ export default function BookingModal({ event, onClose, onRefresh, onOpenChecklis
               }}
               className="mb-5 p-4 border rounded-2xl"
             >
-              <p className="text-[10px] font-black uppercase tracking-widest mb-2 opacity-80">Notes</p>
-              <p className="text-sm font-bold whitespace-pre-wrap">{String(event.notes).trim()}</p>
+              <p className="text-[10px] font-black uppercase tracking-widest mb-2 opacity-80">Training message</p>
+              <p className="text-sm font-bold whitespace-pre-wrap">{rosterSettings.message}</p>
             </div>
           )}
           {activeTab === 'booking' ? (
@@ -615,7 +649,23 @@ export default function BookingModal({ event, onClose, onRefresh, onOpenChecklis
             </>
           ) : (
             <div className="space-y-4">
-              <div className="flex justify-end">
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <p style={{ color: isDark ? '#cbd5e1' : '#475569' }} className="text-xs font-black uppercase">
+                  Bookings: <span style={{ color: roster.length >= rosterSettings.maxAttendees ? '#ef4444' : '#10b981' }}>{roster.length}/{rosterSettings.maxAttendees}</span>
+                </p>
+                <div className="flex gap-2">
+                  {canEditRoster && (
+                    <UniformButton
+                      type="button"
+                      variant="secondary"
+                      size="sm"
+                      onClick={() => setShowRosterSettings(true)}
+                      className="px-3"
+                      title="Limit bookings or add a roster message"
+                    >
+                      ⚙ Settings
+                    </UniformButton>
+                  )}
                 <UniformButton
                   type="button"
                   variant="secondary"
@@ -627,6 +677,7 @@ export default function BookingModal({ event, onClose, onRefresh, onOpenChecklis
                 >
                   Export CSV
                 </UniformButton>
+                </div>
               </div>
               {roster
                 .sort((a, b) => {
@@ -711,6 +762,28 @@ export default function BookingModal({ event, onClose, onRefresh, onOpenChecklis
           )}
         </div>
       </div>
+      {showRosterSettings && canEditRoster && (
+        <RosterSettingsModal
+          eventId={event.id}
+          courseId={event.course_id}
+          eventDate={event.event_date}
+          courseName={event.courses?.name || event.course_name || 'Training'}
+          defaultCapacity={courseDefaultCapacity}
+          currentCapacity={rosterSettings.maxAttendees}
+          hasCapacityOverride={rosterSettings.hasCapacityOverride}
+          currentMessage={rosterSettings.message}
+          onClose={() => setShowRosterSettings(false)}
+          onSaved={(settings) => {
+            setRosterSettings({
+              maxAttendees: settings.maxAttendees,
+              hasCapacityOverride: settings.hasCapacityOverride,
+              message: settings.message,
+            });
+            setShowRosterSettings(false);
+            onRefresh();
+          }}
+        />
+      )}
     </div>
   );
 }

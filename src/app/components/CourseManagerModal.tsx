@@ -2,7 +2,6 @@
 
 import { useState, useEffect } from 'react';
 import { supabase } from '@/lib/supabase';
-import CourseOverrideModal from './CourseOverrideModal';
 import UniformButton from './UniformButton';
 import Icon from './Icon';
 
@@ -12,8 +11,6 @@ export default function CourseManagerModal({ onClose }: { onClose: () => void })
   const [loading, setLoading] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [formData, setFormData] = useState({ name: '', max_attendees: 12 });
-  const [showOverrideModal, setShowOverrideModal] = useState(false);
-  const [selectedCourseForOverride, setSelectedCourseForOverride] = useState<any>(null);
 
   useEffect(() => {
     checkTheme();
@@ -146,11 +143,6 @@ export default function CourseManagerModal({ onClose }: { onClose: () => void })
     }
   };
 
-  const handleOpenOverride = (course: any) => {
-    setSelectedCourseForOverride(course);
-    setShowOverrideModal(true);
-  };
-
   return (
     <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-md flex items-center justify-center p-4 z-50">
       <div style={{ backgroundColor: isDark ? '#1e293b' : '#ffffff', borderColor: isDark ? '#334155' : '#cbd5e1' }} className="rounded-3xl p-8 w-full max-w-2xl shadow-2xl border transition-colors duration-300">
@@ -239,15 +231,6 @@ export default function CourseManagerModal({ onClose }: { onClose: () => void })
                   </div>
                   <div className="flex gap-2">
                     <UniformButton
-                      variant="secondary"
-                      className="p-3 rounded-lg font-bold transition-all"
-                      style={{ backgroundColor: '#f59e0b', color: '#fff' }}
-                      onClick={() => handleOpenOverride(course)}
-                      title="Set date-specific capacity overrides"
-                    >
-                      📅
-                    </UniformButton>
-                    <UniformButton
                       variant="primary"
                       className="p-3 rounded-lg font-bold transition-all hover:scale-110 active:scale-95 shadow-md hover:shadow-lg duration-200"
                       style={{ backgroundColor: '#2563eb', color: '#fff' }}
@@ -279,18 +262,6 @@ export default function CourseManagerModal({ onClose }: { onClose: () => void })
           </div>
         </div>
       </div>
-
-      {/* OVERRIDE MODAL */}
-      {showOverrideModal && selectedCourseForOverride && (
-        <CourseOverrideModal 
-          courseId={selectedCourseForOverride.id}
-          courseName={selectedCourseForOverride.name}
-          onClose={() => {
-            setShowOverrideModal(false);
-            setSelectedCourseForOverride(null);
-          }}
-        />
-      )}
     </div>
   );
 }

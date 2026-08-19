@@ -11,6 +11,9 @@
 - Track which staff members hold which training certifications.
 - Monitor upcoming expiry dates and flag staff who are overdue.
 - Book and manage training events via a shared calendar.
+- Set per-session booking limits and roster messages from the booking roster.
+- Display training venues directly on booking calendar event cards.
+- Maintain reusable booking checklist templates, including removing obsolete items.
 - Sync training records from external systems (Atlas CSV import).
 - Manage staff accounts, locations, and course definitions.
 
@@ -40,7 +43,7 @@ training-portal/
 │   │   ├── page.tsx            # Landing page (home tile selector)
 │   │   ├── layout.tsx          # Root layout (sidebar, update notifier, auth)
 │   │   ├── dashboard/          # Training hub – links to all sub-apps
-│   │   ├── admin-tools/        # Admin-only management panel
+│   │   ├── admin/              # Admin and scheduler training control centre
 │   │   ├── training-matrix/    # Full staff × course compliance matrix
 │   │   ├── apps/
 │   │   │   ├── booking-calendar/      # Course booking and scheduling
@@ -105,8 +108,6 @@ The root landing page after login is the **Training Dashboard**. It displays a r
 4. **Booking Calendar** – `/apps/booking-calendar`
 
 Navigation across all pages includes an **always-visible side emoji strip** on the left screen edge (🏠 Home, 📊 Matrix, 📆 Calendar, 📅 Expiry, 🛠️ Admin) and compact drawer buttons when expanded.
-3. **Course Expiry Checker** – `/apps/expiry-checker`
-4. **Booking Calendar** – `/apps/booking-calendar`
 
 ---
 
@@ -150,24 +151,24 @@ A calendar interface for creating and managing training events.
 
 **Key features:**
 - Monthly / weekly calendar view.
+- Event cards show course, training venue, date/time, and current capacity.
 - Create bookings with course, location, date, time, and max capacity.
 - Attach staff members to bookings (booking modal with roster).
+- Admins and schedulers can use roster Settings to set a date-specific booking limit and a message shown at the top of the roster.
+- Booking limits reuse `course_event_overrides`; roster messages reuse `training_events.notes`.
 - Email notifications on booking confirmation or cancellation.
-- Attendance marking.
+- Attendance, absence, lateness, staff removal, and CSV export.
 
 ---
 
-### Admin Tools (`/admin-tools`)
-`src/app/admin-tools/page.tsx`
+### Training Control Centre (`/admin`)
+`src/app/admin/page.tsx`
 
-Admin-only panel containing sub-tools managed by `AdminToolsPanel.tsx`:
-- **Staff Management** – add, edit, delete users; manage locations per user.
-- **Location Manager** – create/rename locations.
-- **Course Manager** – define courses, set default expiry durations.
-- **Duplicate Removal** – find and merge duplicate staff records.
+Admin and scheduler-facing control centre with admin-only management tools:
+- **Location Manager** – create and manage training locations.
+- **Course Catalogue** – define courses and set default capacity. Date-specific limits are managed from the booking roster.
+- **Checklist Template** – add, edit, reorder, activate/deactivate, configure invoice inputs, and remove checklist items.
 - **Automation Control** – configure scheduled jobs (e.g. feedback email triggers).
-- **Atlas Import** – import training records from external Atlas CSV exports.
-- **Email Debug** – test and preview email configuration.
 
 ---
 
@@ -181,7 +182,9 @@ Admin-only panel containing sub-tools managed by `AdminToolsPanel.tsx`:
 | `CourseExpiryChecker.tsx` | Per-location expiry view |
 | `RecordHoverPopoverModal.tsx` | Reusable hover popover + click-to-expand modal for record lists |
 | `AddStaffModal.tsx` | Multi-step modal for creating a new staff member |
-| `BookingModal.tsx` | Create/edit training booking events |
+| `BookingModal.tsx` | Booking form, roster, attendance, export, and roster settings entry point |
+| `RosterSettingsModal.tsx` | Edit per-session booking limits and roster messages |
+| `ChecklistTemplateModal.tsx` | Manage reusable checklist items, including removal |
 | `AdminToolsPanel.tsx` | Admin sub-panel container |
 | `UpdateNotification.tsx` | Polls `/api/version` and shows a toast when a new deploy is detected |
 | `MatrixSyncModal.tsx` | Import options: Atlas upload or location CSV |
@@ -199,18 +202,18 @@ All routes are Next.js Route Handlers (server-side). Authentication is checked s
 
 | Route | Purpose |
 |---|---|
-| `/api/staff` | Get all staff profiles |
 | `/api/add-staff` | Create a new staff member (and Supabase auth user) |
 | `/api/delete-staff` | Delete a staff member |
 | `/api/profile` | Get/update the current user's profile |
-| `/api/locations` | List and manage locations |
-| `/api/courses` | List course definitions |
 | `/api/courses/expiring` | Get all certifications expiring within N days |
+| `/api/courses/expired` | Get expired certifications |
+| `/api/courses/locations` | Get course/location data |
 | `/api/update-course` | Update a training record (completion date, expiry, override) |
 | `/api/bulk-update-training` | Batch update multiple training records |
 | `/api/training-matrix` | Fetch the full matrix data for the Training Matrix view |
 | `/api/book-staff` | Add a staff member to a booking |
-| `/api/roster` | Get the attendance roster for a booking |
+| `/api/roster/export` | Export scoped training-matrix roster data |
+| `/api/admin/checklist-template` | Admin-only checklist template removal |
 | `/api/send-booking-confirmation` | Send a confirmation email for a booking |
 | `/api/send-booking-cancellation` | Send a cancellation email |
 | `/api/send-course-notification` | Send a general course notification email |
@@ -218,7 +221,6 @@ All routes are Next.js Route Handlers (server-side). Authentication is checked s
 | `/api/atlas/import` | Parse and import an Atlas CSV export |
 | `/api/automations` | Configure/trigger automation jobs |
 | `/api/version` | Returns current build timestamp (used by UpdateNotification) |
-| `/api/admin` | Admin-level queries (staff + location joins) |
 | `/api/archive` | Archive old or inactive records |
 | `/api/cleanup-orphaned-profiles` | Remove profile rows with no matching auth user |
 
@@ -284,7 +286,17 @@ Always-on workspace constraints that apply to every agent invocation.
 
 ---
 
-## 11. Common Development Tasks
+## 11. Current Development Status
+
+The latest completed UI work covers:
+
+1. Roster Settings for admin/scheduler users: date-specific booking limit plus top-of-roster message.
+2. Calendar event cards showing the training venue.
+3. Checklist Template item removal with confirmation.
+
+These changes use existing database fields and permissions; no new migration is required for them.
+
+## 12. Common Development Tasks
 
 ### Run locally
 ```bash
@@ -311,7 +323,7 @@ Edit `src/lib/permissions.ts` — all permission gates read from here.
 
 ---
 
-## 12. Project Root Config Files
+## 13. Project Root Config Files
 
 | File | Purpose |
 |---|---|
@@ -324,4 +336,4 @@ Edit `src/lib/permissions.ts` — all permission gates read from here.
 
 ---
 
-*Last updated: 2026-07-27*
+*Last updated: 2026-08-19*

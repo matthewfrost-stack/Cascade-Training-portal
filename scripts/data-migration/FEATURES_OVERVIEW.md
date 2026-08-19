@@ -42,9 +42,12 @@
 
 ### Booking Calendar App (EXISTING)
 - ✅ Calendar view with course events
+- ✅ Event cards show the training venue
 - ✅ Staff booking management
 - ✅ Attendance tracking
 - ✅ Checklist functionality
+- ✅ Admin/scheduler roster settings for per-session booking limits and roster messages
+- ✅ Checklist template item removal
 - ✅ Admin dashboard
 - ✅ Email notifications
 - ✅ Fully functional
@@ -95,14 +98,14 @@
 ## 📊 Data Management
 
 ### Currently Available
-- Mock data for Course Expiry Checker (ready to replace)
-- Real data integration for Booking Calendar
-- User profile management
+- Real Supabase data integration for the Booking Calendar
+- Real Supabase data integration for the Training Matrix and course expiry views
+- User profile and role management
+- Reusable booking checklist templates
 
-### Ready to Integrate
-- Google Sheets API for course data
-- Custom API routes for data fetching
-- Supabase tables for structured data
+### Historical / Future Integration Notes
+- Google Sheets API for course data remains a possible future integration.
+- Custom API routes and Supabase tables are already in use for current data flows.
 
 ## 🔧 Technical Stack
 
@@ -143,7 +146,7 @@ src/
 │   ├── lib/              # Utilities
 │   ├── login/            # Login page
 │   ├── layout.tsx        # Root layout
-│   ├── page.tsx          # Calendar (used via /apps/booking-calendar)
+│   ├── page.tsx          # Landing page
 │   └── globals.css       # Global styles
 ├── middleware.ts         # Route protection
 └── env.local (example)   # Environment variables
@@ -151,10 +154,10 @@ src/
 
 ## 🎯 Next Steps to Complete Integration
 
-### Priority 1: Course Data Integration
-1. Connect Course Expiry Checker to your data source
-2. Replace mock data with real course data
-3. Test filtering and search functionality
+### Priority 1: Ongoing Validation
+1. Run the local smoke checks in `LOCAL_QUICK_START.md`.
+2. Validate role-scoped calendar and roster access with staff, scheduler, and admin accounts.
+3. Test filtering and search functionality after data changes.
 
 ### Priority 2: Optional Enhancements
 1. Add admin panel for course management
@@ -217,14 +220,14 @@ src/
 ## 📞 Support
 
 For issues or questions:
-1. Check [MULTI_APP_SETUP.md](./MULTI_APP_SETUP.md) for architecture details
-2. Check [COURSE_EXPIRY_INTEGRATION.md](./COURSE_EXPIRY_INTEGRATION.md) for data integration
-3. Review component source code for implementation details
-4. Check browser console for JavaScript errors
-5. Check Network tab for API issues
+1. Check [PROJECT_SUMMARY.md](../../PROJECT_SUMMARY.md) for current architecture and feature ownership.
+2. Check [LOCAL_QUICK_START.md](./LOCAL_QUICK_START.md) for local startup and smoke checks.
+3. Review component source code for implementation details.
+4. Check browser console for JavaScript errors.
+5. Check the Network tab for API or Supabase errors.
 
 ---
 
-**Last Updated**: January 27, 2026
-**Status**: ✅ Ready for Data Integration
-**Version**: 1.0.0
+**Last Updated**: August 19, 2026
+**Status**: ✅ Active development
+**Version**: 1.1.0

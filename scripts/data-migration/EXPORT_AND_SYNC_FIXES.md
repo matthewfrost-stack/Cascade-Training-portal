@@ -1,5 +1,9 @@
 # Export Button & Matrix Sync - Fixes & Documentation
 
+> Historical note: this document records an earlier export-button state. The current booking roster includes an **Export CSV** action alongside roster settings; the location-based Training Matrix export remains available separately.
+
+## Historical Snapshot
+
 ## Export Button Issue - FIXED ✅
 
 ### Problem

@@ -1,77 +1,40 @@
-# Local Testing - Quick Commands
+# Local Development - Quick Commands
 
 ## Environment Status ✅
 - Node.js: v24.11.1 ✓
 - npm: 11.6.2 ✓
 - .env.local: Exists ✓
 
-## Copy & Paste Commands
+## Start the application
 
-### 1. Check for Duplicate Locations
 ```bash
-cd /Users/matthewfrost/training-portal && node scripts/find-duplicate-locations.js
-```
-
-### 2. Start Development Server
-```bash
-cd /Users/matthewfrost/training-portal && npm run dev
-```
-Then visit: http://localhost:3000
-
-### 3. Run All Tests
-```bash
-# Check duplicates
-node scripts/find-duplicate-locations.js
-
-# Merge duplicates if found
-node scripts/merge-duplicate-locations.js
-
-# Start server
+cd /Users/matthewfrost/training-portal
+npm install
 npm run dev
 ```
 
-## Testing Checklist
+Then open [http://localhost:3000](http://localhost:3000).
 
-After starting `npm run dev`:
+## Verification commands
 
-- [ ] Go to Training Matrix page
-- [ ] Click on a course's expiry time (e.g., "12m")
-- [ ] Look for "Never expires" checkbox
-- [ ] Try checking it
-- [ ] Click "Save"
-- [ ] Refresh and verify it saved
-- [ ] Go to Add Staff page
-- [ ] Check location dropdown - no duplicates?
-- [ ] Go to Location Manager
-- [ ] Check location list - no duplicates?
-
-## Database Migration
-
-After confirming frontend works, apply migrations:
-
-1. Login to Supabase Dashboard
-2. Go to SQL Editor
-3. Paste this and run:
-
-```sql
--- Migration 1: Add never_expires column
-ALTER TABLE courses
-ADD COLUMN IF NOT EXISTS never_expires BOOLEAN DEFAULT FALSE;
-
-CREATE INDEX IF NOT EXISTS idx_courses_never_expires ON courses(never_expires);
-
-COMMENT ON COLUMN courses.never_expires IS 'When TRUE, this course never expires regardless of expiry_months value';
+```bash
+npx tsc --noEmit
+npm run build
+npm run test:routes
 ```
 
-Then run migration 2 (update function) - check the file:
-`supabase/migrations/20260202000002_update_course_data_function.sql`
+## Current feature smoke checks
 
-## Everything OK?
+After signing in, verify:
 
-You're ready to deploy! The changes are:
-- ✅ Tested locally
-- ✅ Syntax validated
-- ✅ Database ready
-- ✅ Frontend ready
+- Booking Calendar event cards show the course venue.
+- Open an event, switch to **Roster**, and confirm admin/scheduler users see **Settings**.
+- Set a booking limit and roster message, save, refresh, and confirm both remain.
+- Open **Admin → Checklist Template**, remove an item, and confirm it no longer appears in future booking checklists.
 
-Just push to production!
+## Optional data checks
+
+```bash
+# Only run data migration scripts when specifically required by the task.
+# Inspect the script and its target data before running it.
+```

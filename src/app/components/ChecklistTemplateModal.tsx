@@ -113,6 +113,29 @@ export default function ChecklistTemplateModal({ onClose }: { onClose: () => voi
     }
   }
 
+  async function removeItem(item: TemplateItem) {
+    if (!confirm(`Remove "${item.item_name}" from the checklist template? This will hide it from future checklists.`)) {
+      return;
+    }
+
+    setLoading(true);
+    try {
+      const response = await fetch('/api/admin/checklist-template', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ itemId: item.id }),
+      });
+      const result = await response.json();
+      if (!response.ok) throw new Error(result?.error || 'Failed to remove checklist item');
+      if (editingId === item.id) cancelEdit();
+      await fetchItems();
+    } catch (err: any) {
+      alert(err.message || 'Failed to remove checklist item');
+    } finally {
+      setLoading(false);
+    }
+  }
+
   function startEdit(item: TemplateItem) {
     setEditingId(item.id);
     setEditingName(item.item_name);
@@ -337,16 +360,28 @@ export default function ChecklistTemplateModal({ onClose }: { onClose: () => voi
                       </UniformButton>
                     </>
                   ) : (
-                    <UniformButton
-                      variant="secondary"
-                      type="button"
-                      disabled={loading}
-                      onClick={() => startEdit(item)}
-                      className="px-4 py-2 rounded-xl font-bold shadow-md"
-                      style={{ backgroundColor: isDark ? '#334155' : '#cbd5e1', color: isDark ? '#f1f5f9' : '#1e293b' }}
-                    >
-                      Edit
-                    </UniformButton>
+                    <>
+                      <UniformButton
+                        variant="secondary"
+                        type="button"
+                        disabled={loading}
+                        onClick={() => startEdit(item)}
+                        className="px-4 py-2 rounded-xl font-bold shadow-md"
+                        style={{ backgroundColor: isDark ? '#334155' : '#cbd5e1', color: isDark ? '#f1f5f9' : '#1e293b' }}
+                      >
+                        Edit
+                      </UniformButton>
+                      <UniformButton
+                        variant="danger"
+                        type="button"
+                        disabled={loading}
+                        onClick={() => removeItem(item)}
+                        className="px-4 py-2 rounded-xl font-bold shadow-md"
+                        title="Remove item from checklist template"
+                      >
+                        Remove
+                      </UniformButton>
+                    </>
                   )}
                 </div>
               </div>

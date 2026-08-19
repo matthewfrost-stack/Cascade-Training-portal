@@ -348,6 +348,9 @@ export default function CalendarPage() {
                               <p className="font-black truncate uppercase text-[10px] sm:text-xs">
                                 {event.courses?.name}
                               </p>
+                              <p className="mt-1 truncate text-[8px] font-black uppercase opacity-90 sm:text-[9px]" title={event.location || 'Venue TBC'}>
+                                📍 {event.location || 'Venue TBC'}
+                              </p>
                               <div className="flex justify-between items-center mt-1 opacity-80 font-bold text-[9px] sm:text-[10px]">
                                 <span>
                                   {event.start_time?.slice(0, 5) || '09:00'} - {event.end_time?.slice(0, 5) || '17:00'}
