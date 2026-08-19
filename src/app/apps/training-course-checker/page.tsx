@@ -1,16 +1,12 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { useRouter } from 'next/navigation';
 import TrainingCourseChecker from '@/app/components/TrainingCourseChecker';
-import { supabase } from '@/lib/supabase';
 
 export default function TrainingCourseCheckerPage() {
-  const router = useRouter();
   const [isDark, setIsDark] = useState(true);
 
   useEffect(() => {
-    checkAuth();
     checkTheme();
   }, []);
 
@@ -27,20 +23,6 @@ export default function TrainingCourseCheckerPage() {
     if (typeof window !== 'undefined') {
       const isDarkMode = document.documentElement.classList.contains('dark');
       setIsDark(isDarkMode);
-    }
-  };
-
-  const checkAuth = async (): Promise<void> => {
-    try {
-      const {
-        data: { session },
-      } = await supabase.auth.getSession();
-
-      if (!session?.user) {
-        return;
-      }
-    } catch (error) {
-      console.error('Auth error:', error);
     }
   };
 

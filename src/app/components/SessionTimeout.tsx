@@ -1,11 +1,12 @@
 'use client';
 
 import { useCallback, useEffect, useRef } from 'react';
-import { useRouter } from 'next/navigation';
+import { usePathname, useRouter } from 'next/navigation';
 import { supabase } from '@/lib/supabase';
 import { signOutClientSide } from '@/lib/clientSignOut';
 
 export default function SessionTimeout() {
+  const pathname = usePathname();
   const router = useRouter();
   const timeoutIdRef = useRef<number | null>(null);
   const mountedRef = useRef(true);
@@ -87,6 +88,16 @@ export default function SessionTimeout() {
 
   useEffect(() => {
     mountedRef.current = true;
+
+    const currentPath = pathname ?? '';
+    const isAuthRoute =
+      currentPath === '/login' || currentPath === '/auth/callback' || currentPath.startsWith('/auth/');
+
+    if (isAuthRoute) {
+      clearTimeoutId();
+      return;
+    }
+
     recordActivity();
 
     const activityEvents = ['mousedown', 'mousemove', 'keydown', 'scroll', 'touchstart', 'click'];
@@ -136,7 +147,7 @@ export default function SessionTimeout() {
       window.removeEventListener('storage', handleStorageChange);
       authListener.subscription.unsubscribe();
     };
-  }, [router, recordActivity, clearTimeoutId, resetInactivityTimer, signOutAndRedirect]);
+  }, [pathname, router, recordActivity, clearTimeoutId, resetInactivityTimer, signOutAndRedirect]);
 
   return null;
 }

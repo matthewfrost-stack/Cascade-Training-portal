@@ -1,8 +1,10 @@
 'use client';
 
 import React, { useEffect, useState, useRef, useCallback } from 'react';
+import { usePathname } from 'next/navigation';
 
 export default function UpdateNotification() {
+  const pathname = usePathname();
   const [hasUpdate, setHasUpdate] = useState(false);
   const [dismissed, setDismissed] = useState(false);
   const initialVersionRef = useRef<string | null>(null);
@@ -31,6 +33,12 @@ export default function UpdateNotification() {
   }, []);
 
   useEffect(() => {
+    const currentPath = pathname ?? '';
+    const isAuthRoute =
+      currentPath === '/login' || currentPath === '/auth/callback' || currentPath.startsWith('/auth/');
+
+    if (isAuthRoute) return;
+
     // Initial fetch
     checkVersion();
 
@@ -50,7 +58,7 @@ export default function UpdateNotification() {
       clearInterval(interval);
       document.removeEventListener('visibilitychange', handleVisibilityChange);
     };
-  }, [checkVersion]);
+  }, [checkVersion, pathname]);
 
   const handleRefresh = () => {
     window.location.reload();

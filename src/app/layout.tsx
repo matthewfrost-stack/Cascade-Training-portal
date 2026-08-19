@@ -5,6 +5,7 @@ import SlideOutNav from '@/app/components/SlideOutNav';
 import SessionTimeout from '@/app/components/SessionTimeout';
 import UpdateNotification from '@/app/components/UpdateNotification';
 import { NavDrawerProvider } from '@/app/components/NavDrawerProvider';
+import { CurrentUserProfileProvider } from '@/lib/useCurrentUserProfile';
 
 export const metadata: Metadata = {
   title: "Cascade Training Portal",
@@ -34,14 +35,16 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
       </head>
       <body className="font-sans antialiased bg-white text-slate-900 dark:bg-[#0f172a] dark:text-white min-h-screen overflow-x-hidden">
         <NavDrawerProvider>
-          <SessionTimeout />
-          <UpdateNotification />
-          <FixedHeader />
-          <SlideOutNav />
-          {/* Main content area with top padding for fixed header and left padding for side emoji rail */}
-          <div id="app-scroll" className="min-h-screen pt-14 pl-16">
-            {children}
-          </div>
+          <CurrentUserProfileProvider>
+            <SessionTimeout />
+            <UpdateNotification />
+            <FixedHeader />
+            <SlideOutNav />
+            {/* Main content area with top padding for fixed header and left padding for side emoji rail */}
+            <div id="app-scroll" className="min-h-screen pt-14 pl-16">
+              {children}
+            </div>
+          </CurrentUserProfileProvider>
         </NavDrawerProvider>
       </body>
     </html>

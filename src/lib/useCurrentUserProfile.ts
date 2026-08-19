@@ -1,6 +1,16 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import {
+  createContext,
+  createElement,
+  useCallback,
+  useContext,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
+import type { ReactNode } from "react";
 import { usePathname } from "next/navigation";
 import { supabase } from "@/lib/supabase";
 
@@ -14,14 +24,16 @@ export type CurrentUserProfile = {
   password_needs_change?: boolean | null;
 };
 
-type UseCurrentUserProfileState = {
+export type UseCurrentUserProfileState = {
   profile: CurrentUserProfile | null;
   isAuthenticated: boolean;
   loading: boolean;
   refreshProfile: () => Promise<void>;
 };
 
-export function useCurrentUserProfile(): UseCurrentUserProfileState {
+const CurrentUserProfileContext = createContext<UseCurrentUserProfileState | null>(null);
+
+function useCurrentUserProfileState(): UseCurrentUserProfileState {
   const pathname = usePathname();
   const [profile, setProfile] = useState<CurrentUserProfile | null>(null);
   const [isAuthenticated, setIsAuthenticated] = useState(false);
@@ -380,10 +392,29 @@ export function useCurrentUserProfile(): UseCurrentUserProfileState {
     }
   }, [isAuthenticated, profile, loading, loadProfile]);
 
-  return {
-    profile,
-    isAuthenticated,
-    loading,
-    refreshProfile: loadProfile,
-  };
+  return useMemo(
+    () => ({
+      profile,
+      isAuthenticated,
+      loading,
+      refreshProfile: loadProfile,
+    }),
+    [profile, isAuthenticated, loading, loadProfile],
+  );
+}
+
+export function CurrentUserProfileProvider({ children }: { children: ReactNode }) {
+  const value = useCurrentUserProfileState();
+
+  return createElement(CurrentUserProfileContext.Provider, { value }, children);
+}
+
+export function useCurrentUserProfile(): UseCurrentUserProfileState {
+  const context = useContext(CurrentUserProfileContext);
+
+  if (!context) {
+    throw new Error('useCurrentUserProfile must be used within CurrentUserProfileProvider');
+  }
+
+  return context;
 }

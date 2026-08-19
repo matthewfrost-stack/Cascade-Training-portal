@@ -88,23 +88,23 @@ export function HoverPopoverCard({
         // popover stays inside the hover target — a margin gap drops the hover
         // and closes the popover before the pointer can reach it to scroll.
         <div
-          className={`absolute left-1/2 -translate-x-1/2 z-[9999] w-72 sm:w-80 animate-in fade-in zoom-in-95 duration-150 ${
+          className={`absolute left-0 sm:left-1/2 sm:-translate-x-1/2 z-[9999] w-[calc(100vw-2rem)] max-w-80 animate-in fade-in zoom-in-95 duration-150 ${
             placement === 'top' ? 'bottom-full pb-2' : 'top-full pt-2'
           }`}
         >
           <div
-            className={`p-3.5 rounded-2xl border shadow-2xl backdrop-blur-xl ${
+            className={`p-3 rounded-2xl border shadow-2xl backdrop-blur-xl sm:p-3.5 ${
               isDark
                 ? 'bg-slate-900/95 border-slate-700/80 text-white'
                 : 'bg-white/95 border-slate-200 text-slate-900'
             }`}
           >
-            <div className="flex items-center justify-between border-b border-slate-700/30 pb-2 mb-2">
-              <span className="text-xs font-black uppercase tracking-wider flex items-center gap-1.5">
+            <div className={`flex flex-wrap items-center justify-between gap-2 border-b pb-2 mb-2 ${isDark ? 'border-slate-700/30' : 'border-slate-200'}`}>
+              <span className="min-w-0 break-words text-[11px] font-black uppercase tracking-wider flex items-center gap-1.5 sm:text-xs">
                 <span className={`w-2 h-2 rounded-full ${accentStyles}`} />
                 {title}
               </span>
-              <span className="whitespace-nowrap text-[11px] font-bold px-2 py-0.5 rounded-full bg-slate-800 text-slate-300">
+              <span className={`shrink-0 whitespace-nowrap text-[10px] font-bold px-2 py-0.5 rounded-full sm:text-[11px] ${isDark ? 'bg-slate-800 text-slate-300' : 'bg-slate-100 text-slate-600'}`}>
                 {records.length} {records.length === 1 ? 'record' : 'records'}
               </span>
             </div>
@@ -113,20 +113,20 @@ export function HoverPopoverCard({
                 {sortedRecords.map((item, idx) => (
                 <div
                   key={idx}
-                  className={`p-2 rounded-lg text-xs border flex items-center justify-between gap-2 ${
+                  className={`p-2 rounded-lg text-xs border flex items-start justify-between gap-2 ${
                     isDark
                       ? 'bg-slate-800/60 border-slate-700/50 text-slate-200'
                       : 'bg-slate-50 border-slate-200 text-slate-800'
                   }`}
                 >
                   <div className="min-w-0 flex-1">
-                    <p className="font-semibold truncate">{item.staffName}</p>
-                    <p className="text-[10px] text-slate-400 truncate">
+                    <p className="font-semibold break-words">{item.staffName}</p>
+                    <p className={`text-[10px] break-words ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>
                       {item.courseName} {item.location ? `• ${item.location}` : ''}
                     </p>
                   </div>
                   {item.date && (
-                    <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-slate-700/50 text-slate-300 whitespace-nowrap">
+                    <span className={`shrink-0 text-[10px] font-mono px-1.5 py-0.5 rounded whitespace-nowrap ${isDark ? 'bg-slate-700/50 text-slate-300' : 'bg-slate-200 text-slate-700'}`}>
                       {formatDate(item.date)}
                     </span>
                   )}
@@ -135,7 +135,7 @@ export function HoverPopoverCard({
             </div>
 
             {onCardClick && (
-              <p className="text-[10px] text-center font-medium text-slate-400 mt-2">
+              <p className={`text-[10px] text-center font-medium mt-2 ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>
                 Scroll for more · Click to expand
               </p>
             )}
@@ -175,36 +175,36 @@ export function RecordDetailModal({
   );
 
   return (
-    <div className="fixed inset-0 z-[10000] flex items-center justify-center p-4 bg-slate-950/70 backdrop-blur-md animate-in fade-in duration-200">
+    <div className="fixed inset-0 z-[10000] flex items-center justify-center overflow-y-auto p-2 bg-slate-950/70 backdrop-blur-md animate-in fade-in duration-200 sm:p-4">
       <div
-        className={`w-full max-w-3xl rounded-3xl border shadow-2xl flex flex-col max-h-[85vh] overflow-hidden ${
+        className={`w-full max-w-3xl rounded-2xl border shadow-2xl flex min-h-0 flex-col max-h-[calc(100dvh-1rem)] overflow-hidden sm:rounded-3xl sm:max-h-[85vh] ${
           isDark ? 'bg-slate-900 border-slate-800 text-white' : 'bg-white border-slate-200 text-slate-900'
         }`}
       >
         {/* Modal Header */}
-        <div className="px-6 py-4 border-b border-slate-800 flex items-center justify-between gap-4">
-          <div>
-            <h3 className="text-xl font-bold">{title}</h3>
-            <p className="text-xs text-slate-400 mt-0.5">
+        <div className={`shrink-0 px-4 py-3 border-b flex items-start justify-between gap-3 sm:px-6 sm:py-4 sm:items-center sm:gap-4 ${isDark ? 'border-slate-800' : 'border-slate-200'}`}>
+          <div className="min-w-0">
+            <h3 className="break-words text-base leading-tight font-bold sm:text-xl">{title}</h3>
+            <p className={`text-xs mt-0.5 ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>
               Showing {filtered.length} of {records.length} records
             </p>
           </div>
           <button
             onClick={onClose}
-            className="p-2 rounded-xl text-slate-400 hover:text-white hover:bg-slate-800 transition-colors"
+            className={`shrink-0 p-2 rounded-xl transition-colors ${isDark ? 'text-slate-400 hover:text-white hover:bg-slate-800' : 'text-slate-500 hover:text-slate-900 hover:bg-slate-100'}`}
           >
             ✕
           </button>
         </div>
 
         {/* Search Bar */}
-        <div className="px-6 py-3 border-b border-slate-800/60 bg-slate-900/50">
+        <div className={`shrink-0 px-4 py-3 border-b sm:px-6 ${isDark ? 'border-slate-800/60 bg-slate-900/50' : 'border-slate-200 bg-slate-100'}`}>
           <input
             type="text"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             placeholder="Search by staff name, course, or location..."
-            className={`w-full px-4 py-2 text-sm rounded-xl border focus:outline-none focus:ring-2 focus:ring-blue-500/20 ${
+            className={`w-full px-4 py-2.5 text-base rounded-xl border focus:outline-none focus:ring-2 focus:ring-blue-500/20 sm:py-2 sm:text-sm ${
               isDark
                 ? 'bg-slate-800 border-slate-700 text-white placeholder-slate-500'
                 : 'bg-slate-100 border-slate-300 text-slate-800 placeholder-slate-400'
@@ -213,47 +213,47 @@ export function RecordDetailModal({
         </div>
 
         {/* Record List */}
-        <div className="p-6 overflow-y-auto space-y-2 flex-1">
+        <div className="min-h-0 flex-1 space-y-2 overflow-y-auto p-3 sm:p-6">
           {filtered.length === 0 ? (
-            <p className="text-center py-10 text-sm text-slate-400">
+            <p className={`text-center py-10 text-sm ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>
               No matching records found.
             </p>
           ) : (
             filtered.map((item, idx) => (
               <div
                 key={idx}
-                className={`p-3.5 rounded-2xl border flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 ${
+                className={`p-3 rounded-2xl border flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 sm:p-3.5 ${
                   isDark
                     ? 'bg-slate-800/50 border-slate-700/60 hover:bg-slate-800'
                     : 'bg-slate-50 border-slate-200 hover:bg-slate-100'
                 } transition-colors`}
               >
-                <div className="min-w-0 flex-1">
-                  <div className="flex items-center gap-2">
-                    <p className="font-bold text-sm text-slate-100">{item.staffName}</p>
+                <div className="min-w-0 w-full flex-1">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <p className={`break-words font-bold text-sm ${isDark ? 'text-slate-100' : 'text-slate-900'}`}>{item.staffName}</p>
                     {item.type && (
                       <span
                         className={`text-[10px] font-extrabold uppercase tracking-wider px-2 py-0.5 rounded-full ${
                           item.type === 'expired' || item.type === 'missing'
-                            ? 'bg-red-500/20 text-red-400 border border-red-500/30'
+                            ? `bg-red-500/20 ${isDark ? 'text-red-400' : 'text-red-600'} border border-red-500/30`
                             : item.type === 'allocated'
-                            ? 'bg-amber-500/20 text-amber-400 border border-amber-500/30'
-                            : 'bg-blue-500/20 text-blue-400 border border-blue-500/30'
+                            ? `bg-amber-500/20 ${isDark ? 'text-amber-400' : 'text-amber-700'} border border-amber-500/30`
+                            : `bg-blue-500/20 ${isDark ? 'text-blue-400' : 'text-blue-700'} border border-blue-500/30`
                         }`}
                       >
                         {item.type}
                       </span>
                     )}
                   </div>
-                  <p className="text-xs text-slate-400 mt-0.5">
-                    <span className="font-semibold text-slate-300">{item.courseName}</span>
+                  <p className={`mt-0.5 break-words text-xs ${isDark ? 'text-slate-400' : 'text-slate-600'}`}>
+                    <span className={`font-semibold ${isDark ? 'text-slate-300' : 'text-slate-700'}`}>{item.courseName}</span>
                     {item.location ? ` • ${item.location}` : ''}
                   </p>
                 </div>
 
-                <div className="flex items-center gap-3 self-end sm:self-center">
+                <div className="flex w-full flex-wrap items-center justify-end gap-2 self-end sm:w-auto sm:gap-3 sm:self-center">
                   {item.date && (
-                    <span className="text-xs font-mono font-medium px-2.5 py-1 rounded-lg bg-slate-700/40 text-slate-300 border border-slate-700">
+                    <span className={`text-xs font-mono font-medium px-2.5 py-1 rounded-lg border ${isDark ? 'bg-slate-700/40 text-slate-300 border-slate-700' : 'bg-slate-200 text-slate-700 border-slate-300'}`}>
                       {formatDate(item.date)}
                     </span>
                   )}
@@ -263,7 +263,7 @@ export function RecordDetailModal({
                         onSelectStaff(item.staffName);
                         onClose();
                       }}
-                      className="px-3 py-1.5 bg-blue-600 hover:bg-blue-500 text-white rounded-xl text-xs font-bold transition-all"
+                      className="min-h-10 px-3 py-2 bg-blue-600 hover:bg-blue-500 text-white rounded-xl text-xs font-bold transition-all"
                     >
                       Filter Matrix
                     </button>
@@ -275,10 +275,10 @@ export function RecordDetailModal({
         </div>
 
         {/* Modal Footer */}
-        <div className="px-6 py-4 border-t border-slate-800 flex justify-end">
+        <div className={`shrink-0 px-4 py-3 border-t flex justify-end sm:px-6 sm:py-4 ${isDark ? 'border-slate-800' : 'border-slate-200'}`}>
           <button
             onClick={onClose}
-            className="px-5 py-2 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded-xl text-xs font-bold transition-all"
+            className={`min-h-10 px-5 py-2 rounded-xl text-xs font-bold transition-all ${isDark ? 'bg-slate-800 hover:bg-slate-700 text-slate-200' : 'bg-slate-200 hover:bg-slate-300 text-slate-800'}`}
           >
             Close
           </button>
