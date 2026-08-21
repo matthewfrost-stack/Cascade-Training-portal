@@ -15,5 +15,7 @@ jobs:
           
           echo "Calling automation endpoint at $APP_URL..."
           
-          curl -f -X GET "$APP_URL/api/automations/feedback-emails" \
+          # Keep the response body visible when the endpoint fails so the GitHub
+          # notification contains the actual authentication/database error.
+          curl --fail-with-body --silent --show-error -X GET "$APP_URL/api/automations/feedback-emails" \
           -H "Authorization: Bearer ${{ secrets.CRON_SECRET }}"

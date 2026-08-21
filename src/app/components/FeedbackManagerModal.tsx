@@ -61,7 +61,17 @@ export default function FeedbackManagerModal({ onClose }: { onClose: () => void 
       }
 
       if (autoRes.data) {
-        setAutomationSettings(autoRes.data);
+        setAutomationSettings({
+          is_enabled: false,
+          reminder_7_days_before: 7,
+          reminder_1_day_before: 1,
+          reminder_subject: 'Training reminder: {{course_name}}',
+          reminder_body: 'Hi {{staff_name}},\n\nThis is a reminder that you are scheduled to attend {{course_name}} on {{event_date}} from {{start_time}} to {{end_time}}.\n\nBest regards,\nThe Training Team',
+          manager_reminder_subject: 'Training reminder for {{course_name}}',
+          manager_reminder_body: 'The following staff are scheduled to attend {{course_name}} on {{event_date}} from {{start_time}} to {{end_time}}:\n\n{{staff_list}}\n\nThe Training Team',
+          ...autoRes.data,
+          feedback_minutes_before_end: autoRes.data.feedback_minutes_before_end ?? autoRes.data.minutes_before_end ?? 60,
+        });
       }
 
       // Fetch events for manual override (last 2 days and future 1 day)
@@ -122,7 +132,15 @@ export default function FeedbackManagerModal({ onClose }: { onClose: () => void 
         .from('feedback_automation_settings')
         .update({
           is_enabled: automationSettings.is_enabled,
-          minutes_before_end: automationSettings.minutes_before_end,
+          // Keep the original field in sync for backwards compatibility with the older endpoint.
+          minutes_before_end: automationSettings.feedback_minutes_before_end,
+          feedback_minutes_before_end: automationSettings.feedback_minutes_before_end,
+          reminder_7_days_before: automationSettings.reminder_7_days_before,
+          reminder_1_day_before: automationSettings.reminder_1_day_before,
+          reminder_subject: automationSettings.reminder_subject,
+          reminder_body: automationSettings.reminder_body,
+          manager_reminder_subject: automationSettings.manager_reminder_subject,
+          manager_reminder_body: automationSettings.manager_reminder_body,
           email_subject: automationSettings.email_subject,
           email_body: automationSettings.email_body,
           updated_at: new Date().toISOString()
@@ -382,7 +400,7 @@ export default function FeedbackManagerModal({ onClose }: { onClose: () => void 
               <div className="flex items-center justify-between bg-slate-800/50 p-6 rounded-2xl border border-slate-700">
                 <div>
                   <h4 className="font-bold text-white mb-1">Enable Automation</h4>
-                  <p className="text-xs text-slate-500">Automatically send feedback emails 30 mins before session ends.</p>
+                  <p className="text-xs text-slate-500">Send booking reminders to staff and their location managers, then request feedback from attendees.</p>
                 </div>
                 <button 
                   onClick={() => setAutomationSettings({...automationSettings, is_enabled: !automationSettings.is_enabled})}
@@ -393,29 +411,97 @@ export default function FeedbackManagerModal({ onClose }: { onClose: () => void 
               </div>
 
               <div className="grid grid-cols-2 gap-6">
-                <div className="col-span-2">
-                  <label className="block text-[10px] font-black uppercase text-slate-500 mb-2">Minutes Before End Time</label>
-                  <input 
+                <div>
+                  <label className="block text-[10px] font-black uppercase text-slate-500 mb-2">First Reminder (Days Before)</label>
+                  <input
                     type="number"
-                    value={automationSettings?.minutes_before_end}
-                    onChange={(e) => setAutomationSettings({...automationSettings, minutes_before_end: parseInt(e.target.value)})}
+                    min="0"
+                    value={automationSettings?.reminder_7_days_before ?? 7}
+                    onChange={(e) => setAutomationSettings({...automationSettings, reminder_7_days_before: Number(e.target.value)})}
                     style={{ backgroundColor: isDark ? '#0f172a' : '#f1f5f9', color: isDark ? '#f1f5f9' : '#1e293b', borderColor: isDark ? '#334155' : '#cbd5e1' }}
                     className="w-full px-4 py-3 border rounded-xl outline-none font-bold text-sm"
                   />
+                  <p className="text-[10px] text-slate-500 mt-2">Sent to scheduled staff and their managers.</p>
+                </div>
+                <div>
+                  <label className="block text-[10px] font-black uppercase text-slate-500 mb-2">Second Reminder (Days Before)</label>
+                  <input
+                    type="number"
+                    min="0"
+                    value={automationSettings?.reminder_1_day_before ?? 1}
+                    onChange={(e) => setAutomationSettings({...automationSettings, reminder_1_day_before: Number(e.target.value)})}
+                    style={{ backgroundColor: isDark ? '#0f172a' : '#f1f5f9', color: isDark ? '#f1f5f9' : '#1e293b', borderColor: isDark ? '#334155' : '#cbd5e1' }}
+                    className="w-full px-4 py-3 border rounded-xl outline-none font-bold text-sm"
+                  />
+                  <p className="text-[10px] text-slate-500 mt-2">Sent to scheduled staff and their managers.</p>
                 </div>
                 <div className="col-span-2">
-                  <label className="block text-[10px] font-black uppercase text-slate-500 mb-2">Email Subject</label>
+                  <label className="block text-[10px] font-black uppercase text-slate-500 mb-2">Feedback (Minutes Before End Time)</label>
+                  <input
+                    type="number"
+                    min="0"
+                    value={automationSettings?.feedback_minutes_before_end ?? 60}
+                    onChange={(e) => setAutomationSettings({...automationSettings, feedback_minutes_before_end: Number(e.target.value)})}
+                    style={{ backgroundColor: isDark ? '#0f172a' : '#f1f5f9', color: isDark ? '#f1f5f9' : '#1e293b', borderColor: isDark ? '#334155' : '#cbd5e1' }}
+                    className="w-full px-4 py-3 border rounded-xl outline-none font-bold text-sm"
+                  />
+                  <p className="text-[10px] text-slate-500 mt-2">Sent only to attendees marked present.</p>
+                </div>
+                <div className="col-span-2">
+                  <label className="block text-[10px] font-black uppercase text-slate-500 mb-2">Reminder Subject</label>
+                  <input
+                    type="text"
+                    value={automationSettings?.reminder_subject || ''}
+                    onChange={(e) => setAutomationSettings({...automationSettings, reminder_subject: e.target.value})}
+                    style={{ backgroundColor: isDark ? '#0f172a' : '#f1f5f9', color: isDark ? '#f1f5f9' : '#1e293b', borderColor: isDark ? '#334155' : '#cbd5e1' }}
+                    className="w-full px-4 py-3 border rounded-xl outline-none font-bold text-sm"
+                    placeholder="Training reminder: {{course_name}}"
+                  />
+                </div>
+                <div className="col-span-2">
+                  <label className="block text-[10px] font-black uppercase text-slate-500 mb-2">Reminder Email Body</label>
+                  <textarea
+                    value={automationSettings?.reminder_body || ''}
+                    onChange={(e) => setAutomationSettings({...automationSettings, reminder_body: e.target.value})}
+                    style={{ backgroundColor: isDark ? '#0f172a' : '#f1f5f9', color: isDark ? '#f1f5f9' : '#1e293b', borderColor: isDark ? '#334155' : '#cbd5e1' }}
+                    className="w-full h-32 px-4 py-3 border rounded-xl outline-none font-medium text-sm"
+                    placeholder="Use {{staff_name}}, {{course_name}}, {{event_date}}, {{start_time}}, and {{end_time}}."
+                  />
+                </div>
+                <div className="col-span-2">
+                  <label className="block text-[10px] font-black uppercase text-slate-500 mb-2">Manager Reminder Subject</label>
+                  <input
+                    type="text"
+                    value={automationSettings?.manager_reminder_subject || ''}
+                    onChange={(e) => setAutomationSettings({...automationSettings, manager_reminder_subject: e.target.value})}
+                    style={{ backgroundColor: isDark ? '#0f172a' : '#f1f5f9', color: isDark ? '#f1f5f9' : '#1e293b', borderColor: isDark ? '#334155' : '#cbd5e1' }}
+                    className="w-full px-4 py-3 border rounded-xl outline-none font-bold text-sm"
+                    placeholder="Training reminder for {{course_name}}"
+                  />
+                </div>
+                <div className="col-span-2">
+                  <label className="block text-[10px] font-black uppercase text-slate-500 mb-2">Manager Reminder Body</label>
+                  <textarea
+                    value={automationSettings?.manager_reminder_body || ''}
+                    onChange={(e) => setAutomationSettings({...automationSettings, manager_reminder_body: e.target.value})}
+                    style={{ backgroundColor: isDark ? '#0f172a' : '#f1f5f9', color: isDark ? '#f1f5f9' : '#1e293b', borderColor: isDark ? '#334155' : '#cbd5e1' }}
+                    className="w-full h-32 px-4 py-3 border rounded-xl outline-none font-medium text-sm"
+                    placeholder="Use {{course_name}}, {{event_date}}, {{start_time}}, {{end_time}}, and {{staff_list}}."
+                  />
+                </div>
+                <div className="col-span-2">
+                  <label className="block text-[10px] font-black uppercase text-slate-500 mb-2">Feedback Subject</label>
                   <input 
                     type="text"
                     value={automationSettings?.email_subject}
                     onChange={(e) => setAutomationSettings({...automationSettings, email_subject: e.target.value})}
                     style={{ backgroundColor: isDark ? '#0f172a' : '#f1f5f9', color: isDark ? '#f1f5f9' : '#1e293b', borderColor: isDark ? '#334155' : '#cbd5e1' }}
                     className="w-full px-4 py-3 border rounded-xl outline-none font-bold text-sm"
-                    placeholder="e.g. Feedback for {{course_name}}"
+                    placeholder="Feedback for {{course_name}}"
                   />
                 </div>
                 <div className="col-span-2">
-                  <label className="block text-[10px] font-black uppercase text-slate-500 mb-2">Email Body</label>
+                  <label className="block text-[10px] font-black uppercase text-slate-500 mb-2">Feedback Email Body</label>
                   <textarea 
                     value={automationSettings?.email_body}
                     onChange={(e) => setAutomationSettings({...automationSettings, email_body: e.target.value})}
