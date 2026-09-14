@@ -11,31 +11,46 @@ function getCsvUrlForLocation(locationName: string): string {
   return `/csv-import/${locationName} Training Matrix - Staff Matrix.csv`;
 }
 
-// Fetch training records via the authenticated server route. The browser anon
-// client cannot read staff_training_matrix under RLS, so reading it directly
-// silently returns zero rows and leaves every matrix cell blank. The server
-// route uses the service client and enforces role-based location scoping.
-async function fetchTrainingRecordsForLocation(locationId: string, signal?: AbortSignal): Promise<{ records: any[]; dividers: any[] }> {
+// Fetch the matrix's role-scoped data as one server response. The browser anon
+// client cannot read all matrix tables under RLS, so the server route returns
+// the same data set after enforcing the caller's location permissions.
+type MatrixBootstrapPayload = {
+  staffLocations: any[];
+  records: any[];
+  profiles: any[];
+  dividers: any[];
+  locationCourses: any[];
+  allCourses: any[];
+  locations?: any[];
+  selectedLocationId?: string;
+  userRole?: string;
+};
+
+async function fetchMatrixBootstrapForLocation(locationId: string, signal?: AbortSignal): Promise<MatrixBootstrapPayload> {
   const { data: sessionData } = await supabase.auth.getSession();
   const token = sessionData.session?.access_token;
   const headers: Record<string, string> = {};
   if (token) headers.Authorization = `Bearer ${token}`;
 
-  const response = await fetch(`/api/training-matrix/records?locationId=${encodeURIComponent(locationId)}`, {
+  const response = await fetch(`/api/training-matrix/bootstrap?locationId=${encodeURIComponent(locationId)}`, {
     credentials: 'include',
     headers,
     signal,
   });
 
   if (!response.ok) {
-    console.warn('Failed to load training records:', response.status);
-    return { records: [], dividers: [] };
+    console.warn('Failed to load matrix bootstrap:', response.status);
+    return { staffLocations: [], records: [], profiles: [], dividers: [], locationCourses: [], allCourses: [] };
   }
 
   const payload = await response.json();
   return {
+    staffLocations: Array.isArray(payload.staffLocations) ? payload.staffLocations : [],
     records: Array.isArray(payload.records) ? payload.records : [],
+    profiles: Array.isArray(payload.profiles) ? payload.profiles : [],
     dividers: Array.isArray(payload.dividers) ? payload.dividers : [],
+    locationCourses: Array.isArray(payload.locationCourses) ? payload.locationCourses : [],
+    allCourses: Array.isArray(payload.allCourses) ? payload.allCourses : [],
   };
 }
 
@@ -85,6 +100,7 @@ export function MatrixProvider({ children }: { children: React.ReactNode }) {
   const [bulkEditMode, setBulkEditMode] = useState(false);
   const [bulkEditStatus, setBulkEditStatus] = useState<'completed' | 'allocated' | 'not_yet_due' | 'na' | null>(null);
   const [bulkEditDate, setBulkEditDate] = useState<string>('');
+  const pendingMatrixBootstrapRef = useRef<MatrixBootstrapPayload | null>(null);
 
   function getCategoryOverrides(locationId: string): Record<string, string> {
     if (typeof window === 'undefined') return {};
@@ -311,7 +327,10 @@ export function MatrixProvider({ children }: { children: React.ReactNode }) {
       const headers: Record<string, string> = {};
       if (token) headers.Authorization = `Bearer ${token}`;
 
-      const response = await fetch('/api/locations/user-locations', {
+      // The bootstrap response includes the first location's matrix data, so
+      // the selected-location effect can reuse it instead of making a second
+      // server request during the initial page load.
+      const response = await fetch('/api/training-matrix/bootstrap', {
         credentials: 'include',
         headers,
       });
@@ -321,17 +340,29 @@ export function MatrixProvider({ children }: { children: React.ReactNode }) {
         return;
       }
 
-      const payload = await response.json();
+      const rawPayload = await response.json();
+      const payload: MatrixBootstrapPayload = {
+        staffLocations: Array.isArray(rawPayload.staffLocations) ? rawPayload.staffLocations : [],
+        records: Array.isArray(rawPayload.records) ? rawPayload.records : [],
+        profiles: Array.isArray(rawPayload.profiles) ? rawPayload.profiles : [],
+        dividers: Array.isArray(rawPayload.dividers) ? rawPayload.dividers : [],
+        locationCourses: Array.isArray(rawPayload.locationCourses) ? rawPayload.locationCourses : [],
+        allCourses: Array.isArray(rawPayload.allCourses) ? rawPayload.allCourses : [],
+        locations: Array.isArray(rawPayload.locations) ? rawPayload.locations : [],
+        selectedLocationId: typeof rawPayload.selectedLocationId === 'string' ? rawPayload.selectedLocationId : undefined,
+        userRole: typeof rawPayload.userRole === 'string' ? rawPayload.userRole : undefined,
+      };
 
       // Authoritative role from the server (requireRole). Use it so matrix
       // permissions don't depend on the profile hook resolving role_tier —
       // that hook can fall back to null when /api/profile is slow or the
       // client session isn't attached, which showed the user as having no role.
-      if (payload.userRole) {
-        setUserRole((prev) => (prev === payload.userRole ? prev : payload.userRole));
+      const serverRole = payload.userRole;
+      if (serverRole) {
+        setUserRole((prev) => (prev === serverRole ? prev : serverRole));
       }
 
-      const scopedLocations = Array.isArray(payload.locations) ? payload.locations : [];
+      const scopedLocations = payload.locations || [];
 
       if (scopedLocations.length > 0) {
         const uniqueLocations: any[] = Array.from(
@@ -339,9 +370,14 @@ export function MatrixProvider({ children }: { children: React.ReactNode }) {
         );
         setLocations(uniqueLocations);
         const locationIds = new Set(uniqueLocations.map((loc) => loc.id));
+        if (payload.selectedLocationId && locationIds.has(payload.selectedLocationId)) {
+          pendingMatrixBootstrapRef.current = payload;
+        }
         setSelectedLocation((prev) => {
           if (prev && locationIds.has(prev)) return prev;
-          return uniqueLocations[0].id;
+          return payload.selectedLocationId && locationIds.has(payload.selectedLocationId)
+            ? payload.selectedLocationId
+            : uniqueLocations[0].id;
         });
         setLoading(false);
       } else {
@@ -372,30 +408,21 @@ export function MatrixProvider({ children }: { children: React.ReactNode }) {
             .catch(() => null)
         : Promise.resolve(null);
 
-      // These reads are independent. Running them together removes several
-      // sequential Supabase round trips from the matrix's initial load while
-      // keeping the existing role-scoped records endpoint in place.
-      const [staffLocationsResult, trainingRecordsResult, locationCoursesResult, allCoursesResult, csvContent] = await Promise.all([
-        supabase
-          .from('staff_locations')
-          .select('staff_id, display_order, profiles(id, full_name, is_deleted)')
-          .eq('location_id', selectedLocation)
-          .order('display_order', { ascending: true, nullsFirst: false }),
-        fetchTrainingRecordsForLocation(selectedLocation, signal),
-        supabase
-          .from('location_training_courses')
-          .select('training_course_id, display_order, training_courses(id, name, category, expiry_months, never_expires)')
-          .eq('location_id', selectedLocation)
-          .order('display_order', { ascending: true, nullsFirst: false }),
-        supabase.from('training_courses').select('id, name'),
+      // Matrix tables are loaded in one authenticated, role-scoped request;
+      // the public CSV is fetched alongside it for legacy category labels.
+      const cachedBootstrap = pendingMatrixBootstrapRef.current?.selectedLocationId === selectedLocation
+        ? pendingMatrixBootstrapRef.current
+        : null;
+      if (cachedBootstrap) pendingMatrixBootstrapRef.current = null;
+
+      const [matrixBootstrap, csvContent] = await Promise.all([
+        cachedBootstrap || fetchMatrixBootstrapForLocation(selectedLocation, signal),
         csvPromise,
       ]);
 
       if (signal?.aborted) return;
 
-      const { data: staffLocationsData, error: staffLocationsError } = staffLocationsResult;
-
-      if (staffLocationsError) console.warn('Error fetching staff structural data:', staffLocationsError);
+      const staffLocationsData = matrixBootstrap.staffLocations;
 
       const visibleStaffLocationsData = userRole === 'staff'
         ? staffLocationsData?.filter((sl: any) => sl.staff_id === user?.id)
@@ -406,7 +433,7 @@ export function MatrixProvider({ children }: { children: React.ReactNode }) {
       // (service client) because the browser anon client is blocked by RLS on
       // staff_training_matrix and location_matrix_dividers. Fetched once and
       // reused for the staff list, groups, and the matrix cells below.
-      const { records: allTrainingData, dividers: dividersData } = trainingRecordsResult;
+      const { records: allTrainingData, dividers: dividersData } = matrixBootstrap;
 
       const uniqueStaffIds = new Set<string>();
       allTrainingData?.forEach((t: any) => { if (t.staff_id) uniqueStaffIds.add(t.staff_id); });
@@ -414,15 +441,11 @@ export function MatrixProvider({ children }: { children: React.ReactNode }) {
       const staffLocationsIds = new Set(activeStaffLocationsData.map((sl: any) => sl.staff_id));
       const filteredTrainingStaffIds = Array.from(uniqueStaffIds).filter(id => staffLocationsIds.has(id));
 
-      let trainingStaffData: any[] = [];
-      if (filteredTrainingStaffIds.length > 0) {
-        const { data: profiles } = await supabase
-          .from('profiles')
-          .select('id, full_name')
-          .in('id', filteredTrainingStaffIds)
-          .eq('is_deleted', false);
-        trainingStaffData = profiles?.map((p: any) => ({ profiles: p })) || [];
-      }
+      const profilesById = new Map(matrixBootstrap.profiles.map((profile: any) => [profile.id, profile]));
+      const trainingStaffData = filteredTrainingStaffIds
+        .map(id => profilesById.get(id))
+        .filter((profile): profile is any => Boolean(profile && !profile.is_deleted))
+        .map((profile: any) => ({ profiles: profile }));
 
       const staffMap = new Map<string, any>();
       activeStaffLocationsData?.forEach((s: any) => {
@@ -434,24 +457,7 @@ export function MatrixProvider({ children }: { children: React.ReactNode }) {
 
       const staffData = Array.from(staffMap.values()).map(s => ({ profiles: { id: s.id, full_name: s.full_name } }));
 
-      let locationCoursesData: any[] | null = locationCoursesResult.data;
-      const locationCoursesError = locationCoursesResult.error;
-
-      if (
-        locationCoursesError?.code === '42703' ||
-        String(locationCoursesError?.message || '').includes('training_courses.category') ||
-        String(locationCoursesError?.message || '').includes('column "category"')
-      ) {
-        const fallbackRes = await supabase
-          .from('location_training_courses')
-          .select('training_course_id, training_courses(id, name, expiry_months, never_expires)')
-          .eq('location_id', selectedLocation)
-          .order('display_order', { ascending: true, nullsFirst: false });
-        locationCoursesData = fallbackRes.data;
-        if (fallbackRes.error) {
-          console.warn('Fallback loading location training courses without category failed:', fallbackRes.error);
-        }
-      }
+      const locationCoursesData = matrixBootstrap.locationCourses;
 
       let filteredCourses = (locationCoursesData || [])
         .map((lc: any) => {
@@ -490,7 +496,7 @@ export function MatrixProvider({ children }: { children: React.ReactNode }) {
         category: categoryOverrides[course.id] ?? course.category,
       }));
 
-      const { data: allCoursesForMapping } = allCoursesResult;
+      const allCoursesForMapping = matrixBootstrap.allCourses;
       const careskillsToBaseMap = new Map<string, string>();
       if (allCoursesForMapping) {
         const baseCourses = new Map<string, string>();
