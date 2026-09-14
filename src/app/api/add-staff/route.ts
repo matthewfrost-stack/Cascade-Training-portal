@@ -20,6 +20,53 @@ interface StaffMember {
 const isUuid = (value: string): boolean =>
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test((value || '').trim());
 
+async function initializeNewStaffMatrix(
+  supabaseAdmin: ReturnType<typeof createServiceClient>,
+  staffId: string,
+  locationId: string
+) {
+  const { data: locationCourses, error: coursesError } = await supabaseAdmin
+    .from('location_training_courses')
+    .select('training_course_id, training_courses(id, name, category)')
+    .eq('location_id', locationId);
+
+  if (coursesError) return { applied: 0, error: coursesError };
+
+  const defaults = (locationCourses || [])
+    .map((row: any) => {
+      const course = Array.isArray(row.training_courses) ? row.training_courses[0] : row.training_courses;
+      if (!row.training_course_id) return null;
+      return {
+        staff_id: staffId,
+        course_id: row.training_course_id,
+        completed_at_location_id: locationId,
+        completion_date: null,
+        expiry_date: null,
+        status: String(course?.category || '').trim().toLowerCase() === 'atlas phase 1'
+          ? 'allocated'
+          : 'na',
+      };
+    })
+    .filter(Boolean);
+
+  if (defaults.length === 0) return { applied: 0, error: null };
+
+  // Newer databases key a matrix row by staff/course/location. Keep a
+  // fallback for older installations that still use staff/course only.
+  let { error: upsertError } = await supabaseAdmin
+    .from('staff_training_matrix')
+    .upsert(defaults, { onConflict: 'staff_id,course_id,completed_at_location_id' });
+
+  if (upsertError?.code === '42P10') {
+    const fallback = await supabaseAdmin
+      .from('staff_training_matrix')
+      .upsert(defaults, { onConflict: 'staff_id,course_id' });
+    upsertError = fallback.error;
+  }
+
+  return { applied: upsertError ? 0 : defaults.length, error: upsertError };
+}
+
 export async function POST(request: NextRequest) {
   try {
     const authz = await requireRole(['admin']);
@@ -238,6 +285,14 @@ export async function POST(request: NextRequest) {
           console.warn('Staff member added to profiles but not staff_locations. They may not appear in training matrix.');
         }
 
+        let matrixDefaults = { applied: 0, error: null as any };
+        if (!staffLocError) {
+          matrixDefaults = await initializeNewStaffMatrix(supabaseAdmin, profileId, normalizedLocationId);
+          if (matrixDefaults.error) {
+            console.error('Could not initialize new staff training matrix defaults:', matrixDefaults.error);
+          }
+        }
+
         // If we created a temp password, send a password setup link so they can set their own.
         if (needsPasswordChange && staff.send_invite !== false) {
           try {
@@ -268,6 +323,8 @@ export async function POST(request: NextRequest) {
           email: staff.email,
           success: true,
           message: `${staff.full_name} created with login access`,
+          matrix_defaults_applied: matrixDefaults.applied,
+          matrix_defaults_warning: matrixDefaults.error ? 'Staff created, but matrix defaults could not be initialized.' : undefined,
         });
       } catch (error: any) {
         console.error('Error adding staff:', error);

@@ -102,6 +102,12 @@ function KioskPageContent() {
 
   const presentCount = bookings.filter((booking) => booking.attendedAt).length;
 
+  function closeRegister() {
+    // The register is normally opened in a new tab, so router.back() can have
+    // no history entry to return to. Always provide a deterministic destination.
+    router.push('/apps/booking-calendar');
+  }
+
   async function updateAttendance(booking: KioskBooking, present: boolean) {
     setSaving(booking.id);
     try {
@@ -143,7 +149,7 @@ function KioskPageContent() {
           </div>
           <div className="flex gap-2">
             <button onClick={loadRegister} className="rounded-2xl bg-white px-4 py-3 text-xs font-black uppercase shadow-sm ring-1 ring-slate-200 dark:bg-slate-900 dark:ring-slate-800">Refresh</button>
-            <button onClick={() => router.back()} className="rounded-2xl bg-slate-900 px-4 py-3 text-xs font-black uppercase text-white dark:bg-white dark:text-slate-900">Close</button>
+            <button onClick={closeRegister} className="rounded-2xl bg-slate-900 px-4 py-3 text-xs font-black uppercase text-white dark:bg-white dark:text-slate-900">Close</button>
           </div>
         </header>
 
