@@ -168,7 +168,7 @@ export default function CalendarPage() {
     const startDate = format(startOfMonth(currentMonth), 'yyyy-MM-dd');
     const endDate = format(endOfMonth(currentMonth), 'yyyy-MM-dd');
     try {
-      const response = await fetch(`/api/booking-calendar?startDate=${encodeURIComponent(startDate)}&endDate=${encodeURIComponent(endDate)}`, {
+      const response = await fetch(`/api/booking-calendar/summary?startDate=${encodeURIComponent(startDate)}&endDate=${encodeURIComponent(endDate)}`, {
         credentials: 'include',
       });
       const payload = await response.json().catch(() => null);
@@ -332,7 +332,7 @@ export default function CalendarPage() {
                       <div className="flex-1 space-y-1">
                         {dayEvents.map(event => {
                           const colors = getCourseColor(event.courses?.name || 'Unknown');
-                          const participantCount = event.bookings?.length || 0;
+                          const participantCount = event.booking_count ?? event.bookings?.length ?? 0;
                           const maxCapacity = getMaxCapacity(event);
                           return (
                             <button
