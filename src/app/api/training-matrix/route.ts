@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { createServiceClient, requireRole } from '@/lib/apiAuth';
+import { createServiceClient, getScopedLocationIds, requireRole } from '@/lib/apiAuth';
 
 export const dynamic = 'force-dynamic';
 
@@ -26,26 +26,19 @@ export async function GET(_request: NextRequest) {
         locations:completed_at_location_id (id, name)
       `);
 
-    // Apply location filtering based on role
-    if (authz.role === 'admin') {
-      // Admins see everything - no filter needed
-    } else if (authz.role === 'manager' || authz.role === 'scheduler') {
-      // Get locations this user manages
-      const { data: managedLocations } = await supabase
-        .from('staff_locations')
-        .select('location_id')
-        .eq('staff_id', authz.userId);
-
-      const locationIds = managedLocations?.map(ml => ml.location_id) || [];
-
-      if (locationIds.length === 0) {
+    // Apply the same location scope used by the other server endpoints. This
+    // includes a manager's managed_houses/name assignments as well as their
+    // explicit staff_locations links.
+    const scopedLocations = await getScopedLocationIds(authz.userId, authz.role, supabase);
+    if (scopedLocations.all) {
+      // Admins see everything - no filter needed.
+    } else if (authz.role === 'staff') {
+      query = query.eq('staff_id', authz.userId);
+    } else {
+      if (scopedLocations.ids.length === 0) {
         return NextResponse.json([]);
       }
-
-      query = query.in('completed_at_location_id', locationIds);
-    } else {
-      // Staff only see their own records
-      query = query.eq('staff_id', authz.userId);
+      query = query.in('completed_at_location_id', scopedLocations.ids);
     }
 
     const { data, error } = await query;

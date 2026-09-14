@@ -29,6 +29,7 @@ export default function BookingModal({ event, onClose, onRefresh, onOpenChecklis
   // session wasn't attached and disabled booking/roster permissions.
   const { profile } = useCurrentUserProfile();
   const userRole = profile?.role_tier ?? null;
+  const isStaff = userRole === 'staff';
   const [userLocation, setUserLocation] = useState<string | null>(null);
   const [expandedLocations, setExpandedLocations] = useState<Set<string>>(new Set());
   const courseDefaultCapacity = Number(event?.courses?.max_attendees) || 10;
@@ -119,6 +120,14 @@ export default function BookingModal({ event, onClose, onRefresh, onOpenChecklis
   }
 
   async function fetchInitialData() {
+    if (isStaff) {
+      // Staff only need confirmation for their own booking. Do not load the
+      // roster or the list of other people who could be booked.
+      setStaff([]);
+      setRoster([]);
+      return;
+    }
+
     let staffData: any[] = [];
 
     const { data: sessionData } = await supabase.auth.getSession();
@@ -194,17 +203,6 @@ export default function BookingModal({ event, onClose, onRefresh, onOpenChecklis
         (locationProfiles || []).forEach((profile: any) => upsertStaff(profile));
       }
 
-      if (userRole === 'manager') {
-        const { data: unassignedStaff } = await supabase
-          .from('profiles')
-          .select('*')
-          .is('location', null)
-          .eq('is_deleted', false)
-          .order('full_name');
-
-        (unassignedStaff || []).forEach((profile: any) => upsertStaff(profile));
-      }
-
       staffData = Array.from(staffById.values());
     }
 
@@ -243,20 +241,21 @@ export default function BookingModal({ event, onClose, onRefresh, onOpenChecklis
   }
 
   async function fetchRoster() {
-    const { data, error } = await supabase
-      .from('bookings')
-      .select('id, profile_id, event_id, attended_at, minutes_late, late_reason, absence_reason')
-      .eq('event_id', event.id);
-    
-    if (data && data.length > 0) {
-      const profileIds = data.map((b: any) => b.profile_id);
-      const { data: profilesData } = await supabase.from('profiles').select('id, full_name, location').in('id', profileIds);
-      const rosterWithProfiles = data.map((booking: any) => ({
-        ...booking,
-        profiles: profilesData?.find(p => p.id === booking.profile_id)
-      }));
-      setRoster(rosterWithProfiles);
-    } else {
+    // Use the role-scoped server response so managers can see the full roster,
+    // including attendees from other locations, without broadening browser RLS
+    // access to unrelated bookings.
+    try {
+      const response = await fetch(
+        `/api/booking-calendar?startDate=${encodeURIComponent(event.event_date)}&endDate=${encodeURIComponent(event.event_date)}`,
+        { credentials: 'include' }
+      );
+      const payload = await response.json().catch(() => null);
+      const eventData = Array.isArray(payload?.events)
+        ? payload.events.find((calendarEvent: any) => calendarEvent.id === event.id)
+        : null;
+      setRoster(Array.isArray(eventData?.bookings) ? eventData.bookings : []);
+    } catch (error) {
+      console.error('Error fetching booking roster:', error);
       setRoster([]);
     }
   }
@@ -503,8 +502,8 @@ export default function BookingModal({ event, onClose, onRefresh, onOpenChecklis
     }
   };
 
-  const canViewRoster = hasPermission(userRole, 'ROSTER', 'canView');
-  const canEditRoster = hasPermission(userRole, 'ROSTER', 'canEdit');
+  const canViewRoster = !isStaff && hasPermission(userRole, 'ROSTER', 'canView');
+  const canEditRoster = !isStaff && hasPermission(userRole, 'ROSTER', 'canEdit');
 
   return (
     <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-md flex items-center justify-center p-4 z-50">
@@ -514,7 +513,7 @@ export default function BookingModal({ event, onClose, onRefresh, onOpenChecklis
         <div style={{ backgroundColor: isDark ? '#0f172a' : '#f1f5f9' }} className="p-4 sm:p-6 border-b text-center relative flex flex-col sm:flex-row sm:items-center justify-between gap-3">
           <div className="w-full sm:w-auto flex flex-wrap gap-2 justify-center sm:justify-start">
             {canAccessChecklist && (
-              <button 
+              <button
                 onClick={() => onOpenChecklist?.()}
                 style={{ backgroundColor: '#8b5cf6' }}
                 className="text-white px-3 sm:px-4 py-2 rounded-lg font-bold text-xs sm:text-sm hover:opacity-90 transition-all"
@@ -522,14 +521,16 @@ export default function BookingModal({ event, onClose, onRefresh, onOpenChecklis
                 📋 Checklist
               </button>
             )}
-            <button 
-              onClick={handleCancelEvent}
-              style={{ backgroundColor: '#ef4444' }}
-              className="text-white px-3 sm:px-4 py-2 rounded-lg font-bold text-xs sm:text-sm hover:opacity-90 transition-all"
-              title="Cancel this event and remove all participants"
-            >
-              ❌ Cancel Event
-            </button>
+            {!isStaff && (userRole === 'admin' || userRole === 'scheduler') && (
+              <button
+                onClick={handleCancelEvent}
+                style={{ backgroundColor: '#ef4444' }}
+                className="text-white px-3 sm:px-4 py-2 rounded-lg font-bold text-xs sm:text-sm hover:opacity-90 transition-all"
+                title="Cancel this event and remove all participants"
+              >
+                ❌ Cancel Event
+              </button>
+            )}
           </div>
           <div className="flex-1 text-center">
             <h2 style={{ color: isDark ? '#f1f5f9' : '#1e293b' }} className="text-xl font-black uppercase">{event.courses?.name}</h2>
@@ -554,7 +555,7 @@ export default function BookingModal({ event, onClose, onRefresh, onOpenChecklis
         </div>
 
         {/* Tabs */}
-        <div style={{ backgroundColor: isDark ? '#1e293b' : '#f1f5f9' }} className="flex p-1.5 m-4 sm:m-6 rounded-2xl gap-1.5">
+        {canViewRoster && <div style={{ backgroundColor: isDark ? '#1e293b' : '#f1f5f9' }} className="flex p-1.5 m-4 sm:m-6 rounded-2xl gap-1.5">
           <UniformButton
             variant={activeTab === 'booking' ? 'primary' : 'secondary'}
             className={`flex-1 py-2 text-xs font-black uppercase rounded-xl transition-all ${activeTab === 'booking' ? '' : ''}`}
@@ -571,7 +572,7 @@ export default function BookingModal({ event, onClose, onRefresh, onOpenChecklis
           >
             Roster ({roster.length})
           </UniformButton>
-        </div>
+        </div>}
 
         <div className="px-4 sm:px-8 pb-6 sm:pb-8 flex-1 overflow-y-auto">
           {rosterSettings.message && (
@@ -587,7 +588,15 @@ export default function BookingModal({ event, onClose, onRefresh, onOpenChecklis
               <p className="text-sm font-bold whitespace-pre-wrap">{rosterSettings.message}</p>
             </div>
           )}
-          {activeTab === 'booking' ? (
+          {isStaff ? (
+            <div className="space-y-5 text-center">
+              <div className="rounded-2xl border border-emerald-500/40 bg-emerald-500/10 p-6">
+                <p className="text-lg font-black text-emerald-500">You are booked onto this course</p>
+                <p className="mt-2 text-xs font-bold uppercase opacity-70">This calendar entry is linked to your profile.</p>
+              </div>
+              <button onClick={onClose} className="w-full py-4 bg-slate-200 dark:bg-slate-700 text-black dark:text-white font-black text-[10px] uppercase rounded-2xl">Close</button>
+            </div>
+          ) : activeTab === 'booking' ? (
             <>
               <input 
                 type="text" placeholder="Search staff..." 
@@ -700,23 +709,27 @@ export default function BookingModal({ event, onClose, onRefresh, onOpenChecklis
                       <p className="text-[9px] font-bold opacity-50 uppercase">📍 {row.profiles?.location}</p>
                     </div>
                     <div className="flex gap-2">
-                      <button 
-                        onClick={() => updateBooking(row.id, { 
-                          attended_at: row.attended_at ? null : new Date().toISOString(),
-                          absence_reason: null,
-                          minutes_late: null,
-                          late_reason: null
-                        })} 
-                        className={`px-4 py-2 rounded-xl text-[10px] font-black uppercase transition-all ${row.attended_at ? 'bg-emerald-500 text-white' : 'bg-slate-200 dark:bg-slate-700 text-black dark:text-white'}`}
-                      >
-                        {row.attended_at ? 'Present' : 'Mark Present'}
-                      </button>
-                      <button onClick={() => handleRemoveStaff(row.id)} className="p-2 bg-red-600 text-white rounded-lg text-[10px] transition-all hover:bg-red-700 hover:scale-110 active:scale-95 shadow-md hover:shadow-lg duration-200">🗑️</button>
+                      {canEditRoster && (
+                        <>
+                          <button
+                            onClick={() => updateBooking(row.id, {
+                              attended_at: row.attended_at ? null : new Date().toISOString(),
+                              absence_reason: null,
+                              minutes_late: null,
+                              late_reason: null
+                            })}
+                            className={`px-4 py-2 rounded-xl text-[10px] font-black uppercase transition-all ${row.attended_at ? 'bg-emerald-500 text-white' : 'bg-slate-200 dark:bg-slate-700 text-black dark:text-white'}`}
+                          >
+                            {row.attended_at ? 'Present' : 'Mark Present'}
+                          </button>
+                          <button onClick={() => handleRemoveStaff(row.id)} className="p-2 bg-red-600 text-white rounded-lg text-[10px] transition-all hover:bg-red-700 hover:scale-110 active:scale-95 shadow-md hover:shadow-lg duration-200">🗑️</button>
+                        </>
+                      )}
                     </div>
                   </div>
 
                   {/* Lateness Section - Only visible if Present */}
-                  {row.attended_at ? (
+                  {canEditRoster && row.attended_at ? (
                     <div className="grid grid-cols-2 gap-3 mt-2 animate-in slide-in-from-top-2 duration-200">
                       <div className="flex flex-col gap-1">
                         <label className="text-[9px] font-black uppercase opacity-50 ml-1">Mins Late</label>
@@ -740,7 +753,7 @@ export default function BookingModal({ event, onClose, onRefresh, onOpenChecklis
                         </select>
                       </div>
                     </div>
-                  ) : (
+                  ) : canEditRoster ? (
                     /* Absence Reason - Only visible if Not Present */
                     <div className="mt-2">
                       <select 
@@ -752,7 +765,7 @@ export default function BookingModal({ event, onClose, onRefresh, onOpenChecklis
                         {ABSENCE_REASONS.map(r => <option key={r} value={r}>{r}</option>)}
                       </select>
                     </div>
-                  )}
+                  ) : null}
                 </div>
               ))}
               <div className="flex gap-3 mt-6">

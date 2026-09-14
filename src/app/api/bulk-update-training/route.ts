@@ -92,24 +92,42 @@ export async function POST(request: NextRequest) {
     const results = [];
     let successCount = 0;
 
-    // First, ensure all staff are in staff_locations for this location
+    // First, ensure all staff are in staff_locations for this location.
+    //
+    // `display_order` is the user's persistent row position in the matrix. Do
+    // not include it in an upsert for an existing link: doing so would reset
+    // every person touched by a bulk edit to 9999 (the bottom of the matrix).
     const staffIds = [...new Set(updates.map((u: BulkUpdateRequest) => u.staffId))];
-    
-    for (const staffId of staffIds) {
-      // Upsert into staff_locations to ensure they're visible in the matrix
+
+    const { data: existingStaffLocations, error: existingStaffLocationsError } = await supabaseAdmin
+      .from('staff_locations')
+      .select('staff_id')
+      .eq('location_id', locationId)
+      .in('staff_id', staffIds);
+
+    if (existingStaffLocationsError) {
+      console.warn('Warning: Could not read existing staff location links:', existingStaffLocationsError.message);
+    }
+
+    const existingStaffIds = new Set((existingStaffLocations || []).map((row: any) => row.staff_id));
+    const newStaffLocations = staffIds
+      .filter((staffId) => !existingStaffIds.has(staffId))
+      .map((staffId) => ({
+        staff_id: staffId,
+        location_id: locationId,
+        display_order: 9999, // Default only for a newly linked staff member
+      }));
+
+    if (newStaffLocations.length > 0) {
       const { error: staffLocError } = await supabaseAdmin
         .from('staff_locations')
-        .upsert(
-          {
-            staff_id: staffId,
-            location_id: locationId,
-            display_order: 9999, // Default to bottom
-          },
-          { onConflict: 'staff_id,location_id' }
-        );
+        .upsert(newStaffLocations, {
+          onConflict: 'staff_id,location_id',
+          ignoreDuplicates: true,
+        });
 
       if (staffLocError) {
-        console.warn(`Warning: Could not add ${staffId} to staff_locations:`, staffLocError.message);
+        console.warn('Warning: Could not add staff to staff_locations:', staffLocError.message);
       }
     }
 

@@ -55,12 +55,13 @@ export default function SlideOutNav() {
   const isCalendar = pathname.startsWith("/apps/booking-calendar");
   const isExpiry = pathname.startsWith("/apps/expiry-checker");
   const isAdmin = pathname.startsWith("/admin");
+  const canUseGeneralApps = !loading && userRole !== "staff";
 
   return (
     <>
       {/* Always-visible vertical side emoji strip on the left screen edge */}
       <div className="fixed left-0 top-14 bottom-0 z-40 w-16 border-r border-slate-200 bg-white/95 shadow-sm backdrop-blur dark:border-slate-800 dark:bg-slate-950/95 flex flex-col items-center py-4 gap-3">
-        <button
+        {canUseGeneralApps && <button
           type="button"
           onClick={() => go("/")}
           title="Training Dashboard"
@@ -71,7 +72,7 @@ export default function SlideOutNav() {
           }`}
         >
           🏠
-        </button>
+        </button>}
 
         <button
           type="button"
@@ -99,7 +100,7 @@ export default function SlideOutNav() {
           📆
         </button>
 
-        <button
+        {canUseGeneralApps && <button
           type="button"
           onClick={() => go("/apps/expiry-checker")}
           title="Course Expiry Checker"
@@ -110,7 +111,7 @@ export default function SlideOutNav() {
           }`}
         >
           📅
-        </button>
+        </button>}
 
         {canAdminTools && (
           <button
@@ -161,7 +162,7 @@ export default function SlideOutNav() {
             <nav className="p-4 overflow-y-auto flex-1">
               <div className="grid gap-3">
                 {/* Home/Dashboard Button */}
-                <button
+                {canUseGeneralApps && <button
                   type="button"
                   onClick={() => go("/")}
                   className={`w-full flex items-center gap-3 p-3 rounded-xl transition-all text-left border ${
@@ -179,7 +180,7 @@ export default function SlideOutNav() {
                       Main training tools hub
                     </p>
                   </div>
-                </button>
+                </button>}
 
                 {/* Training Section */}
                 <section className="rounded-2xl border border-slate-200 shadow-sm dark:border-slate-800 overflow-hidden">
@@ -243,7 +244,7 @@ export default function SlideOutNav() {
                         </div>
                       </button>
 
-                      <button
+                      {canUseGeneralApps && <button
                         type="button"
                         onClick={() => go("/apps/expiry-checker")}
                         className={`w-full flex items-center gap-3 p-2.5 rounded-xl transition-all text-left border ${
@@ -261,7 +262,7 @@ export default function SlideOutNav() {
                             Expiring & expired
                           </p>
                         </div>
-                      </button>
+                      </button>}
                     </div>
                   )}
                 </section>

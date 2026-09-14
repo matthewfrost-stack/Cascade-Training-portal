@@ -52,6 +52,7 @@ export default function FixedHeader() {
   const [themeMode, setThemeMode] = useState<ThemeMode>('system');
   const currentUserId = profile?.id || null;
   const roleTier = (profile?.role_tier as RoleTier | null) || null;
+  const isStaff = roleTier === 'staff';
   const fullName = profile?.full_name || '';
   const email = profile?.email || '';
   const avatarPath = profile?.avatar_path || null;
@@ -201,12 +202,12 @@ export default function FixedHeader() {
                   type="button"
                   onClick={() => {
                     setIsProfileDropdownOpen(false);
-                    router.push('/');
+                    router.push(isStaff ? '/apps/booking-calendar' : '/');
                   }}
                   className="flex w-full select-none items-center rounded-sm px-2 py-1.5 text-sm outline-none transition-colors hover:bg-slate-100 hover:text-slate-900 dark:hover:bg-slate-900 dark:hover:text-white"
                 >
                   <Icon name="home" className="h-4 w-4" />
-                  <span className="ml-2">Home</span>
+                  <span className="ml-2">{isStaff ? 'Booking Calendar' : 'Home'}</span>
                 </button>
               </div>
 

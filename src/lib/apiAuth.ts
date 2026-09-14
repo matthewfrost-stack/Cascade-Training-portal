@@ -82,30 +82,33 @@ export async function requireRole(allowedRoles: RoleTier[]) {
 
 type LocationRow = { id: string; name: string };
 
-export async function getScopedLocationIds(
+export async function getScopedLocations(
   userId: string,
   role: RoleTier,
   service: ReturnType<typeof createServiceClient>
-): Promise<{ all: true } | { all: false; ids: string[] }> {
+): Promise<{ all: true } | { all: false; locations: LocationRow[] }> {
   if (role === 'admin') {
     return { all: true };
   }
 
+  const locationMap = new Map<string, LocationRow>();
+
+  // staff_locations is the source of truth for explicit access. Managers and
+  // schedulers may also have legacy/name-based assignments in their profile,
+  // so resolve those names through the locations table as well.
+  const { data: linkedLocations } = await service
+    .from('staff_locations')
+    .select('location_id, locations(id, name)')
+    .eq('staff_id', userId);
+
+  (linkedLocations || []).forEach((sl) => {
+    const loc = (sl as unknown as { locations?: LocationRow | null })?.locations;
+    if (loc?.id && loc?.name) {
+      locationMap.set(loc.id, loc);
+    }
+  });
+
   if (role === 'manager' || role === 'scheduler') {
-    const locationMap = new Map<string, LocationRow>();
-
-    const { data: linkedLocations } = await service
-      .from('staff_locations')
-      .select('location_id, locations(id, name)')
-      .eq('staff_id', userId);
-
-    (linkedLocations || []).forEach((sl) => {
-      const loc = (sl as unknown as { locations?: LocationRow | null })?.locations;
-      if (loc?.id && loc?.name) {
-        locationMap.set(loc.id, loc);
-      }
-    });
-
     const { data: rawProfile } = await service
       .from('profiles')
       .select('managed_houses, location')
@@ -116,9 +119,7 @@ export async function getScopedLocationIds(
     const managedNames = new Set<string>();
     if (Array.isArray(userProfile?.managed_houses)) {
       userProfile.managed_houses.forEach((name: unknown) => {
-        if (typeof name === 'string' && name.trim()) {
-          managedNames.add(name.trim());
-        }
+        if (typeof name === 'string' && name.trim()) managedNames.add(name.trim());
       });
     }
     if (typeof userProfile?.location === 'string' && userProfile.location.trim()) {
@@ -133,23 +134,34 @@ export async function getScopedLocationIds(
 
       (managedLocations || []).forEach((loc) => {
         const row = loc as LocationRow;
-        if (row.id && row.name) {
-          locationMap.set(row.id, row);
-        }
+        if (row.id && row.name) locationMap.set(row.id, row);
       });
     }
-
-    return { all: false, ids: Array.from(locationMap.keys()) };
   }
 
-  const { data: staffLocations } = await service
-    .from('staff_locations')
-    .select('locations(id)')
-    .eq('staff_id', userId);
+  return { all: false, locations: Array.from(locationMap.values()) };
+}
 
-  const ids = (staffLocations || [])
-    .map((sl) => (sl as { locations?: { id?: string } | null }).locations?.id)
-    .filter((id): id is string => typeof id === 'string' && Boolean(id));
+export async function getScopedLocationIds(
+  userId: string,
+  role: RoleTier,
+  service: ReturnType<typeof createServiceClient>
+): Promise<{ all: true } | { all: false; ids: string[] }> {
+  if (role === 'staff') {
+    const { data: staffLocations } = await service
+      .from('staff_locations')
+      .select('locations(id, name)')
+      .eq('staff_id', userId);
 
-  return { all: false, ids };
+    const ids = (staffLocations || [])
+      .map((sl) => (sl as { locations?: { id?: string } | null }).locations?.id)
+      .filter((id): id is string => typeof id === 'string' && Boolean(id));
+
+    return { all: false, ids };
+  }
+
+  const scoped = await getScopedLocations(userId, role, service);
+  return scoped.all
+    ? scoped
+    : { all: false, ids: scoped.locations.map((location) => location.id) };
 }

@@ -8,7 +8,6 @@ import ScheduleModal from '@/app/components/ScheduleModal';
 import UniformButton from '@/app/components/UniformButton';
 import BookingModal from '@/app/components/BookingModal';
 import BookingChecklistModal from '@/app/components/BookingChecklistModal';
-import { supabase } from '@/lib/supabase';
 import { hasPermission } from '@/lib/permissions';
 import { useCurrentUserProfile } from '@/lib/useCurrentUserProfile';
 
@@ -168,20 +167,15 @@ export default function CalendarPage() {
     setLoading(true);
     const startDate = format(startOfMonth(currentMonth), 'yyyy-MM-dd');
     const endDate = format(endOfMonth(currentMonth), 'yyyy-MM-dd');
-    const { data } = await supabase.from('training_events').select('*, courses(*), bookings(*)').gte('event_date', startDate).lte('event_date', endDate);
-    
-    // Fetch overrides separately for each event
-    if (data) {
-      const eventsWithOverrides = await Promise.all(data.map(async (event) => {
-        const { data: overrides } = await supabase
-          .from('course_event_overrides')
-          .select('max_attendees')
-          .eq('course_id', event.course_id)
-          .eq('event_date', event.event_date);
-        return { ...event, course_event_overrides: overrides };
-      }));
-      setEvents(eventsWithOverrides.filter(event => !isTestCourseName(event.courses?.name)));
-    } else {
+    try {
+      const response = await fetch(`/api/booking-calendar?startDate=${encodeURIComponent(startDate)}&endDate=${encodeURIComponent(endDate)}`, {
+        credentials: 'include',
+      });
+      const payload = await response.json().catch(() => null);
+      const data = Array.isArray(payload?.events) ? payload.events : [];
+      setEvents(data.filter((event: any) => !isTestCourseName(event.courses?.name)));
+    } catch (error) {
+      console.error('Error loading booking calendar:', error);
       setEvents([]);
     }
     setLoading(false);
@@ -206,6 +200,7 @@ export default function CalendarPage() {
 
   const uniqueCourses = Array.from(new Set(events.map(e => e.courses?.name).filter(Boolean)));
   const filteredEvents = filterCourse === 'all' ? events : events.filter(e => e.courses?.name === filterCourse);
+  const isStaff = profile?.role_tier === 'staff';
   const canViewAdmin = hasPermission(profile?.role_tier || null, 'ADMIN_DASHBOARD', 'canView');
   const canSchedule = hasPermission(profile?.role_tier || null, 'COURSE_SCHEDULING', 'canCreate');
 
@@ -256,8 +251,12 @@ export default function CalendarPage() {
               <div className="flex items-center gap-1 md:gap-6">
                 <UniformButton
                   variant="icon"
-                  className="text-lg md:text-2xl font-bold hover:scale-150 active:scale-100 transition-transform duration-200"
-                  onClick={() => setCurrentMonth(subMonths(currentMonth, 1))}
+                  className={`text-lg md:text-2xl font-bold hover:scale-150 active:scale-100 transition-transform duration-200 ${isStaff && isSameMonth(currentMonth, today) ? 'opacity-30 cursor-not-allowed' : ''}`}
+                  onClick={() => {
+                    if (isStaff && isSameMonth(currentMonth, today)) return;
+                    setCurrentMonth(subMonths(currentMonth, 1));
+                  }}
+                  disabled={isStaff && isSameMonth(currentMonth, today)}
                   aria-label="Previous Month"
                 >
                   <Icon name="back" className="w-6 h-6" />
@@ -355,7 +354,7 @@ export default function CalendarPage() {
                                 <span>
                                   {event.start_time?.slice(0, 5) || '09:00'} - {event.end_time?.slice(0, 5) || '17:00'}
                                 </span>
-                                <span>{participantCount}/{maxCapacity}</span>
+                                <span>{isStaff ? 'Booked' : `${participantCount}/${maxCapacity}`}</span>
                               </div>
                             </button>
                           );

@@ -67,7 +67,11 @@ export async function GET(request: NextRequest) {
       .order('display_order', { ascending: true });
     if (divError) console.error('Error fetching dividers:', divError);
 
-    return NextResponse.json({ records, dividers: dividers || [], count: records.length });
+    return NextResponse.json({
+      records,
+      dividers: authz.role === 'staff' ? [] : (dividers || []),
+      count: records.length,
+    });
   } catch (error) {
     console.error('Error in training matrix records endpoint:', error);
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });

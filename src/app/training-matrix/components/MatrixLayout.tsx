@@ -507,7 +507,7 @@ export function MatrixLayout() {
                   <button onClick={exportMatrixCsv} className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-bold shadow-sm transition-all active:scale-95">
                     Export CSV
                   </button>
-                  {selectedCells.size > 0 && (
+                  {canEditMatrix && selectedCells.size > 0 && (
                     <>
                       <button onClick={() => setBulkEditMode(true)} className="px-4 py-2 bg-orange-600 hover:bg-orange-700 text-white rounded-xl text-xs font-bold shadow-sm transition-all active:scale-95">
                         📝 Bulk Edit ({selectedCells.size})
@@ -649,7 +649,7 @@ export function MatrixLayout() {
                           if (collapsedCategories.has(cat)) return null;
                           const catCourses = coursesByCategory[cat] || [];
                           return catCourses.map((course: any) => (
-                            <th key={`name-${course.id}`} draggable={!editingHeader} onDragStart={(e) => handleCourseDropStart(e, course.id)} onDragOver={handleCourseDragOver} onDrop={(e) => handleCourseDropEnd(e, course.id)} onClick={() => { setEditingHeader({ courseId: course.id, type: 'name' }); setEditHeaderValue(course.name); }} className={`relative px-3 py-1.5 text-center text-xs font-bold border-r border-b cursor-grab active:cursor-grabbing min-w-[160px] transition-all group/hdr ${thBg} hover:opacity-80`} title="Drag to reorder, click to edit">
+                            <th key={`name-${course.id}`} draggable={canEditMatrix && !editingHeader} onDragStart={(e) => handleCourseDropStart(e, course.id)} onDragOver={handleCourseDragOver} onDrop={(e) => handleCourseDropEnd(e, course.id)} onClick={() => { if (!canEditMatrix) return; setEditingHeader({ courseId: course.id, type: 'name' }); setEditHeaderValue(course.name); }} className={`relative px-3 py-1.5 text-center text-xs font-bold border-r border-b ${canEditMatrix ? 'cursor-grab active:cursor-grabbing' : ''} min-w-[160px] transition-all group/hdr ${thBg} hover:opacity-80`} title={canEditMatrix ? 'Drag to reorder, click to edit' : course.name}>
                               {editingHeader?.courseId === course.id && editingHeader?.type === 'name' ? (
                                 <input type="text" value={editHeaderValue} onChange={(e) => setEditHeaderValue(e.target.value)} onBlur={() => { if (editHeaderValue.trim()) { const u = courses.map((c: any) => c.id === course.id ? { ...c, name: editHeaderValue.trim() } : c); setCourses(u); saveCourseChanges(course.id, { name: editHeaderValue.trim() }, true); } setEditingHeader(null); }} onKeyDown={(e) => { if (e.key === 'Enter') { if (editHeaderValue.trim()) { const u = courses.map((c: any) => c.id === course.id ? { ...c, name: editHeaderValue.trim() } : c); setCourses(u); saveCourseChanges(course.id, { name: editHeaderValue.trim() }, true); } setEditingHeader(null); } if (e.key === 'Escape') setEditingHeader(null); }} className={`w-full text-xs px-1.5 py-0.5 rounded border ${isDark ? 'bg-gray-700 border-gray-600 text-white' : 'bg-white border-gray-400 text-gray-900'}`} autoFocus />
                               ) : (
@@ -658,9 +658,11 @@ export function MatrixLayout() {
                                   <span className="block max-w-[100px] truncate" title={course.name}>{course.name}</span>
                                   <div className="flex items-center gap-0.5 opacity-0 group-hover/hdr:opacity-100 transition-opacity">
                                     {canEditMatrix && <button onClick={(e) => { e.stopPropagation(); setEditingHeader({ courseId: course.id, type: 'category' }); setEditHeaderValue(course.category || ''); }} className="text-blue-500 hover:text-blue-400 text-xs font-bold" title="Assign to group">📁</button>}
-                                    <button onClick={(e) => { e.stopPropagation(); selectAllInCourse(course.id); }} className="text-green-500 hover:text-green-400 text-xs font-bold" title="Select all">☑</button>
-                                    <button onClick={(e) => { e.stopPropagation(); deselectAllInCourse(course.id); }} className="text-gray-500 text-xs font-bold" title="Deselect all">☐</button>
-                                    <button onClick={(e) => { e.stopPropagation(); deleteCourse(course.id); }} className="text-red-500 hover:text-red-400 text-xs font-bold pl-0.5" title="Delete">✕</button>
+                                    {canEditMatrix && <>
+                                      <button onClick={(e) => { e.stopPropagation(); selectAllInCourse(course.id); }} className="text-green-500 hover:text-green-400 text-xs font-bold" title="Select all">☑</button>
+                                      <button onClick={(e) => { e.stopPropagation(); deselectAllInCourse(course.id); }} className="text-gray-500 text-xs font-bold" title="Deselect all">☐</button>
+                                      <button onClick={(e) => { e.stopPropagation(); deleteCourse(course.id); }} className="text-red-500 hover:text-red-400 text-xs font-bold pl-0.5" title="Delete">✕</button>
+                                    </>}
                                   </div>
                                 </div>
                               )}
@@ -692,7 +694,7 @@ export function MatrixLayout() {
                           if (collapsedCategories.has(cat)) return null;
                           const catCourses = coursesByCategory[cat] || [];
                           return catCourses.map((course: any) => (
-                            <th key={`expiry-${course.id}`} onClick={() => { setEditingHeader({ courseId: course.id, type: 'expiry' }); setEditHeaderValue(String(course.expiry_months || 12)); setEditNeverExpires(course.never_expires || false); }} className={`px-3 py-1 text-center text-[10px] border-r border-b cursor-pointer hover:opacity-80 relative ${isDark ? 'text-gray-400' : 'text-gray-500'}`} title="Click to edit expiry">
+                            <th key={`expiry-${course.id}`} onClick={() => { if (!canEditMatrix) return; setEditingHeader({ courseId: course.id, type: 'expiry' }); setEditHeaderValue(String(course.expiry_months || 12)); setEditNeverExpires(course.never_expires || false); }} className={`px-3 py-1 text-center text-[10px] border-r border-b ${canEditMatrix ? 'cursor-pointer' : ''} hover:opacity-80 relative ${isDark ? 'text-gray-400' : 'text-gray-500'}`} title={canEditMatrix ? 'Click to edit expiry' : undefined}>
                               {editingHeader?.courseId === course.id && editingHeader?.type === 'expiry' ? (
                                 <div className={`absolute z-50 top-full left-1/2 -translate-x-1/2 mt-1 p-3 rounded-xl shadow-xl border flex flex-col gap-2 min-w-[160px] ${isDark ? 'bg-gray-800 border-gray-700' : 'bg-white border-slate-300'}`} onClick={e => e.stopPropagation()}>
                                   <label className="text-[10px] font-bold flex items-center gap-1 cursor-pointer"><input type="checkbox" checked={editNeverExpires} onChange={(e) => setEditNeverExpires(e.target.checked)} />Never expires</label>
@@ -730,7 +732,7 @@ export function MatrixLayout() {
                                     <div className="flex items-center gap-2">
                                       <span className={`px-2 py-0.5 rounded-full text-[9px] font-black ${stats.complianceRate >= 90 ? 'bg-emerald-500/20 text-emerald-400' : stats.complianceRate >= 75 ? 'bg-amber-500/20 text-amber-500' : 'bg-red-500/20 text-red-500'}`}>{stats.complianceRate}%</span>
                                       {canEditMatrix && <button onClick={(e) => { e.stopPropagation(); setGroupModal({ type: 'staff', editKey: staffMember.id }); }} className="text-blue-400 hover:text-blue-300 text-xs p-0.5" title="Edit or delete group">✎</button>}
-                                      <button onClick={(e) => { e.stopPropagation(); deleteStaffMember(staffMember.id); }} className="opacity-0 group-hover/div:opacity-100 transition-opacity text-red-500 hover:text-red-400 text-[10px] p-0.5 hover:bg-red-500/10 rounded">✕</button>
+                                      {canEditMatrix && <button onClick={(e) => { e.stopPropagation(); deleteStaffMember(staffMember.id); }} className="opacity-0 group-hover/div:opacity-100 transition-opacity text-red-500 hover:text-red-400 text-[10px] p-0.5 hover:bg-red-500/10 rounded">✕</button>}
                                     </div>
                                   </div>
                                 </td>
@@ -746,10 +748,10 @@ export function MatrixLayout() {
                               <td className={`px-4 py-3 text-xs sticky left-0 z-10 border-r min-w-[240px] group/staff ${stickyLeft}`}>
                                 <div className="flex items-center justify-between gap-2">
                                   <div className="flex items-center gap-2">
-                                    <input type="checkbox" onChange={() => selectAllForStaff(staffMember.id)} checked={courses.every((c: any) => selectedCells.has(`${staffMember.id}|${c.id}`))} className="w-3.5 h-3.5 cursor-pointer" title="Select all" />
+                                    {canEditMatrix && <input type="checkbox" onChange={() => selectAllForStaff(staffMember.id)} checked={courses.every((c: any) => selectedCells.has(`${staffMember.id}|${c.id}`))} className="w-3.5 h-3.5 cursor-pointer" title="Select all" />}
                                     <span className="truncate max-w-[160px] font-medium" title={staffMember.name}>{staffMember.name}</span>
                                   </div>
-                                  <button onClick={(e) => { e.stopPropagation(); deleteStaffMember(staffMember.id); }} className="opacity-0 group-hover/staff:opacity-100 transition-opacity text-red-500 hover:text-red-400 text-[10px] p-0.5 hover:bg-red-500/10 rounded flex-shrink-0" title="Remove">✕</button>
+                                  {canEditMatrix && <button onClick={(e) => { e.stopPropagation(); deleteStaffMember(staffMember.id); }} className="opacity-0 group-hover/staff:opacity-100 transition-opacity text-red-500 hover:text-red-400 text-[10px] p-0.5 hover:bg-red-500/10 rounded flex-shrink-0" title="Remove">✕</button>}
                                 </div>
                               </td>
 
@@ -782,7 +784,7 @@ export function MatrixLayout() {
 
                                   return (
                                     <td key={cellKey} className={`px-3 py-3 text-center border-r border-b transition-all duration-100 relative group/cell ${rowBorder} ${canEditMatrix ? 'cursor-pointer' : ''} ${isSelected ? (isDark ? 'bg-blue-950/25' : 'bg-blue-50') : ''} ${canEditMatrix ? (isDark ? 'hover:bg-gray-800/40' : 'hover:bg-slate-50') : ''}`} onClick={(e) => { if ((e.target as HTMLElement).tagName === 'INPUT') return; if (canEditMatrix && !isEditing) { setEditingCell({ staffId: staffMember.id, courseId: course.id }); setEditDate(cell?.completion_date || ''); const rawStatus = cell?.status as any; const norm = rawStatus === 'booked' || rawStatus === 'awaiting' ? 'allocated' : rawStatus; setEditStatus(norm || 'completed'); } }}>
-                                      <input type="checkbox" checked={isSelected} onChange={(e) => { e.stopPropagation(); toggleCellSelection(staffMember.id, course.id); }} className="absolute top-1.5 left-1.5 w-3.5 h-3.5 cursor-pointer opacity-0 group-hover/cell:opacity-100 transition-opacity" title="Select cell" />
+                                      {canEditMatrix && <input type="checkbox" checked={isSelected} onChange={(e) => { e.stopPropagation(); toggleCellSelection(staffMember.id, course.id); }} className="absolute top-1.5 left-1.5 w-3.5 h-3.5 cursor-pointer opacity-0 group-hover/cell:opacity-100 transition-opacity" title="Select cell" />}
                                       {isEditing ? (
                                         <span className={`px-2 py-1 rounded-lg text-[10px] font-black uppercase tracking-wider ${isDark ? 'bg-blue-950/30 text-blue-400' : 'bg-blue-50 text-blue-600'}`}>Editing</span>
                                       ) : cell?.status === 'allocated' || cell?.status === 'booked' || cell?.status === 'awaiting' ? (

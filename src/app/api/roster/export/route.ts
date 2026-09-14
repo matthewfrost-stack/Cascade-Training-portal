@@ -5,7 +5,7 @@ export const dynamic = 'force-dynamic';
 
 export async function GET(request: NextRequest) {
   try {
-    const authz = await requireRole(['staff', 'manager', 'scheduler', 'admin']);
+    const authz = await requireRole(['manager', 'scheduler', 'admin']);
     if ('error' in authz) return authz.error;
 
     const { searchParams } = new URL(request.url);

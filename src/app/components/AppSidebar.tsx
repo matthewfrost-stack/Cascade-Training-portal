@@ -5,10 +5,12 @@ import Icon from './Icon';
 import type { IconName } from './Icon';
 import { usePathname, useRouter } from 'next/navigation';
 import { signOutClientSide } from '@/lib/clientSignOut';
+import { useCurrentUserProfile } from '@/lib/useCurrentUserProfile';
 
 export default function AppSidebar({ isDark }: { isDark: boolean }) {
   const pathname = usePathname() ?? '';
   const router = useRouter();
+  const { profile, loading: profileLoading } = useCurrentUserProfile();
   const [showMobileSidebar, setShowMobileSidebar] = useState(false);
   const [isCollapsed, setIsCollapsed] = useState(true);
 
@@ -42,6 +44,10 @@ export default function AppSidebar({ isDark }: { isDark: boolean }) {
     },
   ];
 
+  const isStaff = !profileLoading && profile?.role_tier === 'staff';
+  const visibleApps = isStaff
+    ? apps.filter((app) => app.id === 'booking-calendar')
+    : apps;
   const isAppRoute = pathname.startsWith('/apps/') || pathname.startsWith('/dashboard');
 
   const currentApp = apps.find(app => 
@@ -118,7 +124,7 @@ export default function AppSidebar({ isDark }: { isDark: boolean }) {
 
         {/* Apps List */}
         <nav className="flex-1 p-4 space-y-2 overflow-y-auto">
-          {apps.map(app => (
+          {visibleApps.map(app => (
             <button
               key={app.id}
               onClick={() => {

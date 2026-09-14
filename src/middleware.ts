@@ -94,6 +94,27 @@ export async function middleware(request: NextRequest) {
         url.pathname = '/auth/change-password-required'
         return NextResponse.redirect(url)
       }
+
+      // Staff have a deliberately narrow self-service surface. They may use
+      // the booking calendar and their own training matrix, but must not reach
+      // dashboards, expiry reports, analytics, or management screens by
+      // typing a URL directly.
+      if (profile?.role_tier === 'staff') {
+        const isStaffAllowedPath =
+          pathname === '/apps/booking-calendar' ||
+          pathname.startsWith('/apps/booking-calendar/') ||
+          pathname === '/training-matrix' ||
+          pathname.startsWith('/training-matrix/') ||
+          pathname === '/profile' ||
+          pathname.startsWith('/profile/') ||
+          pathname === '/auth/change-password-required'
+
+        if (!isStaffAllowedPath && pathname !== '/login' && !pathname.startsWith('/auth/')) {
+          const url = request.nextUrl.clone()
+          url.pathname = '/apps/booking-calendar'
+          return NextResponse.redirect(url)
+        }
+      }
     } catch (error) {
       console.error('Error checking password status:', error)
     }

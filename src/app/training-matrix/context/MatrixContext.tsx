@@ -373,7 +373,10 @@ export function MatrixProvider({ children }: { children: React.ReactNode }) {
 
       if (staffLocationsError) console.warn('Error fetching staff structural data:', staffLocationsError);
 
-      const activeStaffLocationsData = staffLocationsData?.filter((sl: any) => !sl.profiles?.is_deleted) || [];
+      const visibleStaffLocationsData = userRole === 'staff'
+        ? staffLocationsData?.filter((sl: any) => sl.staff_id === user?.id)
+        : staffLocationsData;
+      const activeStaffLocationsData = visibleStaffLocationsData?.filter((sl: any) => !sl.profiles?.is_deleted) || [];
 
       // Training records AND dividers come from the authenticated server route
       // (service client) because the browser anon client is blocked by RLS on
@@ -503,7 +506,9 @@ export function MatrixProvider({ children }: { children: React.ReactNode }) {
       staffData?.forEach((s: any) => { if (s.profiles) allStaffIds.add(s.profiles.id); });
       staffFromTrainingSet.forEach(id => allStaffIds.add(id));
 
-      const allStaffProfiles = staffData.filter((s: any) => s.profiles);
+      const allStaffProfiles = staffData
+        .filter((s: any) => s.profiles)
+        .filter((s: any) => userRole !== 'staff' || s.profiles.id === user?.id);
       const staffIdsInProfiles = new Set(allStaffProfiles.map((s: any) => s.profiles.id));
       const missingIds = Array.from(allStaffIds).filter(id => !staffIdsInProfiles.has(id));
 
@@ -534,7 +539,7 @@ export function MatrixProvider({ children }: { children: React.ReactNode }) {
         if (!duplicate) dedupedStaffWithOrder.push(candidate);
       });
 
-      const dividerItems = (dividersData || [])
+      const dividerItems = (userRole === 'staff' ? [] : dividersData || [])
         .filter((d: any) => d.name !== 'Staff Name')
         .map((d: any) => ({
           id: `divider-${d.id}`,

@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { createServiceClient, requireRole } from '@/lib/apiAuth';
+import { createServiceClient, getScopedLocations, requireRole } from '@/lib/apiAuth';
 
 export const dynamic = 'force-dynamic';
 
@@ -11,12 +11,16 @@ const getNextDateIso = (dateValue: string): string => {
 
 export async function POST(request: NextRequest) {
   try {
-    const authz = await requireRole(['admin', 'scheduler']);
+    const authz = await requireRole(['admin', 'scheduler', 'manager']);
     if ('error' in authz) return authz.error;
 
     const { eventId, staffIds } = await request.json();
 
-    if (!eventId || !staffIds || staffIds.length === 0) {
+    const requestedStaffIds = Array.isArray(staffIds)
+      ? [...new Set(staffIds.filter((id): id is string => typeof id === 'string' && Boolean(id.trim())))]
+      : [];
+
+    if (!eventId || requestedStaffIds.length === 0) {
       return NextResponse.json(
         { error: 'Missing eventId or staffIds' },
         { status: 400 }
@@ -38,6 +42,53 @@ export async function POST(request: NextRequest) {
         { status: 404 }
       );
     }
+
+    if (authz.role === 'manager') {
+      const today = new Date().toISOString().split('T')[0];
+      if (event.event_date < today) {
+        return NextResponse.json(
+          { error: 'Managers cannot add staff to past courses.' },
+          { status: 400 }
+        );
+      }
+
+      const scopedLocations = await getScopedLocations(authz.userId, authz.role, supabaseAdmin);
+      if (scopedLocations.all || scopedLocations.locations.length === 0) {
+        return NextResponse.json({ error: 'You do not have any assigned locations.' }, { status: 403 });
+      }
+
+      const scopedLocationIds = scopedLocations.locations.map((location) => location.id);
+      const scopedLocationNames = scopedLocations.locations.map((location) => location.name);
+      const allowedStaffIds = new Set<string>();
+
+      const { data: linkedStaff } = await supabaseAdmin
+        .from('staff_locations')
+        .select('staff_id')
+        .in('location_id', scopedLocationIds);
+      (linkedStaff || []).forEach((row) => {
+        if (row.staff_id) allowedStaffIds.add(row.staff_id);
+      });
+
+      // Keep legacy profiles whose primary location is assigned even if their
+      // staff_locations link has not been backfilled yet.
+      const { data: primaryLocationStaff } = await supabaseAdmin
+        .from('profiles')
+        .select('id')
+        .in('location', scopedLocationNames);
+      (primaryLocationStaff || []).forEach((row) => {
+        if (row.id) allowedStaffIds.add(row.id);
+      });
+
+      const unauthorizedStaffIds = requestedStaffIds.filter((id) => !allowedStaffIds.has(id));
+      if (unauthorizedStaffIds.length > 0) {
+        return NextResponse.json(
+          { error: 'Managers can only book staff assigned to their locations.', unauthorizedStaffIds },
+          { status: 403 }
+        );
+      }
+    }
+
+    const staffIdsForBooking = requestedStaffIds;
 
     const courseMaxAttendees = event.courses?.max_attendees || 10;
     const isTeamTeachLevel2 = String(event.courses?.name || '').trim().toLowerCase() === 'team teach level 2';
@@ -69,18 +120,18 @@ export async function POST(request: NextRequest) {
     }
 
     const currentCount = currentBookings?.length || 0;
-    const totalAfterBooking = currentCount + staffIds.length;
+    const totalAfterBooking = currentCount + staffIdsForBooking.length;
 
     // Validate capacity (selected event)
     if (totalAfterBooking > maxCapacity) {
       const availableSpots = maxCapacity - currentCount;
       return NextResponse.json(
         {
-          error: `Capacity exceeded! Course capacity: ${maxCapacity}, Current bookings: ${currentCount}, Trying to add: ${staffIds.length}, Available spots: ${Math.max(0, availableSpots)}`,
+          error: `Capacity exceeded! Course capacity: ${maxCapacity}, Current bookings: ${currentCount}, Trying to add: ${staffIdsForBooking.length}, Available spots: ${Math.max(0, availableSpots)}`,
           currentCount,
           maxCapacity,
           availableSpots: Math.max(0, availableSpots),
-          tryingToAdd: staffIds.length,
+          tryingToAdd: staffIdsForBooking.length,
           wouldExceedBy: totalAfterBooking - maxCapacity
         },
         { status: 400 }
@@ -92,10 +143,10 @@ export async function POST(request: NextRequest) {
       .from('bookings')
       .select('profile_id')
       .eq('event_id', eventId)
-      .in('profile_id', staffIds);
+      .in('profile_id', staffIdsForBooking);
 
     const alreadyBookedIds = existingBookings?.map(b => b.profile_id) || [];
-    const newStaffIds = staffIds.filter((id: string) => !alreadyBookedIds.includes(id));
+    const newStaffIds = staffIdsForBooking.filter((id: string) => !alreadyBookedIds.includes(id));
 
     if (newStaffIds.length === 0) {
       return NextResponse.json(

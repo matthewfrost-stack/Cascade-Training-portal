@@ -1,12 +1,12 @@
 export const PERMISSIONS = {
   ROSTER: {
-    canView: ['staff', 'manager', 'scheduler', 'admin'],
+    canView: ['manager', 'scheduler', 'admin'],
     canEdit: ['scheduler', 'admin'],
-    canExport: ['staff', 'manager', 'scheduler', 'admin'],
+    canExport: ['manager', 'scheduler', 'admin'],
   },
   BOOKINGS: {
     canView: ['scheduler', 'admin', 'staff', 'manager'],
-    canCreate: ['scheduler', 'admin'],
+    canCreate: ['scheduler', 'admin', 'manager'],
     canDelete: ['scheduler', 'admin'],
   },
   ATTENDANCE: {
