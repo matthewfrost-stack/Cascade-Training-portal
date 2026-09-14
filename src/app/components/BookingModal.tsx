@@ -675,6 +675,17 @@ export default function BookingModal({ event, onClose, onRefresh, onOpenChecklis
                       ⚙ Settings
                     </UniformButton>
                   )}
+                  {canEditRoster && (
+                    <a
+                      href={`/apps/booking-calendar/kiosk?eventId=${encodeURIComponent(event.id)}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="inline-flex items-center justify-center rounded-xl bg-blue-600 px-3 py-2 text-xs font-black text-white transition hover:bg-blue-700"
+                      title="Open the trainer register on a tablet"
+                    >
+                      📋 Kiosk Register
+                    </a>
+                  )}
                 <UniformButton
                   type="button"
                   variant="secondary"

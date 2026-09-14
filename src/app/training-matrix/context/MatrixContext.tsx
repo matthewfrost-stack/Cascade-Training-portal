@@ -365,11 +365,35 @@ export function MatrixProvider({ children }: { children: React.ReactNode }) {
 
       setLoading(true);
 
-      const { data: staffLocationsData, error: staffLocationsError } = await supabase
-        .from('staff_locations')
-        .select('staff_id, display_order, profiles(id, full_name, is_deleted)')
-        .eq('location_id', selectedLocation)
-        .order('display_order', { ascending: true, nullsFirst: false });
+      const selectedLocationObj = locations.find(l => l.id === selectedLocation);
+      const csvPromise = selectedLocationObj?.name
+        ? fetch(getCsvUrlForLocation(selectedLocationObj.name), { signal })
+            .then(async (response) => response.ok ? response.text() : null)
+            .catch(() => null)
+        : Promise.resolve(null);
+
+      // These reads are independent. Running them together removes several
+      // sequential Supabase round trips from the matrix's initial load while
+      // keeping the existing role-scoped records endpoint in place.
+      const [staffLocationsResult, trainingRecordsResult, locationCoursesResult, allCoursesResult, csvContent] = await Promise.all([
+        supabase
+          .from('staff_locations')
+          .select('staff_id, display_order, profiles(id, full_name, is_deleted)')
+          .eq('location_id', selectedLocation)
+          .order('display_order', { ascending: true, nullsFirst: false }),
+        fetchTrainingRecordsForLocation(selectedLocation, signal),
+        supabase
+          .from('location_training_courses')
+          .select('training_course_id, display_order, training_courses(id, name, category, expiry_months, never_expires)')
+          .eq('location_id', selectedLocation)
+          .order('display_order', { ascending: true, nullsFirst: false }),
+        supabase.from('training_courses').select('id, name'),
+        csvPromise,
+      ]);
+
+      if (signal?.aborted) return;
+
+      const { data: staffLocationsData, error: staffLocationsError } = staffLocationsResult;
 
       if (staffLocationsError) console.warn('Error fetching staff structural data:', staffLocationsError);
 
@@ -382,8 +406,7 @@ export function MatrixProvider({ children }: { children: React.ReactNode }) {
       // (service client) because the browser anon client is blocked by RLS on
       // staff_training_matrix and location_matrix_dividers. Fetched once and
       // reused for the staff list, groups, and the matrix cells below.
-      const { records: allTrainingData, dividers: dividersData } = await fetchTrainingRecordsForLocation(selectedLocation, signal);
-      if (signal?.aborted) return;
+      const { records: allTrainingData, dividers: dividersData } = trainingRecordsResult;
 
       const uniqueStaffIds = new Set<string>();
       allTrainingData?.forEach((t: any) => { if (t.staff_id) uniqueStaffIds.add(t.staff_id); });
@@ -411,17 +434,8 @@ export function MatrixProvider({ children }: { children: React.ReactNode }) {
 
       const staffData = Array.from(staffMap.values()).map(s => ({ profiles: { id: s.id, full_name: s.full_name } }));
 
-      let locationCoursesData: any[] | null = null;
-      let locationCoursesError: any = null;
-
-      const withCategoryRes = await supabase
-        .from('location_training_courses')
-        .select('training_course_id, display_order, training_courses(id, name, category, expiry_months, never_expires)')
-        .eq('location_id', selectedLocation)
-        .order('display_order', { ascending: true, nullsFirst: false });
-
-      locationCoursesData = withCategoryRes.data;
-      locationCoursesError = withCategoryRes.error;
+      let locationCoursesData: any[] | null = locationCoursesResult.data;
+      const locationCoursesError = locationCoursesResult.error;
 
       if (
         locationCoursesError?.code === '42703' ||
@@ -453,24 +467,18 @@ export function MatrixProvider({ children }: { children: React.ReactNode }) {
           };
         }).filter(Boolean) as Course[];
 
-      const selectedLocationObj = locations.find(l => l.id === selectedLocation);
-      if (selectedLocationObj?.name) {
+      if (csvContent) {
         try {
-          const csvUrl = getCsvUrlForLocation(selectedLocationObj.name);
-          const res = await fetch(csvUrl);
-          if (res.ok) {
-            const csvContent = await res.text();
-            const csvHeaders: CsvHeaderRows = parseFirstThreeRowsFromCsvString(csvContent);
-            const csvCategoryByCourseName = new Map<string, string>();
-            for (let idx = 1; idx < csvHeaders.courseNameRow.length; idx++) {
-              const courseName = csvHeaders.courseNameRow[idx]?.trim();
-              if (courseName && csvHeaders.categoryRow[idx]) csvCategoryByCourseName.set(normalizeCourseName(courseName), csvHeaders.categoryRow[idx].trim());
-            }
-            filteredCourses = filteredCourses.map(course => ({
-              ...course,
-              category: course.category || csvCategoryByCourseName.get(normalizeCourseName(course.name)) || undefined,
-            }));
+          const csvHeaders: CsvHeaderRows = parseFirstThreeRowsFromCsvString(csvContent);
+          const csvCategoryByCourseName = new Map<string, string>();
+          for (let idx = 1; idx < csvHeaders.courseNameRow.length; idx++) {
+            const courseName = csvHeaders.courseNameRow[idx]?.trim();
+            if (courseName && csvHeaders.categoryRow[idx]) csvCategoryByCourseName.set(normalizeCourseName(courseName), csvHeaders.categoryRow[idx].trim());
           }
+          filteredCourses = filteredCourses.map(course => ({
+            ...course,
+            category: course.category || csvCategoryByCourseName.get(normalizeCourseName(course.name)) || undefined,
+          }));
         } catch (error) {
           console.warn('Could not load fallback headers from location asset files:', error);
         }
@@ -482,7 +490,7 @@ export function MatrixProvider({ children }: { children: React.ReactNode }) {
         category: categoryOverrides[course.id] ?? course.category,
       }));
 
-      const { data: allCoursesForMapping } = await supabase.from('training_courses').select('id, name');
+      const { data: allCoursesForMapping } = allCoursesResult;
       const careskillsToBaseMap = new Map<string, string>();
       if (allCoursesForMapping) {
         const baseCourses = new Map<string, string>();
