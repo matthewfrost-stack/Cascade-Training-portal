@@ -184,7 +184,11 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: 'Could not record webhook' }, { status: 500 });
   }
 
-  if (eventType !== 'visitor.signin') {
+  // Sign In App documentation uses `visitor.signin`, while some accounts
+  // currently deliver the equivalent event as `visitor.sign-in`. Accept both
+  // spellings so valid staff/visitor sign-ins are not silently ignored.
+  const isVisitorSignIn = eventType === 'visitor.signin' || eventType === 'visitor.sign-in';
+  if (!isVisitorSignIn) {
     await markWebhookEvent(service, idempotencyKey, { processed_at: new Date().toISOString() });
     return NextResponse.json({ ok: true, ignored: true });
   }
