@@ -25,6 +25,8 @@ export default function ScheduleModal({
     event_date: defaultDate || '',
     start_time: '09:00',
     end_time: '17:00',
+    am_break_minutes: '0',
+    pm_break_minutes: '0',
     notes: ''
   });
 
@@ -68,6 +70,23 @@ export default function ScheduleModal({
     e.preventDefault();
     setLoading(true);
 
+    const amBreakMinutes = Number(formData.am_break_minutes || 0);
+    const pmBreakMinutes = Number(formData.pm_break_minutes || 0);
+    const startMinutes = Number(formData.start_time.slice(0, 2)) * 60 + Number(formData.start_time.slice(3, 5));
+    const endMinutes = Number(formData.end_time.slice(0, 2)) * 60 + Number(formData.end_time.slice(3, 5));
+
+    if (!Number.isInteger(amBreakMinutes) || !Number.isInteger(pmBreakMinutes) || amBreakMinutes < 0 || pmBreakMinutes < 0) {
+      alert('AM and PM break allocations must be whole numbers of minutes.');
+      setLoading(false);
+      return;
+    }
+
+    if (endMinutes < startMinutes || amBreakMinutes + pmBreakMinutes > endMinutes - startMinutes) {
+      alert('The total AM and PM breaks cannot be longer than the scheduled session.');
+      setLoading(false);
+      return;
+    }
+
     const selectedCourse = courses.find(c => c.id === formData.course_id);
     const isTeamTeachLevel2 = String(selectedCourse?.name || '').trim().toLowerCase() === 'team teach level 2';
     const eventDates = isTeamTeachLevel2
@@ -97,6 +116,8 @@ export default function ScheduleModal({
       event_date: eventDate,
       start_time: `${formData.start_time}:00`,
       end_time: `${formData.end_time}:00`,
+      am_break_minutes: amBreakMinutes,
+      pm_break_minutes: pmBreakMinutes,
       notes: formData.notes?.trim() || null,
     }));
 
@@ -192,8 +213,8 @@ export default function ScheduleModal({
               />
             </div>
 
-            <div>
-              <label style={{ color: isDark ? '#94a3b8' : '#64748b' }} className="block text-[10px] font-black uppercase mb-2">End Time</label>
+          <div>
+            <label style={{ color: isDark ? '#94a3b8' : '#64748b' }} className="block text-[10px] font-black uppercase mb-2">End Time</label>
               <input 
                 type="time" required
                 style={{ backgroundColor: isDark ? '#0f172a' : '#ffffff', color: isDark ? '#f1f5f9' : '#1e293b', borderColor: isDark ? '#334155' : '#cbd5e1' }}
@@ -202,6 +223,41 @@ export default function ScheduleModal({
                 onChange={(e) => setFormData({...formData, end_time: e.target.value})}
               />
             </div>
+          </div>
+
+          <div>
+            <p style={{ color: isDark ? '#94a3b8' : '#64748b' }} className="mb-2 block text-[10px] font-black uppercase">Break allocation (minutes)</p>
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <label style={{ color: isDark ? '#cbd5e1' : '#475569' }} className="mb-2 block text-[10px] font-bold uppercase">AM break</label>
+                <input
+                  type="number"
+                  min="0"
+                  max="1440"
+                  step="1"
+                  inputMode="numeric"
+                  value={formData.am_break_minutes}
+                  onChange={(e) => setFormData({ ...formData, am_break_minutes: e.target.value })}
+                  style={{ backgroundColor: isDark ? '#0f172a' : '#ffffff', color: isDark ? '#f1f5f9' : '#1e293b', borderColor: isDark ? '#334155' : '#cbd5e1' }}
+                  className="w-full px-4 py-2.5 sm:py-3 border rounded-xl outline-none font-bold text-sm"
+                />
+              </div>
+              <div>
+                <label style={{ color: isDark ? '#cbd5e1' : '#475569' }} className="mb-2 block text-[10px] font-bold uppercase">PM break</label>
+                <input
+                  type="number"
+                  min="0"
+                  max="1440"
+                  step="1"
+                  inputMode="numeric"
+                  value={formData.pm_break_minutes}
+                  onChange={(e) => setFormData({ ...formData, pm_break_minutes: e.target.value })}
+                  style={{ backgroundColor: isDark ? '#0f172a' : '#ffffff', color: isDark ? '#f1f5f9' : '#1e293b', borderColor: isDark ? '#334155' : '#cbd5e1' }}
+                  className="w-full px-4 py-2.5 sm:py-3 border rounded-xl outline-none font-bold text-sm"
+                />
+              </div>
+            </div>
+            <p style={{ color: isDark ? '#94a3b8' : '#64748b' }} className="mt-2 text-[10px] font-bold">Enter 0 when there is no break. Both values are deducted from paid time.</p>
           </div>
 
           <div>

@@ -4,6 +4,7 @@ import { useEffect, useState, type FormEvent } from 'react';
 import { supabase } from '@/lib/supabase';
 import UniformButton from './UniformButton';
 import Icon from './Icon';
+import { formatDuration } from '@/lib/trainingEventTime';
 
 interface RosterSettingsModalProps {
   eventId: string;
@@ -14,11 +15,16 @@ interface RosterSettingsModalProps {
   currentCapacity: number;
   hasCapacityOverride: boolean;
   currentMessage: string;
+  currentAmBreakMinutes: number;
+  currentPmBreakMinutes: number;
+  maxBreakMinutes: number;
   onClose: () => void;
   onSaved: (settings: {
     maxAttendees: number;
     hasCapacityOverride: boolean;
     message: string;
+    amBreakMinutes: number;
+    pmBreakMinutes: number;
   }) => void;
 }
 
@@ -31,6 +37,9 @@ export default function RosterSettingsModal({
   currentCapacity,
   hasCapacityOverride,
   currentMessage,
+  currentAmBreakMinutes,
+  currentPmBreakMinutes,
+  maxBreakMinutes,
   onClose,
   onSaved,
 }: RosterSettingsModalProps) {
@@ -39,6 +48,8 @@ export default function RosterSettingsModal({
     hasCapacityOverride ? String(currentCapacity) : ''
   );
   const [message, setMessage] = useState(currentMessage);
+  const [amBreakMinutes, setAmBreakMinutes] = useState(String(currentAmBreakMinutes));
+  const [pmBreakMinutes, setPmBreakMinutes] = useState(String(currentPmBreakMinutes));
   const [saving, setSaving] = useState(false);
   const [errorMessage, setErrorMessage] = useState('');
 
@@ -69,9 +80,21 @@ export default function RosterSettingsModal({
 
     const trimmedLimit = bookingLimit.trim();
     const parsedLimit = trimmedLimit ? Number(trimmedLimit) : null;
+    const parsedAmBreak = amBreakMinutes.trim() ? Number(amBreakMinutes) : 0;
+    const parsedPmBreak = pmBreakMinutes.trim() ? Number(pmBreakMinutes) : 0;
 
     if (parsedLimit !== null && (!Number.isInteger(parsedLimit) || parsedLimit < 1)) {
       setErrorMessage('Booking limit must be a whole number of at least 1, or left blank to use the course default.');
+      return;
+    }
+
+    if (!Number.isInteger(parsedAmBreak) || parsedAmBreak < 0 || parsedAmBreak > 1440 || !Number.isInteger(parsedPmBreak) || parsedPmBreak < 0 || parsedPmBreak > 1440) {
+      setErrorMessage('AM and PM break allocations must be whole numbers from 0 to 1440 minutes.');
+      return;
+    }
+
+    if (parsedAmBreak + parsedPmBreak > maxBreakMinutes) {
+      setErrorMessage(`The total break allocation cannot exceed the scheduled session length of ${formatDuration(maxBreakMinutes)}.`);
       return;
     }
 
@@ -118,7 +141,11 @@ export default function RosterSettingsModal({
       const cleanedMessage = message.trim();
       const { error: eventUpdateError } = await supabase
         .from('training_events')
-        .update({ notes: cleanedMessage || null })
+        .update({
+          notes: cleanedMessage || null,
+          am_break_minutes: parsedAmBreak,
+          pm_break_minutes: parsedPmBreak,
+        })
         .eq('id', eventId);
 
       if (eventUpdateError) throw eventUpdateError;
@@ -127,6 +154,8 @@ export default function RosterSettingsModal({
         maxAttendees: parsedLimit ?? defaultCapacity,
         hasCapacityOverride: parsedLimit !== null,
         message: cleanedMessage,
+        amBreakMinutes: parsedAmBreak,
+        pmBreakMinutes: parsedPmBreak,
       });
     } catch (error: unknown) {
       setErrorMessage(error instanceof Error ? error.message : 'Unable to save roster settings.');
@@ -203,6 +232,41 @@ export default function RosterSettingsModal({
             />
             <p style={{ color: isDark ? '#94a3b8' : '#64748b' }} className="mt-2 text-right text-[10px]">
               {message.length}/1000
+            </p>
+          </div>
+
+          <div>
+            <label style={{ color: isDark ? '#cbd5e1' : '#475569' }} className="mb-2 block text-[10px] font-black uppercase tracking-widest">
+              Break allocation (minutes)
+            </label>
+            <div className="grid grid-cols-2 gap-3">
+              <input
+                type="number"
+                min="0"
+                max="1440"
+                step="1"
+                value={amBreakMinutes}
+                onChange={(event) => setAmBreakMinutes(event.target.value)}
+                placeholder="AM break"
+                aria-label="AM break minutes"
+                style={inputStyle}
+                className="w-full rounded-xl border p-3 text-sm font-bold outline-none focus:ring-2 focus:ring-blue-500"
+              />
+              <input
+                type="number"
+                min="0"
+                max="1440"
+                step="1"
+                value={pmBreakMinutes}
+                onChange={(event) => setPmBreakMinutes(event.target.value)}
+                placeholder="PM break"
+                aria-label="PM break minutes"
+                style={inputStyle}
+                className="w-full rounded-xl border p-3 text-sm font-bold outline-none focus:ring-2 focus:ring-blue-500"
+              />
+            </div>
+            <p style={{ color: isDark ? '#94a3b8' : '#64748b' }} className="mt-2 text-xs">
+              Both breaks are deducted from the paid session time shown on the register.
             </p>
           </div>
 

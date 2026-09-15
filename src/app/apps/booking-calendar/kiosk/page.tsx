@@ -2,6 +2,7 @@
 
 import { Suspense, useCallback, useEffect, useMemo, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
+import { calculatePaidMinutes, formatDuration } from '@/lib/trainingEventTime';
 
 type KioskEvent = {
   id: string;
@@ -9,6 +10,8 @@ type KioskEvent = {
   eventDate: string;
   startTime: string | null;
   endTime: string | null;
+  amBreakMinutes: number;
+  pmBreakMinutes: number;
   location: string | null;
 };
 
@@ -141,10 +144,15 @@ function KioskPageContent() {
             <p className="mb-2 text-xs font-black uppercase tracking-[0.25em] text-blue-600 dark:text-blue-400">Trainer register</p>
             <h1 className="text-2xl font-black sm:text-4xl">{event?.courseName || 'Course register'}</h1>
             {event && (
-              <p className="mt-2 text-sm font-bold text-slate-500 dark:text-slate-400">
-                {formatDate(event.eventDate)} · {formatTime(event.startTime)}{event.endTime ? `–${formatTime(event.endTime)}` : ''}
-                {event.location ? ` · ${event.location}` : ''}
-              </p>
+              <>
+                <p className="mt-2 text-sm font-bold text-slate-500 dark:text-slate-400">
+                  {formatDate(event.eventDate)} · {formatTime(event.startTime)}{event.endTime ? `–${formatTime(event.endTime)}` : ''}
+                  {event.location ? ` · ${event.location}` : ''}
+                </p>
+                <p className="mt-1 text-xs font-black uppercase text-slate-500 dark:text-slate-400">
+                  AM break {event.amBreakMinutes}m · PM break {event.pmBreakMinutes}m · Paid {formatDuration(calculatePaidMinutes(event.startTime, event.endTime, event.amBreakMinutes, event.pmBreakMinutes))}
+                </p>
+              </>
             )}
           </div>
           <div className="flex gap-2">

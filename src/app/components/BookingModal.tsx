@@ -8,6 +8,7 @@ import { getEmailTestHeaders } from '@/lib/emailTestMode';
 import { useCurrentUserProfile } from '@/lib/useCurrentUserProfile';
 import UniformButton from './UniformButton';
 import RosterSettingsModal from './RosterSettingsModal';
+import { calculatePaidMinutes, calculateScheduledMinutes, formatDuration } from '@/lib/trainingEventTime';
 
 interface BookingModalProps {
   event: any;
@@ -38,6 +39,8 @@ export default function BookingModal({ event, onClose, onRefresh, onOpenChecklis
     maxAttendees: Number(initialCapacityOverride) || courseDefaultCapacity,
     hasCapacityOverride: Number.isInteger(Number(initialCapacityOverride)),
     message: String(event?.notes || '').trim(),
+    amBreakMinutes: Number(event?.am_break_minutes) || 0,
+    pmBreakMinutes: Number(event?.pm_break_minutes) || 0,
   });
   const [showRosterSettings, setShowRosterSettings] = useState(false);
 
@@ -71,6 +74,14 @@ export default function BookingModal({ event, onClose, onRefresh, onOpenChecklis
     if (start && end) return `${start} - ${end}`;
     return start || end;
   })();
+
+  const paidMinutes = calculatePaidMinutes(
+    event?.start_time,
+    event?.end_time,
+    rosterSettings.amBreakMinutes,
+    rosterSettings.pmBreakMinutes,
+  );
+  const scheduledMinutes = calculateScheduledMinutes(event?.start_time, event?.end_time);
 
   const isPastEvent = (() => {
     if (!event?.event_date) return false;
@@ -227,7 +238,7 @@ export default function BookingModal({ event, onClose, onRefresh, onOpenChecklis
         .limit(1),
       supabase
         .from('training_events')
-        .select('notes')
+        .select('notes, am_break_minutes, pm_break_minutes')
         .eq('id', event.id)
         .maybeSingle(),
     ]);
@@ -237,6 +248,8 @@ export default function BookingModal({ event, onClose, onRefresh, onOpenChecklis
       maxAttendees: Number(overrideCapacity) || courseDefaultCapacity,
       hasCapacityOverride: Number.isInteger(Number(overrideCapacity)),
       message: String(eventSettings?.notes ?? event?.notes ?? '').trim(),
+      amBreakMinutes: Number(eventSettings?.am_break_minutes ?? event?.am_break_minutes) || 0,
+      pmBreakMinutes: Number(eventSettings?.pm_break_minutes ?? event?.pm_break_minutes) || 0,
     });
   }
 
@@ -542,6 +555,9 @@ export default function BookingModal({ event, onClose, onRefresh, onOpenChecklis
                 {eventTimeRange}
               </p>
             )}
+            <p style={{ color: isDark ? '#94a3b8' : '#64748b' }} className="text-[10px] font-bold uppercase">
+              AM break {rosterSettings.amBreakMinutes}m · PM break {rosterSettings.pmBreakMinutes}m · Paid {formatDuration(paidMinutes)}
+            </p>
           </div>
           <UniformButton
             variant="icon"
@@ -796,12 +812,17 @@ export default function BookingModal({ event, onClose, onRefresh, onOpenChecklis
           currentCapacity={rosterSettings.maxAttendees}
           hasCapacityOverride={rosterSettings.hasCapacityOverride}
           currentMessage={rosterSettings.message}
+          currentAmBreakMinutes={rosterSettings.amBreakMinutes}
+          currentPmBreakMinutes={rosterSettings.pmBreakMinutes}
+          maxBreakMinutes={scheduledMinutes ?? 1440}
           onClose={() => setShowRosterSettings(false)}
           onSaved={(settings) => {
             setRosterSettings({
               maxAttendees: settings.maxAttendees,
               hasCapacityOverride: settings.hasCapacityOverride,
               message: settings.message,
+              amBreakMinutes: settings.amBreakMinutes,
+              pmBreakMinutes: settings.pmBreakMinutes,
             });
             setShowRosterSettings(false);
             onRefresh();

@@ -25,7 +25,7 @@ export async function GET(request: NextRequest) {
       // Keep the calendar response focused on fields used by the calendar and
       // roster modal. The previous `*` selection returned every course and
       // booking column for the whole month on every navigation.
-      .select('id, event_date, start_time, end_time, location, venue_id, course_id, notes, courses(id, name, max_attendees), bookings(id, event_id, profile_id, attended_at, minutes_late, late_reason, lateness_minutes, lateness_reason, absence_reason, attendance_source, attendance_marked_at, profiles:profile_id(id, full_name, location))')
+      .select('id, event_date, start_time, end_time, am_break_minutes, pm_break_minutes, location, venue_id, course_id, notes, courses(id, name, max_attendees), bookings(id, event_id, profile_id, attended_at, minutes_late, late_reason, lateness_minutes, lateness_reason, absence_reason, attendance_source, attendance_marked_at, profiles:profile_id(id, full_name, location))')
       .gte('event_date', startDate)
       .lte('event_date', endDate)
       .order('event_date', { ascending: true });

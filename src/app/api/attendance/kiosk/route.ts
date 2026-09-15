@@ -38,7 +38,7 @@ async function getKioskEvent(eventId: string) {
   const service = createServiceClient();
   const { data: event, error: eventError } = await service
     .from('training_events')
-    .select('id, event_date, start_time, end_time, location, courses(name)')
+    .select('id, event_date, start_time, end_time, am_break_minutes, pm_break_minutes, location, courses(name)')
     .eq('id', eventId)
     .single();
 
@@ -75,6 +75,8 @@ function formatEvent(event: Record<string, unknown>) {
     eventDate: event.event_date,
     startTime: event.start_time,
     endTime: event.end_time,
+    amBreakMinutes: Number(event.am_break_minutes) || 0,
+    pmBreakMinutes: Number(event.pm_break_minutes) || 0,
     location: event.location,
   };
 }

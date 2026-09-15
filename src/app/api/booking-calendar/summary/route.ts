@@ -14,6 +14,8 @@ type SummaryEvent = {
   event_date: string;
   start_time: string | null;
   end_time: string | null;
+  am_break_minutes: number | null;
+  pm_break_minutes: number | null;
   location: string | null;
   venue_id: string | null;
   course_id: string | null;
@@ -121,7 +123,7 @@ export async function GET(request: NextRequest) {
       .from('training_events')
       // The initial calendar only needs event details, course details, and a
       // server-side booking count. Full rosters are loaded on event open.
-      .select('id, event_date, start_time, end_time, location, venue_id, course_id, notes, courses(id, name, max_attendees), bookings(count)')
+      .select('id, event_date, start_time, end_time, am_break_minutes, pm_break_minutes, location, venue_id, course_id, notes, courses(id, name, max_attendees), bookings(count)')
       .gte('event_date', effectiveStartDate)
       .lte('event_date', endDate)
       .order('event_date', { ascending: true });
