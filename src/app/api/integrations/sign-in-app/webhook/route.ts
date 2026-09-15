@@ -116,6 +116,23 @@ function getClockMinutes(value: unknown): number | null {
   return Number(match[1]) * 60 + Number(match[2]);
 }
 
+function normalizeLocation(value: unknown): string | null {
+  const location = getString(value);
+  return location
+    ? location.toLowerCase().replace(/[–—-]/g, ' ').replace(/\s+/g, ' ').trim()
+    : null;
+}
+
+function locationMatchesSite(eventLocation: unknown, siteName: unknown): boolean {
+  const eventValue = normalizeLocation(eventLocation);
+  const siteValue = normalizeLocation(siteName);
+  if (!eventValue || !siteValue) return false;
+
+  return eventValue === siteValue
+    || eventValue.startsWith(`${siteValue} `)
+    || siteValue.startsWith(`${eventValue} `);
+}
+
 async function markWebhookEvent(
   service: ReturnType<typeof createServiceClient>,
   idempotencyKey: string,
@@ -258,9 +275,9 @@ export async function POST(request: NextRequest) {
   }
 
   const bookedEvents = (events || []).filter((event) => (bookings || []).some((booking) => booking.event_id === event.id));
-  const siteName = getString(site.name)?.toLowerCase();
+  const siteName = getString(site.name);
   const siteMatchedEvents = siteName
-    ? bookedEvents.filter((event) => String(event.location || '').trim().toLowerCase() === siteName)
+    ? bookedEvents.filter((event) => locationMatchesSite(event.location, siteName))
     : [];
   const candidates = siteMatchedEvents.length > 0 ? siteMatchedEvents : bookedEvents;
 

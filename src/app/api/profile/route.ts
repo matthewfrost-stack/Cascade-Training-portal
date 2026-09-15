@@ -31,7 +31,7 @@ async function getAuthenticatedUser(request?: Request) {
   if (bearerToken) {
     const tokenClient = createClient(
       process.env.NEXT_PUBLIC_SUPABASE_URL || "",
-      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || "",
+      process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || "",
       {
         global: {
           headers: {
@@ -54,7 +54,7 @@ async function getAuthenticatedUser(request?: Request) {
     const cookieStore = await cookies();
     const authClient = createServerClient(
       process.env.NEXT_PUBLIC_SUPABASE_URL || "",
-      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || "",
+      process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || "",
       {
         cookies: {
           getAll() {

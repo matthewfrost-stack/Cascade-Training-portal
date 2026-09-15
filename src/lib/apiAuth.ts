@@ -8,7 +8,7 @@ export type RoleTier = 'staff' | 'manager' | 'scheduler' | 'admin';
 export function createServiceClient() {
   return createClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL || '',
-    process.env.SUPABASE_SERVICE_ROLE_KEY || ''
+    process.env.SUPABASE_SECRET_KEY || process.env.SUPABASE_SERVICE_ROLE_KEY || ''
   );
 }
 
@@ -24,7 +24,7 @@ export async function requireRole(allowedRoles: RoleTier[]) {
   if (bearerToken) {
     const tokenClient = createClient(
       process.env.NEXT_PUBLIC_SUPABASE_URL || '',
-      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || '',
+      process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || '',
       {
         global: {
           headers: {
@@ -41,7 +41,7 @@ export async function requireRole(allowedRoles: RoleTier[]) {
   if (!user) {
     const authClient = createServerClient(
       process.env.NEXT_PUBLIC_SUPABASE_URL || '',
-      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || '',
+      process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || '',
       {
         cookies: {
           getAll() {
