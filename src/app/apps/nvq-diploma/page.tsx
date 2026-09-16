@@ -187,7 +187,7 @@ export default function NvqDiplomaPage() {
   return (
     <main className="min-h-screen bg-slate-50 p-4 transition-colors dark:bg-slate-950 md:p-8">
       <div className="mx-auto max-w-7xl">
-        <MainHeader title="NVQ & Diploma Tracker" backPath="/" />
+        <MainHeader title="NVQ & Diploma Tracker" backPath="/" showThemeToggle={false} />
         <div className="mb-6 flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
           <div><p className="text-sm font-semibold text-slate-500 dark:text-slate-400">Record each learner journey from first enquiry through course completion.</p></div>
           {canEdit && <UniformButton onClick={() => setShowForm((value) => !value)}>{showForm ? 'Close enquiry form' : 'New enquiry'}</UniformButton>}
@@ -222,4 +222,3 @@ export default function NvqDiplomaPage() {
     </main>
   );
 }
-

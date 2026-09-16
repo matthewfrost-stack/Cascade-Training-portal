@@ -5,7 +5,13 @@ import BackButton from '@/app/components/BackButton';
 import ThemeToggle from '@/app/components/ThemeToggle';
 import UniformButton from './UniformButton';
 
-export default function MainHeader({ title, backPath }: { title: string, backPath?: string }) {
+type MainHeaderProps = {
+  title: string;
+  backPath?: string;
+  showThemeToggle?: boolean;
+};
+
+export default function MainHeader({ title, backPath, showThemeToggle = true }: MainHeaderProps) {
   const router = useRouter();
 
   return (
@@ -18,7 +24,7 @@ export default function MainHeader({ title, backPath }: { title: string, backPat
       </div>
 
       <div className="flex items-center gap-2 sm:gap-3 w-full sm:w-auto justify-end">
-        <ThemeToggle className="rounded-xl" />
+        {showThemeToggle && <ThemeToggle className="rounded-xl" />}
         {!backPath && (
           <UniformButton
             variant="primary"
