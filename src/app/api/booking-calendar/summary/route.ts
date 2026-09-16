@@ -30,6 +30,17 @@ type SummaryEventRow = Omit<SummaryEvent, 'courses'> & {
   courses?: SummaryCourse | SummaryCourse[] | null;
 };
 
+const summaryEventSelection = 'id, event_date, start_time, end_time, am_break_minutes, pm_break_minutes, location, venue_id, course_id, notes, courses(id, name, max_attendees), bookings(count)';
+const legacySummaryEventSelection = 'id, event_date, start_time, end_time, location, venue_id, course_id, notes, courses(id, name, max_attendees), bookings(count)';
+
+function isMissingBreakColumnsError(error: { code?: string; message?: string } | null) {
+  const message = String(error?.message || '').toLowerCase();
+  return error?.code === '42703'
+    || error?.code === 'PGRST204'
+    || (message.includes('am_break_minutes') && message.includes('does not exist'))
+    || (message.includes('pm_break_minutes') && message.includes('does not exist'));
+}
+
 export async function GET(request: NextRequest) {
   try {
     const authz = await requireRole(['admin', 'manager', 'scheduler', 'staff']);
@@ -123,14 +134,29 @@ export async function GET(request: NextRequest) {
       .from('training_events')
       // The initial calendar only needs event details, course details, and a
       // server-side booking count. Full rosters are loaded on event open.
-      .select('id, event_date, start_time, end_time, am_break_minutes, pm_break_minutes, location, venue_id, course_id, notes, courses(id, name, max_attendees), bookings(count)')
+      .select(summaryEventSelection)
       .gte('event_date', effectiveStartDate)
       .lte('event_date', endDate)
       .order('event_date', { ascending: true });
 
     if (eventIds) query = query.in('id', eventIds);
 
-    const { data: events, error } = await query;
+    let events: any[] | null = null;
+    let error: { code?: string; message?: string } | null = null;
+    ({ data: events, error } = await query);
+    // The break columns were introduced in a later migration than the
+    // calendar endpoint. Keep older deployments usable while the migration
+    // is being applied; the calendar itself does not require those fields.
+    if (error && isMissingBreakColumnsError(error)) {
+      let legacyQuery = supabase
+        .from('training_events')
+        .select(legacySummaryEventSelection)
+        .gte('event_date', effectiveStartDate)
+        .lte('event_date', endDate)
+        .order('event_date', { ascending: true });
+      if (eventIds) legacyQuery = legacyQuery.in('id', eventIds);
+      ({ data: events, error } = await legacyQuery);
+    }
     if (error) {
       console.error('Error fetching booking calendar summary:', error);
       return NextResponse.json({ error: 'Failed to fetch booking calendar' }, { status: 500 });

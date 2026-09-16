@@ -23,6 +23,11 @@ export const PERMISSIONS = {
     canEdit: ['admin'],
     canDelete: ['admin'],
   },
+  QUALIFICATIONS: {
+    canView: ['admin', 'scheduler', 'manager'],
+    canCreate: ['admin', 'scheduler', 'manager'],
+    canEdit: ['admin', 'scheduler', 'manager'],
+  },
   STAFF_MANAGEMENT: {
     canView: ['admin'],
     canCreate: ['admin'],

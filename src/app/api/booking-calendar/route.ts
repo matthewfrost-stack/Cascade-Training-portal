@@ -7,6 +7,17 @@ function isIsoDate(value: string | null): value is string {
   return Boolean(value && /^\d{4}-\d{2}-\d{2}$/.test(value));
 }
 
+const bookingEventSelection = 'id, event_date, start_time, end_time, am_break_minutes, pm_break_minutes, location, venue_id, course_id, notes, courses(id, name, max_attendees), bookings(id, event_id, profile_id, attended_at, minutes_late, late_reason, lateness_minutes, lateness_reason, absence_reason, attendance_source, attendance_marked_at, profiles:profile_id(id, full_name, location))';
+const legacyBookingEventSelection = 'id, event_date, start_time, end_time, location, venue_id, course_id, notes, courses(id, name, max_attendees), bookings(id, event_id, profile_id, attended_at, minutes_late, late_reason, lateness_minutes, lateness_reason, absence_reason, attendance_source, attendance_marked_at, profiles:profile_id(id, full_name, location))';
+
+function isMissingBreakColumnsError(error: { code?: string; message?: string } | null) {
+  const message = String(error?.message || '').toLowerCase();
+  return error?.code === '42703'
+    || error?.code === 'PGRST204'
+    || (message.includes('am_break_minutes') && message.includes('does not exist'))
+    || (message.includes('pm_break_minutes') && message.includes('does not exist'));
+}
+
 export async function GET(request: NextRequest) {
   try {
     const authz = await requireRole(['admin', 'manager', 'scheduler', 'staff']);
@@ -25,7 +36,7 @@ export async function GET(request: NextRequest) {
       // Keep the calendar response focused on fields used by the calendar and
       // roster modal. The previous `*` selection returned every course and
       // booking column for the whole month on every navigation.
-      .select('id, event_date, start_time, end_time, am_break_minutes, pm_break_minutes, location, venue_id, course_id, notes, courses(id, name, max_attendees), bookings(id, event_id, profile_id, attended_at, minutes_late, late_reason, lateness_minutes, lateness_reason, absence_reason, attendance_source, attendance_marked_at, profiles:profile_id(id, full_name, location))')
+      .select(bookingEventSelection)
       .gte('event_date', startDate)
       .lte('event_date', endDate)
       .order('event_date', { ascending: true });
@@ -89,7 +100,26 @@ export async function GET(request: NextRequest) {
       }
     }
 
-    const { data: events, error } = await query;
+    let events: any[] | null = null;
+    let error: { code?: string; message?: string } | null = null;
+    ({ data: events, error } = await query);
+    if (error && isMissingBreakColumnsError(error)) {
+      let legacyQuery = supabase
+        .from('training_events')
+        .select(legacyBookingEventSelection)
+        .gte('event_date', startDate)
+        .lte('event_date', endDate)
+        .order('event_date', { ascending: true });
+
+      if (authz.role === 'staff') {
+        const today = new Date().toISOString().split('T')[0];
+        legacyQuery = legacyQuery.gte('event_date', startDate > today ? startDate : today);
+        const { data: ownBookings } = await supabase.from('bookings').select('event_id').eq('profile_id', authz.userId);
+        legacyQuery = legacyQuery.in('id', (ownBookings || []).map((booking) => booking.event_id).filter(Boolean));
+      }
+      // Manager scope is applied again below after the fallback query.
+      ({ data: events, error } = await legacyQuery);
+    }
     if (error) {
       console.error('Error fetching booking calendar:', error);
       return NextResponse.json({ error: 'Failed to fetch booking calendar' }, { status: 500 });

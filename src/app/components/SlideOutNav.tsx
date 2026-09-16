@@ -54,8 +54,10 @@ export default function SlideOutNav() {
   const isMatrix = pathname === "/training-matrix" || pathname.startsWith("/training-matrix/");
   const isCalendar = pathname.startsWith("/apps/booking-calendar");
   const isExpiry = pathname.startsWith("/apps/expiry-checker");
+  const isQualifications = pathname.startsWith("/apps/nvq-diploma");
   const isAdmin = pathname.startsWith("/admin");
   const canUseGeneralApps = !loading && userRole !== "staff";
+  const canUseQualifications = !loading && hasPermission(userRole, "QUALIFICATIONS", "canView");
 
   return (
     <>
@@ -72,6 +74,19 @@ export default function SlideOutNav() {
           }`}
         >
           🏠
+        </button>}
+
+        {canUseQualifications && <button
+          type="button"
+          onClick={() => go("/apps/nvq-diploma")}
+          title="NVQ & Diploma Tracker"
+          className={`w-10 h-10 rounded-xl border-2 flex items-center justify-center text-xl transition-all ${
+            isQualifications
+              ? "bg-amber-100 dark:bg-amber-950/80 border-amber-500 dark:border-amber-400 shadow-sm"
+              : "border-transparent hover:bg-slate-100 dark:hover:bg-slate-900 opacity-80 hover:opacity-100"
+          }`}
+        >
+          🎓
         </button>}
 
         <button
@@ -260,6 +275,26 @@ export default function SlideOutNav() {
                           </p>
                           <p className="text-[11px] text-slate-500 dark:text-slate-400 truncate">
                             Expiring & expired
+                          </p>
+                        </div>
+                      </button>}
+
+                      {canUseQualifications && <button
+                        type="button"
+                        onClick={() => go("/apps/nvq-diploma")}
+                        className={`w-full flex items-center gap-3 p-2.5 rounded-xl transition-all text-left border ${
+                          isQualifications
+                            ? "bg-amber-50 border-amber-300 dark:bg-amber-950/60 dark:border-amber-800 font-semibold"
+                            : "bg-white border-slate-200/80 dark:bg-slate-900/20 dark:border-slate-800 hover:bg-slate-50 dark:hover:bg-slate-900"
+                        }`}
+                      >
+                        <span className="text-xl shrink-0">🎓</span>
+                        <div className="min-w-0 flex-1">
+                          <p className="text-xs font-bold text-slate-900 dark:text-white leading-tight">
+                            NVQ & Diploma
+                          </p>
+                          <p className="text-[11px] text-slate-500 dark:text-slate-400 truncate">
+                            Enquiry to completion
                           </p>
                         </div>
                       </button>}

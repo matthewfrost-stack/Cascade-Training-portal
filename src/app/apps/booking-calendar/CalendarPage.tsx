@@ -25,6 +25,7 @@ export default function CalendarPage() {
   const [showChecklist, setShowChecklist] = useState(false);
   const [selectedChecklistEventId, setSelectedChecklistEventId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [isDark, setIsDark] = useState(true);
   const [filterCourse, setFilterCourse] = useState<string>('all');
 
@@ -165,6 +166,7 @@ export default function CalendarPage() {
 
   async function fetchEvents() {
     setLoading(true);
+    setLoadError(null);
     const startDate = format(startOfMonth(currentMonth), 'yyyy-MM-dd');
     const endDate = format(endOfMonth(currentMonth), 'yyyy-MM-dd');
     try {
@@ -172,11 +174,15 @@ export default function CalendarPage() {
         credentials: 'include',
       });
       const payload = await response.json().catch(() => null);
+      if (!response.ok) {
+        throw new Error(payload?.error || `Calendar request failed (${response.status})`);
+      }
       const data = Array.isArray(payload?.events) ? payload.events : [];
       setEvents(data.filter((event: any) => !isTestCourseName(event.courses?.name)));
     } catch (error) {
       console.error('Error loading booking calendar:', error);
       setEvents([]);
+      setLoadError(error instanceof Error ? error.message : 'Unable to load booking dates.');
     }
     setLoading(false);
   }
@@ -366,6 +372,11 @@ export default function CalendarPage() {
               </div>
             </div>
           </div>
+          {loadError && (
+            <div className="border-t border-red-200 bg-red-50 px-4 py-3 text-sm font-bold text-red-700 dark:border-red-900/60 dark:bg-red-950/30 dark:text-red-300">
+              {loadError} Please refresh the page or contact an administrator if it continues.
+            </div>
+          )}
         </div>
       </div>
 

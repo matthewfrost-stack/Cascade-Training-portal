@@ -154,6 +154,17 @@ export default function LandingPage() {
             actionText="Open App"
             onClick={() => router.push('/apps/booking-calendar')}
           />
+
+          {hasPermission(userRole, 'QUALIFICATIONS', 'canView') && (
+            <TileButton
+              title="NVQ & Diploma Tracker"
+              description="Follow learner enquiries, applications, progress, and completions by location."
+              emoji="🎓"
+              accent="amber"
+              actionText="Open App"
+              onClick={() => router.push('/apps/nvq-diploma')}
+            />
+          )}
         </div>
       </div>
 
