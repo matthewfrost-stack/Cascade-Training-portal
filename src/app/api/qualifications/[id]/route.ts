@@ -91,3 +91,35 @@ export async function PATCH(request: NextRequest, context: { params: Promise<{ i
   }
 }
 
+export async function DELETE(request: NextRequest, context: { params: Promise<{ id: string }> }) {
+  try {
+    const authz = await requireRole([...allowedRoles]);
+    if ('error' in authz) return authz.error;
+
+    const { id } = await context.params;
+    const { data: existing, error: existingError } = await authz.service
+      .from('qualification_leads')
+      .select('id, location_id')
+      .eq('id', id)
+      .single();
+
+    if (existingError || !existing) return NextResponse.json({ error: 'Qualification lead not found' }, { status: 404 });
+
+    const scope = await getScopedLocations(authz.userId, authz.role, authz.service);
+    const canAccess = scope.all || scope.locations.some((location) => location.id === existing.location_id);
+    if (!canAccess) return NextResponse.json({ error: 'You do not have access to this location' }, { status: 403 });
+
+    const { error: deleteError } = await authz.service
+      .from('qualification_leads')
+      .delete()
+      .eq('id', id);
+
+    if (deleteError) return NextResponse.json({ error: deleteError.message || 'Failed to delete qualification lead' }, { status: 400 });
+
+    return NextResponse.json({ success: true });
+  } catch (error) {
+    console.error('Error deleting qualification lead:', error);
+    return NextResponse.json({ error: 'Invalid request' }, { status: 400 });
+  }
+}
+
