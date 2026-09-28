@@ -26,7 +26,6 @@ CREATE TABLE IF NOT EXISTS dev.qualification_leads AS TABLE public.qualification
 
 -- Copy any additional tables from schema.sql that we might have missed
 CREATE TABLE IF NOT EXISTS dev.staff_locations AS TABLE public.staff_locations WITH NO DATA;
-CREATE TABLE IF NOT EXISTS dev.staff_matrix_entries AS TABLE public.staff_matrix_entries WITH NO DATA;
 
 -- Enable RLS on all dev tables (copy settings from public)
 ALTER TABLE dev.booking_checklist_template_items ENABLE ROW LEVEL SECURITY;
@@ -51,7 +50,6 @@ ALTER TABLE dev.locations ENABLE ROW LEVEL SECURITY;
 ALTER TABLE dev.qualification_lead_timeline ENABLE ROW LEVEL SECURITY;
 ALTER TABLE dev.qualification_leads ENABLE ROW LEVEL SECURITY;
 ALTER TABLE dev.staff_locations ENABLE ROW LEVEL SECURITY;
-ALTER TABLE dev.staff_matrix_entries ENABLE ROW LEVEL SECURITY;
 
 -- Note: You'll need to manually copy RLS policies from public schema policies
 -- Go to Authentication > Policies in Supabase dashboard and duplicate each policy,
