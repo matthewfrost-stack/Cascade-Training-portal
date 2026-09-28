@@ -10,6 +10,11 @@ export async function middleware(request: NextRequest) {
 
   const pathname = request.nextUrl.pathname
 
+  // Vercel automatically sets NEXT_PUBLIC_VERCEL_ENV to 'production', 'preview', or 'development'
+  // Use 'dev' schema for preview/development, 'public' schema for production
+  const isDev = process.env.NEXT_PUBLIC_VERCEL_ENV !== 'production';
+  const schema = isDev ? 'dev' : 'public';
+
   const supabase = createServerClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
     process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
@@ -30,6 +35,9 @@ export async function middleware(request: NextRequest) {
           )
         },
       },
+      db: { 
+        schema 
+      }
     }
   )
 

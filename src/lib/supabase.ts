@@ -4,9 +4,18 @@ const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 const supabasePublishableKey =
   process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
 
+// Vercel automatically sets NEXT_PUBLIC_VERCEL_ENV to 'production', 'preview', or 'development'
+// Use 'dev' schema for preview/development, 'public' schema for production
+const isDev = process.env.NEXT_PUBLIC_VERCEL_ENV !== 'production';
+const schema = isDev ? 'dev' : 'public';
+
 // Browser client that shares the SAME cookie session the server/middleware set
 // on login. Previously this used createClient (localStorage), which never
 // received the server-action login session — so the browser client was
 // effectively anonymous and every RLS-protected write (checklists, roster,
 // dividers, etc.) failed with "row violates row-level security policy".
-export const supabase = createBrowserClient(supabaseUrl, supabasePublishableKey);
+export const supabase = createBrowserClient(supabaseUrl, supabasePublishableKey, {
+  db: { 
+    schema 
+  }
+});
