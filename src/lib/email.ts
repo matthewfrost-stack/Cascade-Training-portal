@@ -96,7 +96,16 @@ async function logEmailSend(entry: {
     const serviceRoleKey = process.env.SUPABASE_SECRET_KEY || process.env.SUPABASE_SERVICE_ROLE_KEY;
     if (!url || !serviceRoleKey) return;
 
-    const supabase = createClient(url, serviceRoleKey);
+    // Vercel automatically sets NEXT_PUBLIC_VERCEL_ENV to 'production', 'preview', or 'development'
+    // Use 'dev' schema for preview/development, 'public' schema for production
+    const isDev = process.env.NEXT_PUBLIC_VERCEL_ENV !== 'production';
+    const schema = isDev ? 'dev' : 'public';
+
+    const supabase = createClient(url, serviceRoleKey, {
+      db: { 
+        schema 
+      }
+    });
     await supabase.from('email_logs').insert({
       subject: entry.subject,
       status: entry.status,
