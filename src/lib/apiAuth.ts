@@ -5,10 +5,20 @@ import { NextResponse } from 'next/server';
 
 export type RoleTier = 'staff' | 'manager' | 'scheduler' | 'admin';
 
+// Vercel automatically sets NEXT_PUBLIC_VERCEL_ENV to 'production', 'preview', or 'development'
+// Use 'dev' schema for preview/development, 'public' schema for production
+const isDev = process.env.NEXT_PUBLIC_VERCEL_ENV !== 'production';
+const schema = isDev ? 'dev' : 'public';
+
 export function createServiceClient() {
   return createClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL || '',
-    process.env.SUPABASE_SECRET_KEY || process.env.SUPABASE_SERVICE_ROLE_KEY || ''
+    process.env.SUPABASE_SECRET_KEY || process.env.SUPABASE_SERVICE_ROLE_KEY || '',
+    {
+      db: { 
+        schema 
+      }
+    }
   );
 }
 
@@ -31,6 +41,9 @@ export async function requireRole(allowedRoles: RoleTier[]) {
             Authorization: `Bearer ${bearerToken}`,
           },
         },
+        db: { 
+          schema 
+        }
       }
     );
     const { data, error } = await tokenClient.auth.getUser();
@@ -51,6 +64,9 @@ export async function requireRole(allowedRoles: RoleTier[]) {
             // No-op in route handlers.
           },
         },
+        db: { 
+          schema 
+        }
       }
     );
     const { data, error } = await authClient.auth.getUser();

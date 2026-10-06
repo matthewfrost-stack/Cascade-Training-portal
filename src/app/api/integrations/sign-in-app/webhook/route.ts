@@ -60,21 +60,43 @@ function getVisitorName(visitor: JsonRecord): string | null {
     || getFieldValue(visitor.personal_fields, 'name');
 }
 
+function getSignatureHeader(headers: Headers): string | null {
+  const candidates = [
+    'x-signinapp-webhook-signature',
+    'x-signinapp-signature',
+    'x-signinapp-hmac-sha256',
+    'x-signinapp-webhook-signature-1',
+  ];
+
+  for (const name of candidates) {
+    const value = headers.get(name);
+    if (value && value.trim()) return value.trim();
+  }
+
+  return null;
+}
+
 function verifySignature(rawBody: string, signature: string | null, secret: string): boolean {
   if (!signature) return false;
 
-  const parts = Object.fromEntries(
-    signature.split(',').map((part) => {
-      const [key, ...value] = part.split('=');
-      return [key, value.join('=')];
-    })
-  );
-  const timestamp = parts.t;
-  const receivedSignature = parts.s1;
+  const parts = new Map<string, string>();
+  for (const part of signature.split(',')) {
+    const [rawKey, ...rawValue] = part.split('=');
+    if (!rawKey) continue;
+    const key = rawKey.trim();
+    const value = rawValue.join('=').trim();
+    if (key && value) parts.set(key, value);
+  }
+
+  const timestamp = parts.get('t') ?? parts.get('timestamp') ?? parts.get('ts');
+  const receivedSignature = parts.get('s1') ?? parts.get('v1') ?? parts.get('signature') ?? parts.get('hmac');
   const timestampNumber = Number(timestamp);
 
   if (!timestamp || !receivedSignature || !Number.isFinite(timestampNumber)) return false;
-  if (Math.abs(Math.floor(Date.now() / 1000) - timestampNumber) > MAX_SIGNATURE_AGE_SECONDS) {
+
+  const isMillisecondsTimestamp = timestampNumber > 1_000_000_000_000;
+  const timestampForAgeCheck = isMillisecondsTimestamp ? timestampNumber / 1000 : timestampNumber;
+  if (Math.abs(Math.floor(Date.now() / 1000) - timestampForAgeCheck) > MAX_SIGNATURE_AGE_SECONDS) {
     return false;
   }
 
@@ -152,7 +174,8 @@ export async function POST(request: NextRequest) {
   }
 
   const rawBody = await request.text();
-  if (!verifySignature(rawBody, request.headers.get('x-signinapp-webhook-signature'), secret)) {
+  const signatureHeader = getSignatureHeader(request.headers);
+  if (!verifySignature(rawBody, signatureHeader, secret)) {
     return NextResponse.json({ error: 'Invalid webhook signature' }, { status: 401 });
   }
 
