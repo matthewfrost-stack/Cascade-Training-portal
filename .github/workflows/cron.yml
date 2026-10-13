@@ -8,14 +8,22 @@ jobs:
   cron:
     runs-on: ubuntu-latest
     steps:
-      - name: Call Automation Endpoint
+      - name: Call Feedback Automation Endpoint
         run: |
           # Replace the URL below if your Vercel deployment uses a different one
           APP_URL="https://cascade-training-calendar.vercel.app"
           
-          echo "Calling automation endpoint at $APP_URL..."
+          echo "Calling feedback automation endpoint at $APP_URL..."
           
-          # Keep the response body visible when the endpoint fails so the GitHub
-          # notification contains the actual authentication/database error.
           curl --fail-with-body --silent --show-error -X GET "$APP_URL/api/automations/feedback-emails" \
+          -H "Authorization: Bearer ${{ secrets.CRON_SECRET }}"
+
+      - name: Call Roster No-Show Notification Endpoint
+        run: |
+          # Replace the URL below if your Vercel deployment uses a different one
+          APP_URL="https://cascade-training-calendar.vercel.app"
+          
+          echo "Calling roster no-show automation endpoint at $APP_URL..."
+          
+          curl --fail-with-body --silent --show-error -X GET "$APP_URL/api/automations/roster-no-shows" \
           -H "Authorization: Bearer ${{ secrets.CRON_SECRET }}"
