@@ -16,6 +16,8 @@ import {
   type FeedbackAutomationSettings,
 } from '@/lib/feedbackAutomation';
 
+import { isAuthorizedCronHeader } from '@/lib/cronAuth';
+
 type AutomationEvent = {
   id: string;
   event_date: string;
@@ -187,8 +189,7 @@ export async function POST(req: Request) {
 async function handleRequest(req: Request) {
   try {
     const authHeader = req.headers.get('Authorization');
-    const cronSecret = process.env.CRON_SECRET;
-    const hasCronSecret = Boolean(cronSecret && authHeader === `Bearer ${cronSecret}`);
+    const hasCronSecret = isAuthorizedCronHeader(authHeader);
     let eventId: string | null = null;
 
     try {

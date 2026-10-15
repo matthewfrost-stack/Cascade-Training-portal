@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { createServiceClient, requireRole } from '@/lib/apiAuth';
 import { getLocalWallClock, parseEventWallClock } from '@/lib/feedbackAutomation';
+import { isAuthorizedCronHeader } from '@/lib/cronAuth';
 
 type NotificationRecipient = {
   id: string;
@@ -51,8 +52,7 @@ export async function POST(req: Request) {
 async function handleRequest(req: Request) {
   try {
     const authHeader = req.headers.get('Authorization');
-    const cronSecret = process.env.CRON_SECRET;
-    const hasCronSecret = Boolean(cronSecret && authHeader === `Bearer ${cronSecret}`);
+    const hasCronSecret = isAuthorizedCronHeader(authHeader);
 
     if (!hasCronSecret) {
       const authz = await requireRole(['admin']);
