@@ -8,6 +8,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { supabase } from '@/lib/supabase';
 import { getProfileAvatarUrl, getProfileInitials } from '@/lib/profile';
 import { useCurrentUserProfile } from '@/lib/useCurrentUserProfile';
+import NotificationBell from '@/app/components/NotificationBell';
 
 type ThemeMode = 'light' | 'dark' | 'system';
 type RoleTier = 'staff' | 'manager' | 'scheduler' | 'admin';
@@ -159,6 +160,8 @@ export default function FixedHeader() {
         </div>
 
         <div className="flex-1" />
+
+        {isAuthenticated && <NotificationBell />}
 
         <div className="relative flex items-center gap-2" ref={dropdownRef}>
           <button

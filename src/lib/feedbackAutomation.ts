@@ -75,9 +75,16 @@ export function getReminderDaysBefore(settings: FeedbackAutomationSettings | nul
   return Math.max(0, Number(configured ?? fallback) || 0);
 }
 
+const MANAGER_EMAIL_ALIASES: Record<string, string> = {
+  bankshouseschool: 'BHSheads@cascade-care.com',
+  felixhouseschool: 'FHSheads@cascade-care.com',
+};
+
 export function getManagerEmail(location?: string | null) {
   const normalized = String(location || '').trim().toLowerCase().replace(/[^a-z0-9]/g, '');
-  return normalized ? `${normalized}managers@cascade-care.com` : null;
+  if (!normalized) return null;
+
+  return MANAGER_EMAIL_ALIASES[normalized] || `${normalized}managers@cascade-care.com`;
 }
 
 export function formatEventDate(date: string) {
