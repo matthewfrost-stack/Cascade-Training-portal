@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
-import AtlasImportModal from '@/app/components/AtlasImportModal';
+import AtlasSyncPanel from '@/app/components/AtlasSyncPanel';
 import UniformButton from '@/app/components/UniformButton';
 import { supabase } from '@/lib/supabase';
 
@@ -159,7 +159,7 @@ export default function MatrixSyncModal({ onClose }: { onClose: () => void }) {
 
       {mode === 'atlas' && (
         <div className="rounded-lg">
-          <AtlasImportModal onClose={onClose} />
+          <AtlasSyncPanel isDark={isDark} />
         </div>
       )}
 
