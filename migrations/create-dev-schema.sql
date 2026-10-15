@@ -1,56 +1,100 @@
 -- Create dev schema if it doesn't exist
 CREATE SCHEMA IF NOT EXISTS dev;
 
--- Copy all tables from public to dev schema
-CREATE TABLE IF NOT EXISTS dev.booking_checklist_template_items AS TABLE public.booking_checklist_template_items WITH NO DATA;
-CREATE TABLE IF NOT EXISTS dev.booking_checklists AS TABLE public.booking_checklists WITH NO DATA;
-CREATE TABLE IF NOT EXISTS dev.bookings AS TABLE public.bookings WITH NO DATA;
-CREATE TABLE IF NOT EXISTS dev.courses AS TABLE public.courses WITH NO DATA;
-CREATE TABLE IF NOT EXISTS dev.profiles AS TABLE public.profiles WITH NO DATA;
-CREATE TABLE IF NOT EXISTS dev.training_events AS TABLE public.training_events WITH NO DATA;
-CREATE TABLE IF NOT EXISTS dev.checklist_completions AS TABLE public.checklist_completions WITH NO DATA;
-CREATE TABLE IF NOT EXISTS dev.course_event_overrides AS TABLE public.course_event_overrides WITH NO DATA;
-CREATE TABLE IF NOT EXISTS dev.course_feedback AS TABLE public.course_feedback WITH NO DATA;
-CREATE TABLE IF NOT EXISTS dev.deleted_items AS TABLE public.deleted_items WITH NO DATA;
-CREATE TABLE IF NOT EXISTS dev.email_logs AS TABLE public.email_logs WITH NO DATA;
-CREATE TABLE IF NOT EXISTS dev.feedback_automation_settings AS TABLE public.feedback_automation_settings WITH NO DATA;
-CREATE TABLE IF NOT EXISTS dev.feedback_email_logs AS TABLE public.feedback_email_logs WITH NO DATA;
-CREATE TABLE IF NOT EXISTS dev.feedback_form_config AS TABLE public.feedback_form_config WITH NO DATA;
-CREATE TABLE IF NOT EXISTS dev.feedback_settings AS TABLE public.feedback_settings WITH NO DATA;
-CREATE TABLE IF NOT EXISTS dev.location_courses AS TABLE public.location_courses WITH NO DATA;
-CREATE TABLE IF NOT EXISTS dev.location_matrix_dividers AS TABLE public.location_matrix_dividers WITH NO DATA;
-CREATE TABLE IF NOT EXISTS dev.location_training_courses AS TABLE public.location_training_courses WITH NO DATA;
-CREATE TABLE IF NOT EXISTS dev.locations AS TABLE public.locations WITH NO DATA;
-CREATE TABLE IF NOT EXISTS dev.qualification_lead_timeline AS TABLE public.qualification_lead_timeline WITH NO DATA;
-CREATE TABLE IF NOT EXISTS dev.qualification_leads AS TABLE public.qualification_leads WITH NO DATA;
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1
+    FROM pg_type t
+    JOIN pg_namespace n ON n.oid = t.typnamespace
+    WHERE n.nspname = 'dev'
+      AND t.typname = 'user_role'
+  ) THEN
+    CREATE TYPE dev.user_role AS ENUM ('staff', 'manager', 'scheduler', 'admin');
+  END IF;
+END $$;
 
--- Copy any additional tables from schema.sql that we might have missed
-CREATE TABLE IF NOT EXISTS dev.staff_locations AS TABLE public.staff_locations WITH NO DATA;
+CREATE OR REPLACE FUNCTION dev.current_user_role_tier()
+RETURNS text
+LANGUAGE sql
+STABLE SECURITY DEFINER
+SET search_path = dev, public
+AS $$
+  SELECT p.role_tier::text
+  FROM dev.profiles p
+  WHERE p.id = auth.uid()
+  LIMIT 1;
+$$;
 
--- Enable RLS on all dev tables (copy settings from public)
-ALTER TABLE dev.booking_checklist_template_items ENABLE ROW LEVEL SECURITY;
-ALTER TABLE dev.booking_checklists ENABLE ROW LEVEL SECURITY;
-ALTER TABLE dev.bookings ENABLE ROW LEVEL SECURITY;
-ALTER TABLE dev.courses ENABLE ROW LEVEL SECURITY;
-ALTER TABLE dev.profiles ENABLE ROW LEVEL SECURITY;
-ALTER TABLE dev.training_events ENABLE ROW LEVEL SECURITY;
-ALTER TABLE dev.checklist_completions ENABLE ROW LEVEL SECURITY;
-ALTER TABLE dev.course_event_overrides ENABLE ROW LEVEL SECURITY;
-ALTER TABLE dev.course_feedback ENABLE ROW LEVEL SECURITY;
-ALTER TABLE dev.deleted_items ENABLE ROW LEVEL SECURITY;
-ALTER TABLE dev.email_logs ENABLE ROW LEVEL SECURITY;
-ALTER TABLE dev.feedback_automation_settings ENABLE ROW LEVEL SECURITY;
-ALTER TABLE dev.feedback_email_logs ENABLE ROW LEVEL SECURITY;
-ALTER TABLE dev.feedback_form_config ENABLE ROW LEVEL SECURITY;
-ALTER TABLE dev.feedback_settings ENABLE ROW LEVEL SECURITY;
-ALTER TABLE dev.location_courses ENABLE ROW LEVEL SECURITY;
-ALTER TABLE dev.location_matrix_dividers ENABLE ROW LEVEL SECURITY;
-ALTER TABLE dev.location_training_courses ENABLE ROW LEVEL SECURITY;
-ALTER TABLE dev.locations ENABLE ROW LEVEL SECURITY;
-ALTER TABLE dev.qualification_lead_timeline ENABLE ROW LEVEL SECURITY;
-ALTER TABLE dev.qualification_leads ENABLE ROW LEVEL SECURITY;
+CREATE OR REPLACE FUNCTION dev.current_user_location_ids()
+RETURNS SETOF uuid
+LANGUAGE sql
+STABLE SECURITY DEFINER
+SET search_path = dev, public
+AS $$
+  SELECT sl.location_id
+  FROM dev.staff_locations sl
+  WHERE sl.staff_id = auth.uid()
+  UNION
+  SELECT l.id
+  FROM dev.locations l
+  JOIN dev.profiles p ON p.id = auth.uid()
+  WHERE l.name = p.location
+     OR l.name IN (
+       SELECT trim(value)
+       FROM jsonb_array_elements_text(
+         CASE
+           WHEN jsonb_typeof(to_jsonb(p.managed_houses)) = 'array'
+             THEN to_jsonb(p.managed_houses)
+           ELSE '[]'::jsonb
+         END
+       ) AS managed(value)
+     );
+$$;
+
+DO $$
+DECLARE
+  r RECORD;
+BEGIN
+  FOR r IN
+    SELECT table_name
+    FROM information_schema.tables
+    WHERE table_schema = 'public'
+      AND table_type = 'BASE TABLE'
+      AND table_name NOT IN ('schema_migrations')
+  LOOP
+    EXECUTE format(
+      'CREATE TABLE IF NOT EXISTS dev.%I (LIKE public.%I INCLUDING ALL);',
+      r.table_name,
+      r.table_name
+    );
+
+    EXECUTE format(
+      'ALTER TABLE dev.%I ENABLE ROW LEVEL SECURITY;',
+      r.table_name
+    );
+  END LOOP;
+END $$;
+
+-- Make sure the standard tables referenced by the app exist in dev.
+CREATE TABLE IF NOT EXISTS dev.staff_locations (LIKE public.staff_locations INCLUDING ALL);
+CREATE TABLE IF NOT EXISTS dev.staff_training_matrix (LIKE public.staff_training_matrix INCLUDING ALL);
+CREATE TABLE IF NOT EXISTS dev.ticket_updates (LIKE public.ticket_updates INCLUDING ALL);
+CREATE TABLE IF NOT EXISTS dev.training_courses (LIKE public.training_courses INCLUDING ALL);
+CREATE TABLE IF NOT EXISTS dev.venues (LIKE public.venues INCLUDING ALL);
+CREATE TABLE IF NOT EXISTS dev.qualification_leads (LIKE public.qualification_leads INCLUDING ALL);
+CREATE TABLE IF NOT EXISTS dev.qualification_lead_timeline (LIKE public.qualification_lead_timeline INCLUDING ALL);
+
 ALTER TABLE dev.staff_locations ENABLE ROW LEVEL SECURITY;
+ALTER TABLE dev.staff_training_matrix ENABLE ROW LEVEL SECURITY;
+ALTER TABLE dev.ticket_updates ENABLE ROW LEVEL SECURITY;
+ALTER TABLE dev.training_courses ENABLE ROW LEVEL SECURITY;
+ALTER TABLE dev.venues ENABLE ROW LEVEL SECURITY;
+ALTER TABLE dev.qualification_leads ENABLE ROW LEVEL SECURITY;
+ALTER TABLE dev.qualification_lead_timeline ENABLE ROW LEVEL SECURITY;
 
--- Note: You'll need to manually copy RLS policies from public schema policies
--- Go to Authentication > Policies in Supabase dashboard and duplicate each policy,
--- changing the table schema from "public" to "dev"
+-- Grant access needed by the app to dev schema functions.
+REVOKE ALL ON FUNCTION dev.current_user_role_tier() FROM PUBLIC;
+REVOKE ALL ON FUNCTION dev.current_user_location_ids() FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION dev.current_user_role_tier() TO authenticated;
+GRANT EXECUTE ON FUNCTION dev.current_user_location_ids() TO authenticated;

@@ -19,6 +19,13 @@ test('login page renders', async ({ page }) => {
   await expect(page.getByRole('heading', { name: 'Cascade Portal' })).toBeVisible();
 });
 
+test('security headers are present', async ({ request }) => {
+  const response = await request.get('/login');
+  expect(response.headers()['x-content-type-options']).toBe('nosniff');
+  expect(response.headers()['x-frame-options']).toBe('DENY');
+  expect(response.headers()['referrer-policy']).toBe('strict-origin-when-cross-origin');
+});
+
 test.describe('unauthenticated redirects', () => {
   for (const path of PROTECTED_ROUTES) {
     test(`${path} redirects to /login`, async ({ page }) => {

@@ -341,17 +341,61 @@ export default function BookingModal({ event, onClose, onRefresh, onOpenChecklis
     return sorted;
   };
 
-  const updateBooking = async (id: string, updates: any) => {
+  const updateBooking = async (id: string, updates: Record<string, unknown>) => {
     if (!hasPermission(userRole, 'ATTENDANCE', 'canMark')) {
       alert('Permission denied');
       return;
     }
 
+    const previousBooking = roster.find((row) => row.id === id);
+    if (!previousBooking) return;
+    const previousValues = Object.fromEntries(
+      Object.keys(updates).map((key) => [key, previousBooking[key]])
+    );
+
+    // Keep the roster responsive while the database update is in flight. The
+    // old implementation reloaded the whole roster after every keystroke,
+    // which could overwrite the value the user was still entering.
+    setRoster((currentRoster) => currentRoster.map((row) => (
+      row.id === id ? { ...row, ...updates } : row
+    )));
+
     const { error } = await supabase.from('bookings').update(updates).eq('id', id);
-    if (!error) {
-      await fetchRoster();
-      onRefresh();
+    if (error) {
+      console.error('Error updating booking attendance:', error);
+      setRoster((currentRoster) => currentRoster.map((row) => (
+        row.id === id ? { ...row, ...previousValues } : row
+      )));
+      alert('Failed to save attendance. Please try again.');
+      return;
     }
+
+    // Refresh the calendar summary without replacing the actively edited
+    // roster rows with another network response.
+    onRefresh();
+  };
+
+  const updateMinutesLateDraft = (id: string, value: string) => {
+    if (value !== '') {
+      const minutes = Number(value);
+      if (!Number.isInteger(minutes) || minutes < 0 || minutes > 1440) return;
+    }
+
+    setRoster((currentRoster) => currentRoster.map((row) => (
+      row.id === id
+        ? { ...row, minutes_late: value === '' ? null : Number(value) }
+        : row
+    )));
+  };
+
+  const commitMinutesLate = (id: string, value: string) => {
+    const trimmedValue = value.trim();
+    const minutes = trimmedValue === '' ? null : Number(trimmedValue);
+    if (minutes !== null && (!Number.isInteger(minutes) || minutes < 0 || minutes > 1440)) {
+      return;
+    }
+
+    void updateBooking(id, { minutes_late: minutes });
   };
 
   const handleBooking = async () => {
@@ -715,7 +759,7 @@ export default function BookingModal({ event, onClose, onRefresh, onOpenChecklis
                 </UniformButton>
                 </div>
               </div>
-              {roster
+              {[...roster]
                 .sort((a, b) => {
                   // Sort by location first, then by name
                   const locationA = a.profiles?.location || 'Unassigned';
@@ -764,8 +808,12 @@ export default function BookingModal({ event, onClose, onRefresh, onOpenChecklis
                           type="number"
                           placeholder="0"
                           className="w-full bg-white dark:bg-slate-700 p-2 rounded-lg text-xs font-bold outline-none border dark:border-slate-600 text-black dark:text-white"
-                          value={row.minutes_late || ''}
-                          onChange={(e) => updateBooking(row.id, { minutes_late: e.target.value })}
+                          min={0}
+                          max={1440}
+                          step={1}
+                          value={row.minutes_late ?? ''}
+                          onChange={(e) => updateMinutesLateDraft(row.id, e.target.value)}
+                          onBlur={(e) => commitMinutesLate(row.id, e.currentTarget.value)}
                         />
                       </div>
                       <div className="flex flex-col gap-1">
