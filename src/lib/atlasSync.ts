@@ -246,12 +246,6 @@ function calculateExpiryDate(completionDate: string, course: CourseRow): string 
   return date.toISOString().slice(0, 10);
 }
 
-function toDate(value: string | null | undefined): Date | null {
-  if (!value) return null;
-  const parsed = new Date(value.replace(' ', 'T'));
-  return Number.isNaN(parsed.getTime()) ? null : parsed;
-}
-
 function isArchived(value: boolean | number | string | null | undefined): boolean {
   return value === true || value === 1 || String(value || '').toLowerCase() === 'true';
 }
@@ -307,8 +301,6 @@ async function fetchAtlasCompletedRecords(): Promise<unknown[]> {
   const records: unknown[] = [];
   let page = 1;
   let hasMore = true;
-  const now = new Date();
-
   while (hasMore && page <= MAX_API_PAGES) {
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
@@ -364,9 +356,6 @@ async function fetchAtlasCompletedRecords(): Promise<unknown[]> {
         if (!result.completed_at || !result.course?.id) continue;
         if (isArchived(result.course.is_archived) || (hasEnrolmentArray && !enrolledCourseIds.has(String(result.course.id)))) continue;
         if (!isPassed(result)) continue;
-
-        const expiry = toDate(result.expires_at);
-        if (expiry && expiry < now) continue;
 
         records.push({
           staffName,
