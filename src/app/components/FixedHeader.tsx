@@ -181,6 +181,9 @@ export default function FixedHeader() {
             </div>
             <div className="flex h-10 w-10 items-center justify-center overflow-hidden rounded-full bg-slate-200 text-sm font-black text-slate-700 shadow-inner dark:bg-[#1b2740] dark:text-slate-100">
               {avatarUrl ? (
+                // Profile photos are runtime Supabase URLs; the host is
+                // tenant-configured and cannot be statically optimized here.
+                // eslint-disable-next-line @next/next/no-img-element
                 <img src={avatarUrl} alt="Profile" className="h-full w-full object-cover" />
               ) : (
                 <span>{getProfileInitials(fullName, email)}</span>

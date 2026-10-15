@@ -8,9 +8,33 @@ import { debugLog } from '@/lib/debug';
 import { useCurrentUserProfile } from '@/lib/useCurrentUserProfile';
 import AdminResetPasswordModal from './AdminResetPasswordModal';
 
+interface StaffLocation { id: string; name: string; accessible_office_regions?: string[] | null }
+interface StaffMember {
+  id: string;
+  full_name: string;
+  email: string;
+  location?: string | null;
+  role_tier?: 'staff' | 'manager' | 'scheduler' | 'admin' | null;
+  managed_houses?: string[] | null;
+}
+interface LocationCourseLink {
+  training_course_id: string;
+  training_courses?: { name?: string | null } | { name?: string | null }[] | null;
+}
+interface BulkStaffRecord {
+  full_name: string;
+  email: string;
+  location: string;
+  location_id?: string;
+  role_tier: string;
+  managed_houses: string[];
+  send_invite: boolean;
+}
+interface BulkResult { success: boolean; email?: string; error?: string }
+
 export default function AddStaffModal({ onClose, onRefresh }: { onClose: () => void; onRefresh: () => void }) {
-  const [locations, setLocations] = useState<any[]>([]);
-  const [allStaff, setAllStaff] = useState<any[]>([]);
+  const [locations, setLocations] = useState<StaffLocation[]>([]);
+  const [allStaff, setAllStaff] = useState<StaffMember[]>([]);
   const [loading, setLoading] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [isDark, setIsDark] = useState(true);
@@ -67,8 +91,9 @@ export default function AddStaffModal({ onClose, onRefresh }: { onClose: () => v
   }, []);
 
   useEffect(() => {
-    const handleThemeChange = (event: any) => {
-      setIsDark(event.detail.isDark);
+    const handleThemeChange = (event: Event) => {
+      const customEvent = event as CustomEvent<{ isDark?: boolean }>;
+      if (typeof customEvent.detail?.isDark === 'boolean') setIsDark(customEvent.detail.isDark);
     };
     
     window.addEventListener('themeChange', handleThemeChange);
@@ -86,7 +111,7 @@ export default function AddStaffModal({ onClose, onRefresh }: { onClose: () => v
   async function fetchInitialData() {
     const { data: locData } = await supabase.from('locations').select('*').order('name');
     // Deduplicate locations by id to prevent duplicates in dropdown
-    const uniqueLocations = locData ? Array.from(new Map(locData.map((loc: any) => [loc.id, loc])).values()) : [];
+    const uniqueLocations = locData ? Array.from(new Map(locData.map((loc) => [loc.id, loc])).values()) as StaffLocation[] : [];
     setLocations(uniqueLocations);
     const { data: staffData } = await supabase.from('profiles').select('*').eq('is_deleted', false).order('full_name');
     
@@ -132,7 +157,7 @@ export default function AddStaffModal({ onClose, onRefresh }: { onClose: () => v
         if (currentLocationRowsError) throw currentLocationRowsError;
 
         const currentLocationIds = Array.from(
-          new Set((currentLocationRows || []).map((r: any) => r.location_id).filter(Boolean))
+          new Set((currentLocationRows || []).map((r) => r.location_id).filter(Boolean))
         );
         const locationToMoveFrom =
           currentPrimaryLocationId && currentPrimaryLocationId !== newLocationId
@@ -177,7 +202,7 @@ export default function AddStaffModal({ onClose, onRefresh }: { onClose: () => v
               const newLocationCourses = newLocationCoursesQuery.data || [];
 
               const newCourseIdByName = new Map<string, string>();
-              newLocationCourses.forEach((row: any) => {
+              newLocationCourses.forEach((row: LocationCourseLink) => {
                 const courseObj = Array.isArray(row.training_courses) ? row.training_courses[0] : row.training_courses;
                 const key = canonicalCourseName(courseObj?.name || '');
                 if (key && row.training_course_id && !newCourseIdByName.has(key)) {
@@ -194,7 +219,7 @@ export default function AddStaffModal({ onClose, onRefresh }: { onClose: () => v
               const oldLocationCourses = oldLocationCoursesQuery.data || [];
 
               const oldToNewCourseId = new Map<string, string>();
-              oldLocationCourses.forEach((row: any) => {
+              oldLocationCourses.forEach((row: LocationCourseLink) => {
                 const courseObj = Array.isArray(row.training_courses) ? row.training_courses[0] : row.training_courses;
                 const key = canonicalCourseName(courseObj?.name || '');
                 const mappedNewCourseId = key ? newCourseIdByName.get(key) : null;
@@ -322,9 +347,9 @@ export default function AddStaffModal({ onClose, onRefresh }: { onClose: () => v
       setFormData({ full_name: '', email: '', home_house: '', role_tier: 'staff', managed_houses: [], password: '' });
       fetchInitialData();
       onRefresh();
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error('Error in handleSave:', error);
-      alert('❌ Error: ' + error.message);
+      alert('❌ Error: ' + (error instanceof Error ? error.message : String(error)));
     } finally {
       setLoading(false);
     }
@@ -365,7 +390,7 @@ export default function AddStaffModal({ onClose, onRefresh }: { onClose: () => v
         return;
       }
 
-      const staffData: any[] = [];
+      const staffData: BulkStaffRecord[] = [];
       let errorCount = 0;
       let skippedDuplicates = 0;
       let skippedInternalDuplicates = 0;
@@ -377,11 +402,11 @@ export default function AddStaffModal({ onClose, onRefresh }: { onClose: () => v
         .from('profiles')
         .select('email');
 
-      const existingEmails = new Set(existingProfiles?.map((p: any) => p.email.toLowerCase()) || []);
+      const existingEmails = new Set(existingProfiles?.map((p) => p.email.toLowerCase()) || []);
 
       for (let i = 1; i < lines.length; i++) {
         const values = lines[i].split(',').map(v => v.trim());
-        const row: any = {};
+        const row: Record<string, string> = {};
         
         headers.forEach((header, idx) => {
           row[header] = values[idx] || '';
@@ -425,7 +450,7 @@ export default function AddStaffModal({ onClose, onRefresh }: { onClose: () => v
         const normalizedLocationId = resolveLocationId(row.home_house);
         const normalizedLocationName = resolveLocationName(row.home_house);
 
-        const staffRecord: any = {
+        const staffRecord: BulkStaffRecord = {
           full_name: row.full_name,
           email: emailLower,
           location: normalizedLocationName || row.home_house,
@@ -483,8 +508,9 @@ export default function AddStaffModal({ onClose, onRefresh }: { onClose: () => v
         return;
       }
 
-      const created = result.results.filter((r: any) => r.success);
-      const failed = result.results.filter((r: any) => !r.success);
+      const bulkResults = result.results as BulkResult[];
+      const created = bulkResults.filter((r) => r.success);
+      const failed = bulkResults.filter((r) => !r.success);
 
       let message = created.length > 0
         ? `✅ Uploaded ${created.length} staff member${created.length === 1 ? '' : 's'} with login accounts`
@@ -500,7 +526,7 @@ export default function AddStaffModal({ onClose, onRefresh }: { onClose: () => v
       }
       if (failed.length > 0) {
         message += `\n\n${failed.length} row${failed.length === 1 ? '' : 's'} failed:\n`;
-        message += failed.slice(0, 3).map((f: any) => `• ${f.email}: ${f.error}`).join('\n');
+        message += failed.slice(0, 3).map((f) => `• ${f.email || 'Unknown'}: ${f.error || 'Unknown error'}`).join('\n');
       }
       if (created.length > 0) {
         message += `\n\nUse Reset Password to give them a password.`;
@@ -516,8 +542,8 @@ export default function AddStaffModal({ onClose, onRefresh }: { onClose: () => v
           setBulkMessage('');
         }, 2000);
       }
-    } catch (error: any) {
-      setBulkMessage(`❌ Error: ${error.message}`);
+    } catch (error: unknown) {
+      setBulkMessage(`❌ Error: ${error instanceof Error ? error.message : String(error)}`);
     } finally {
       setBulkLoading(false);
       e.target.value = '';
@@ -569,12 +595,12 @@ Charlie Scheduler,charlie@example.com,Banks House,manager`;
 
       alert('✅ Staff member removed completely');
       fetchInitialData();
-    } catch (error: any) {
-      alert('❌ Error: ' + error.message);
+    } catch (error: unknown) {
+      alert('❌ Error: ' + (error instanceof Error ? error.message : String(error)));
     }
   };
 
-  const handleEdit = (staff: any) => {
+  const handleEdit = (staff: StaffMember) => {
     setEditingId(staff.id);
     // Resolve to location ID from either location name or legacy UUID
     const locationId = resolveLocationId(staff.location || '');
@@ -608,7 +634,7 @@ Charlie Scheduler,charlie@example.com,Banks House,manager`;
   };
 
   const getStaffByLocation = () => {
-    const grouped: { [key: string]: any[] } = {};
+    const grouped: Record<string, StaffMember[]> = {};
     
     allStaff.forEach(staff => {
       const location = staff.location ? (resolveLocationName(staff.location) || 'Unassigned') : 'Unassigned';
@@ -624,7 +650,7 @@ Charlie Scheduler,charlie@example.com,Banks House,manager`;
     }
 
     // Sort locations alphabetically
-    const sorted: { [key: string]: any[] } = {};
+    const sorted: Record<string, StaffMember[]> = {};
     Object.keys(grouped).sort().forEach(key => {
       sorted[key] = grouped[key];
     });
@@ -817,7 +843,7 @@ Charlie Scheduler,charlie@example.com,Banks House,manager`;
                   className="w-full p-3 border rounded-xl outline-none focus:ring-2 focus:ring-emerald-500" 
                   value={formData.role_tier} 
                   onChange={e => {
-                    setFormData({...formData, role_tier: e.target.value as any, managed_houses: [], home_house: ''});
+                    setFormData({...formData, role_tier: e.target.value as 'staff' | 'manager' | 'scheduler' | 'admin', managed_houses: [], home_house: ''});
                   }}
                 >
                   <option value="staff">Staff Member</option>
@@ -945,7 +971,7 @@ Charlie Scheduler,charlie@example.com,Banks House,manager`;
                   {expandedLocations.has(locationName) && (
                     <div className="mt-2 ml-3 space-y-2 border-l-2 border-blue-500 pl-3">
                       {staffList.map(staff => {
-                        const roleColor = getRoleColor(staff.role_tier);
+                        const roleColor = getRoleColor(staff.role_tier || 'staff');
                         return (
                           <div key={staff.id} style={{ backgroundColor: isDark ? '#0f172a' : '#f1f5f9', borderColor: isDark ? '#334155' : '#e2e8f0' }} className="p-3 border rounded-xl group transition-all">
                             <div className="flex justify-between items-start mb-2">

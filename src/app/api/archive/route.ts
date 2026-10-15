@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createServiceClient, requireRole } from '@/lib/apiAuth';
 
+type ArchiveTrainingRow = Record<string, unknown>;
+
 export async function GET(_request: NextRequest) {
   const authz = await requireRole(['admin']);
   if ('error' in authz) return authz.error;
@@ -19,9 +21,9 @@ export async function GET(_request: NextRequest) {
   }
 
   const { data: locations } = await service.from('locations').select('id,name');
-  const locationMap = new Map((locations || []).map((l: any) => [l.id, l.name]));
+  const locationMap = new Map((locations || []).map((l) => [l.id, l.name]));
 
-  const items = (data || []).map((row: any) => ({
+  const items = (data || []).map((row) => ({
     ...row,
     location_name: row.location_id ? locationMap.get(row.location_id) || null : null,
   }));
@@ -84,7 +86,7 @@ export async function POST(request: NextRequest) {
 
     const trainingRows = Array.isArray(snapshot.training_rows) ? snapshot.training_rows : [];
     if (trainingRows.length > 0) {
-      const payload = trainingRows.map((row: any) => ({
+      const payload = (trainingRows as ArchiveTrainingRow[]).map((row) => ({
         id: row.id,
         staff_id: row.staff_id,
         course_id: row.course_id,

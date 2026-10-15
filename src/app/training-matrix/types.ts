@@ -2,6 +2,8 @@ export interface Staff {
   id: string;
   name: string;
   location_id: string;
+  display_order?: number;
+  isDivider?: boolean;
 }
 
 export interface Course {
@@ -16,7 +18,7 @@ export interface MatrixCell {
   completion_date: string | null;
   expiry_date: string | null;
   training_id: string | null;
-  status: string | null;
+  status: 'completed' | 'allocated' | 'booked' | 'awaiting' | 'not_yet_due' | 'na' | null;
 }
 
 export interface RemovedCourseEntry {

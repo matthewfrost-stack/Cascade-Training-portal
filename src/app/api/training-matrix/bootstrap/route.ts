@@ -89,7 +89,7 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: 'Failed to fetch matrix staff' }, { status: 500 });
     }
 
-    let locationCourses: any[] = coursesResult.data || [];
+    let locationCourses: unknown[] = coursesResult.data || [];
     if (coursesResult.error) {
       const message = String(coursesResult.error.message || '');
       if (coursesResult.error.code === '42703' || message.includes('training_courses.category') || message.includes('column "category"')) {

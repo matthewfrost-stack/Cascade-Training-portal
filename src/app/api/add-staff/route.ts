@@ -33,7 +33,7 @@ async function initializeNewStaffMatrix(
   if (coursesError) return { applied: 0, error: coursesError };
 
   const defaults = (locationCourses || [])
-    .map((row: any) => {
+    .map((row) => {
       const course = Array.isArray(row.training_courses) ? row.training_courses[0] : row.training_courses;
       if (!row.training_course_id) return null;
       return {
@@ -136,7 +136,10 @@ export async function POST(request: NextRequest) {
               .eq('staff_id', activeProfile.id);
 
             const names = (linkedLocations || [])
-              .map((row: any) => row?.locations?.name)
+              .map((row: { locations?: { name?: string } | { name?: string }[] | null }) => {
+                const locations = row.locations;
+                return Array.isArray(locations) ? locations[0]?.name : locations?.name;
+              })
               .filter(Boolean);
 
             if (names.length > 0) {
@@ -211,7 +214,6 @@ export async function POST(request: NextRequest) {
         let profileId = crypto.randomUUID();
         let createdAuthUserId: string | null = null;
         const providedPassword = (staff.password || '').trim();
-        const needsLogin = true;
         const needsPasswordChange = !providedPassword;
 
         const initialPassword = providedPassword || `Temp-${crypto.randomUUID()}Aa1!`;
@@ -285,7 +287,7 @@ export async function POST(request: NextRequest) {
           console.warn('Staff member added to profiles but not staff_locations. They may not appear in training matrix.');
         }
 
-        let matrixDefaults = { applied: 0, error: null as any };
+        let matrixDefaults: { applied: number; error: { message?: string } | null } = { applied: 0, error: null };
         if (!staffLocError) {
           matrixDefaults = await initializeNewStaffMatrix(supabaseAdmin, profileId, normalizedLocationId);
           if (matrixDefaults.error) {
@@ -326,12 +328,12 @@ export async function POST(request: NextRequest) {
           matrix_defaults_applied: matrixDefaults.applied,
           matrix_defaults_warning: matrixDefaults.error ? 'Staff created, but matrix defaults could not be initialized.' : undefined,
         });
-      } catch (error: any) {
+      } catch (error: unknown) {
         console.error('Error adding staff:', error);
         results.push({
           email: staff.email,
           success: false,
-          error: error.message || 'Unknown error',
+          error: error instanceof Error ? error.message : 'Unknown error',
         });
       }
     }

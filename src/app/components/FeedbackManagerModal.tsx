@@ -5,6 +5,50 @@ import Link from 'next/link';
 import { supabase } from '@/lib/supabase';
 import Icon from './Icon';
 
+type FeedbackField = {
+  id: string;
+  type: string;
+  label: string;
+  options?: string[];
+  required?: boolean;
+  before_label?: string;
+  after_label?: string;
+};
+type FeedbackFormConfig = { fields: FeedbackField[] };
+type FeedbackAutomationSettings = {
+  id: string;
+  is_enabled: boolean;
+  reminder_7_days_before: number;
+  reminder_1_day_before: number;
+  feedback_minutes_before_end: number;
+  reminder_subject: string;
+  reminder_body: string;
+  manager_reminder_subject: string;
+  manager_reminder_body: string;
+  email_subject?: string;
+  email_body?: string;
+};
+type FeedbackEvent = {
+  id: string;
+  event_date: string;
+  start_time: string;
+  end_time: string;
+  venues?: string | null;
+  feedback_sent_at?: string | null;
+  courses?: { name?: string | null } | null;
+};
+const DEFAULT_AUTOMATION_SETTINGS: FeedbackAutomationSettings = {
+  id: '',
+  is_enabled: false,
+  reminder_7_days_before: 7,
+  reminder_1_day_before: 1,
+  feedback_minutes_before_end: 60,
+  reminder_subject: '',
+  reminder_body: '',
+  manager_reminder_subject: '',
+  manager_reminder_body: '',
+};
+
 export default function FeedbackManagerModal({ onClose }: { onClose: () => void }) {
   const [activeTab, setActiveTab] = useState<'form' | 'automation' | 'manual'>('form');
   const [loading, setLoading] = useState(false);
@@ -13,14 +57,13 @@ export default function FeedbackManagerModal({ onClose }: { onClose: () => void 
   const [message, setMessage] = useState<{ type: 'success' | 'error', text: string } | null>(null);
 
   // Form Config State
-  const [formConfig, setFormConfig] = useState<any>(null);
-  const [descriptorsText, setDescriptorsText] = useState('');
+  const [formConfig, setFormConfig] = useState<FeedbackFormConfig | null>(null);
 
   // Automation State
-  const [automationSettings, setAutomationSettings] = useState<any>(null);
+  const [automationSettings, setAutomationSettings] = useState<FeedbackAutomationSettings>(DEFAULT_AUTOMATION_SETTINGS);
 
   // Manual Override State
-  const [recentEvents, setRecentEvents] = useState<any[]>([]);
+  const [recentEvents, setRecentEvents] = useState<FeedbackEvent[]>([]);
   // Testing Mode State
   const [isTestMode, setIsTestMode] = useState(true);
   const [testEmail, setTestEmail] = useState('training@cascade-care.com');
@@ -54,7 +97,6 @@ export default function FeedbackManagerModal({ onClose }: { onClose: () => void 
           ];
         }
         setFormConfig(config);
-        setDescriptorsText(config.descriptors?.join(', ') || '');
       } else {
         // Handle case where no default_form row exists at all
         setFormConfig({ fields: [] });
@@ -117,8 +159,8 @@ export default function FeedbackManagerModal({ onClose }: { onClose: () => void 
       if (error) throw error;
       setFormConfig(formConfig);
       setMessage({ type: 'success', text: 'Form configuration saved successfully!' });
-    } catch (err: any) {
-      setMessage({ type: 'error', text: err.message || 'Failed to save form config' });
+    } catch (err: unknown) {
+      setMessage({ type: 'error', text: err instanceof Error ? err.message : 'Failed to save form config' });
     } finally {
       setSaving(false);
     }
@@ -149,8 +191,8 @@ export default function FeedbackManagerModal({ onClose }: { onClose: () => void 
 
       if (error) throw error;
       setMessage({ type: 'success', text: 'Automation settings saved successfully!' });
-    } catch (err: any) {
-      setMessage({ type: 'error', text: err.message || 'Failed to save automation settings' });
+    } catch (err: unknown) {
+      setMessage({ type: 'error', text: err instanceof Error ? err.message : 'Failed to save automation settings' });
     } finally {
       setSaving(false);
     }
@@ -177,8 +219,8 @@ export default function FeedbackManagerModal({ onClose }: { onClose: () => void 
       setMessage({ type: 'success', text: `Successfully sent ${data.count} feedback emails!` });
       // Refresh events to show sent status
       fetchData();
-    } catch (err: any) {
-      setMessage({ type: 'error', text: err.message || 'Failed to send feedback emails' });
+    } catch (err: unknown) {
+      setMessage({ type: 'error', text: err instanceof Error ? err.message : 'Failed to send feedback emails' });
     } finally {
       setManualLoading(false);
     }
@@ -254,7 +296,7 @@ export default function FeedbackManagerModal({ onClose }: { onClose: () => void 
                 </div>
 
                 <div className="space-y-4">
-                  {(formConfig?.fields || []).map((field: any, idx: number) => (
+                  {(formConfig?.fields || []).map((field, idx: number) => (
                     <div key={field.id} className="p-4 bg-slate-800/50 rounded-2xl border border-slate-700 space-y-4 relative group">
                       <div className="flex justify-between items-start gap-4">
                         <div className="flex-1">
@@ -296,7 +338,7 @@ export default function FeedbackManagerModal({ onClose }: { onClose: () => void 
                         </div>
                         <button 
                           onClick={() => {
-                            const newFields = (formConfig?.fields || []).filter((_: any, i: number) => i !== idx);
+                            const newFields = (formConfig?.fields || []).filter((_, i: number) => i !== idx);
                             setFormConfig({...formConfig, fields: newFields});
                           }}
                           className="mt-5 text-red-500 hover:text-red-400 opacity-0 group-hover:opacity-100 transition-all"

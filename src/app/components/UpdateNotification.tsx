@@ -27,7 +27,7 @@ export default function UpdateNotification() {
       ) {
         setHasUpdate(true);
       }
-    } catch (err) {
+    } catch {
       // Silently ignore network errors during version check
     }
   }, []);

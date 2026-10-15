@@ -138,7 +138,7 @@ export async function PATCH(request: Request) {
     let body: ProfileUpdatePayload;
     try {
       body = (await request.json()) as ProfileUpdatePayload;
-    } catch (parseError) {
+    } catch {
       return NextResponse.json(
         { error: 'Invalid JSON payload.' },
         { status: 400 },

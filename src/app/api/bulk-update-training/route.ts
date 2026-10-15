@@ -47,7 +47,7 @@ export async function POST(request: NextRequest) {
     console.log('✅ Found', courses?.length || 0, 'courses in database');
 
     const courseMap = new Map();
-    courses?.forEach((c: any) => {
+    courses?.forEach((c) => {
       courseMap.set(c.id, c);
     });
 
@@ -109,7 +109,7 @@ export async function POST(request: NextRequest) {
       console.warn('Warning: Could not read existing staff location links:', existingStaffLocationsError.message);
     }
 
-    const existingStaffIds = new Set((existingStaffLocations || []).map((row: any) => row.staff_id));
+    const existingStaffIds = new Set((existingStaffLocations || []).map((row) => row.staff_id));
     const newStaffLocations = staffIds
       .filter((staffId) => !existingStaffIds.has(staffId))
       .map((staffId) => ({
@@ -139,7 +139,7 @@ export async function POST(request: NextRequest) {
 
     const staffLocationsMap = new Map<string, Set<string>>();
     if (!staffLocsError && staffLocsData) {
-      staffLocsData.forEach((sl: any) => {
+      staffLocsData.forEach((sl) => {
         if (!sl.staff_id || !sl.location_id) return;
         const set = staffLocationsMap.get(sl.staff_id) || new Set<string>();
         set.add(sl.location_id);
@@ -197,7 +197,7 @@ export async function POST(request: NextRequest) {
             : null;
 
           // Use upsert like handleSaveTraining does - more reliable than manual check
-          const upsertData: any = {
+          const upsertData: Record<string, unknown> = {
             staff_id: staffId,
             course_id: courseId,
             completion_date: status === 'completed' ? completion_date : status === 'allocated' ? existingRecord?.completion_date || null : null,
@@ -209,7 +209,7 @@ export async function POST(request: NextRequest) {
 
           console.log(`  📝 Upserting ${staffId} / ${courseId} / ${locId}: status=${status}`);
 
-          let { data, error } = await supabaseAdmin
+          let { error } = await supabaseAdmin
             .from('staff_training_matrix')
             .upsert(upsertData, { onConflict: 'staff_id,course_id,completed_at_location_id' })
             .select();
@@ -220,7 +220,6 @@ export async function POST(request: NextRequest) {
               .from('staff_training_matrix')
               .upsert(upsertData, { onConflict: 'staff_id,course_id' })
               .select();
-            data = fallback.data;
             error = fallback.error;
           }
 
@@ -249,7 +248,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Check if all were successful
-    const failedCount = results.filter((r: any) => !r.success).length;
+    const failedCount = results.filter((r) => !r.success).length;
 
     console.log(`\n✨ Bulk update complete: ${successCount} succeeded, ${failedCount} failed out of ${updates.length} total`);
 

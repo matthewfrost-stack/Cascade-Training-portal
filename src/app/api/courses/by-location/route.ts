@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createServiceClient, getScopedLocationIds, requireRole } from '@/lib/apiAuth';
 
+type LocationCourse = { id: string; display_order: number | null; courses: { id: string; name: string; expiry_months?: number | null; category?: string | null } | { id: string; name: string; expiry_months?: number | null; category?: string | null }[] | null };
+
 export const dynamic = 'force-dynamic';
 
 export async function GET(request: NextRequest) {
@@ -63,7 +65,7 @@ export async function GET(request: NextRequest) {
         `)
         .eq('location_id', locationId)
         .order('display_order', { ascending: true });
-      locationCourses = fallback.data as any;
+      locationCourses = fallback.data as unknown as typeof locationCourses;
       error = fallback.error;
     }
 
@@ -76,9 +78,9 @@ export async function GET(request: NextRequest) {
     }
 
     // Extract and format the courses
-    const courses = (locationCourses || [])
-      .map((lc: any) => lc.courses)
-      .filter((c: any) => c !== null);
+    const courses = ((locationCourses || []) as unknown as LocationCourse[])
+      .map((lc) => lc.courses)
+      .filter((c) => c !== null);
 
     return NextResponse.json({
       locationId,

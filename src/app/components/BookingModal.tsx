@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { format } from 'date-fns';
 import { supabase } from '@/lib/supabase';
 import { hasPermission } from '@/lib/permissions';
@@ -10,8 +10,40 @@ import UniformButton from './UniformButton';
 import RosterSettingsModal from './RosterSettingsModal';
 import { calculatePaidMinutes, calculateScheduledMinutes, formatDuration } from '@/lib/trainingEventTime';
 
+interface BookingEvent {
+  id: string;
+  course_id: string;
+  course_name?: string;
+  event_date: string;
+  start_time?: string | null;
+  end_time?: string | null;
+  location?: string | null;
+  notes?: string | null;
+  am_break_minutes?: number | null;
+  pm_break_minutes?: number | null;
+  courses?: { name?: string | null; max_attendees?: number | null } | null;
+  course_event_overrides?: Array<{ max_attendees: number }> | null;
+}
+interface StaffOption {
+  id: string;
+  full_name: string;
+  email?: string | null;
+  location?: string | null;
+  is_deleted?: boolean | null;
+}
+interface RosterRow {
+  [key: string]: unknown;
+  id: string;
+  profile_id?: string;
+  minutes_late?: number | null;
+  late_reason?: string | null;
+  absence_reason?: string | null;
+  attended_at?: string | null;
+  profiles?: { full_name?: string | null; location?: string | null } | null;
+}
+
 interface BookingModalProps {
-  event: any;
+  event: BookingEvent;
   onClose: () => void;
   onRefresh: () => void;
   onOpenChecklist?: () => void;
@@ -19,8 +51,8 @@ interface BookingModalProps {
 
 export default function BookingModal({ event, onClose, onRefresh, onOpenChecklist }: BookingModalProps) {
   const [activeTab, setActiveTab] = useState<'booking' | 'roster'>('booking');
-  const [staff, setStaff] = useState<any[]>([]);
-  const [roster, setRoster] = useState<any[]>([]);
+  const [staff, setStaff] = useState<StaffOption[]>([]);
+  const [roster, setRoster] = useState<RosterRow[]>([]);
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
   const [loading, setLoading] = useState(false);
@@ -58,7 +90,7 @@ export default function BookingModal({ event, onClose, onRefresh, onOpenChecklis
     }
   };
 
-  const formatEventTime = (value?: string) => {
+  const formatEventTime = (value?: string | null) => {
     if (!value) return '';
     const s = String(value).trim();
     return s.length >= 5 ? s.slice(0, 5) : s;
@@ -109,13 +141,14 @@ export default function BookingModal({ event, onClose, onRefresh, onOpenChecklis
 
   useEffect(() => {
     if (userRole && userLocation !== undefined) {
-      fetchInitialData();
+      void fetchInitialDataRef.current();
     }
   }, [userRole, userLocation, event.id]);
 
   useEffect(() => {
-    const handleThemeChange = (event: any) => {
-      setIsDark(event.detail.isDark);
+    const handleThemeChange = (event: Event) => {
+      const customEvent = event as CustomEvent<{ isDark?: boolean }>;
+      if (typeof customEvent.detail?.isDark === 'boolean') setIsDark(customEvent.detail.isDark);
     };
     
     window.addEventListener('themeChange', handleThemeChange);
@@ -130,6 +163,11 @@ export default function BookingModal({ event, onClose, onRefresh, onOpenChecklis
     }
   }
 
+  // Keep the effect tied to its meaningful inputs while always invoking the
+  // latest implementation, which closes over the current event data.
+  const fetchInitialDataRef = useRef(fetchInitialData);
+  fetchInitialDataRef.current = fetchInitialData;
+
   async function fetchInitialData() {
     if (isStaff) {
       // Staff only need confirmation for their own booking. Do not load the
@@ -139,7 +177,7 @@ export default function BookingModal({ event, onClose, onRefresh, onOpenChecklis
       return;
     }
 
-    let staffData: any[] = [];
+    let staffData: StaffOption[] = [];
 
     const { data: sessionData } = await supabase.auth.getSession();
     const token = sessionData.session?.access_token;
@@ -159,9 +197,9 @@ export default function BookingModal({ event, onClose, onRefresh, onOpenChecklis
     const scopedIds = scopedLocations.map(loc => loc.id);
     const scopedNames = scopedLocations.map(loc => loc.name);
 
-    const staffById = new Map<string, any>();
+    const staffById = new Map<string, StaffOption>();
 
-    const upsertStaff = (profile: any, locationOverride?: string) => {
+    const upsertStaff = (profile: StaffOption, locationOverride?: string) => {
       if (!profile?.id || profile.is_deleted) return;
       const existing = staffById.get(profile.id);
       const incomingLocation = locationOverride || profile.location || '';
@@ -196,9 +234,10 @@ export default function BookingModal({ event, onClose, onRefresh, onOpenChecklis
           .select('staff_id, locations(id, name), profiles(id, full_name, is_deleted, location)')
           .in('location_id', scopedIds);
 
-        (staffLinks || []).forEach((row: any) => {
+        (staffLinks || []).forEach((row) => {
           const profile = Array.isArray(row.profiles) ? row.profiles[0] : row.profiles;
-          const locationName = row.locations?.name || profile?.location || '';
+          const location = Array.isArray(row.locations) ? row.locations[0] : row.locations;
+          const locationName = location?.name || profile?.location || '';
           upsertStaff(profile, locationName);
         });
       }
@@ -211,7 +250,7 @@ export default function BookingModal({ event, onClose, onRefresh, onOpenChecklis
           .eq('is_deleted', false)
           .order('full_name');
 
-        (locationProfiles || []).forEach((profile: any) => upsertStaff(profile));
+        (locationProfiles || []).forEach((profile) => upsertStaff(profile));
       }
 
       staffData = Array.from(staffById.values());
@@ -264,7 +303,7 @@ export default function BookingModal({ event, onClose, onRefresh, onOpenChecklis
       );
       const payload = await response.json().catch(() => null);
       const eventData = Array.isArray(payload?.events)
-        ? payload.events.find((calendarEvent: any) => calendarEvent.id === event.id)
+        ? payload.events.find((calendarEvent: RosterRow) => calendarEvent.id === event.id)
         : null;
       setRoster(Array.isArray(eventData?.bookings) ? eventData.bookings : []);
     } catch (error) {
@@ -321,7 +360,7 @@ export default function BookingModal({ event, onClose, onRefresh, onOpenChecklis
   };
 
   const getStaffByLocation = () => {
-    const grouped: { [key: string]: any[] } = {};
+    const grouped: Record<string, StaffOption[]> = {};
     const filteredStaff = staff.filter(s => s.full_name?.toLowerCase().includes(searchQuery.toLowerCase()));
     
     filteredStaff.forEach(person => {
@@ -333,7 +372,7 @@ export default function BookingModal({ event, onClose, onRefresh, onOpenChecklis
     });
 
     // Sort locations alphabetically
-    const sorted: { [key: string]: any[] } = {};
+    const sorted: Record<string, StaffOption[]> = {};
     Object.keys(grouped).sort().forEach(key => {
       sorted[key] = grouped[key];
     });
@@ -455,8 +494,8 @@ export default function BookingModal({ event, onClose, onRefresh, onOpenChecklis
           }
         })
       );
-    } catch (error: any) {
-      alert(`❌ Error: ${error.message}`);
+    } catch (error: unknown) {
+      alert(`❌ Error: ${error instanceof Error ? error.message : String(error)}`);
     }
     setLoading(false);
   };
@@ -554,8 +593,8 @@ export default function BookingModal({ event, onClose, onRefresh, onOpenChecklis
       
       onRefresh();
       onClose();
-    } catch (error: any) {
-      alert('Error cancelling event: ' + error.message);
+    } catch (error: unknown) {
+      alert('Error cancelling event: ' + (error instanceof Error ? error.message : String(error)));
     }
   };
 

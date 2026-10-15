@@ -61,7 +61,7 @@ export async function POST(request: NextRequest) {
         .select('id, name, expiry_months, never_expires')
         .single();
 
-      data = retry.data as any;
+      data = retry.data ? { ...retry.data, category: null } : null;
       error = retry.error;
     }
 

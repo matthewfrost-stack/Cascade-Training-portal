@@ -5,8 +5,14 @@ import { supabase } from '@/lib/supabase';
 import UniformButton from './UniformButton';
 import Icon from './Icon';
 
+interface CourseItem {
+  id: string;
+  name: string;
+  max_attendees: number;
+}
+
 export default function CourseManagerModal({ onClose }: { onClose: () => void }) {
-  const [courses, setCourses] = useState<any[]>([]);
+  const [courses, setCourses] = useState<CourseItem[]>([]);
   const [isDark, setIsDark] = useState(true);
   const [loading, setLoading] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -18,8 +24,9 @@ export default function CourseManagerModal({ onClose }: { onClose: () => void })
   }, []);
 
   useEffect(() => {
-    const handleThemeChange = (event: any) => {
-      setIsDark(event.detail.isDark);
+    const handleThemeChange = (event: Event) => {
+      const customEvent = event as CustomEvent<{ isDark?: boolean }>;
+      if (typeof customEvent.detail?.isDark === 'boolean') setIsDark(customEvent.detail.isDark);
     };
     
     window.addEventListener('themeChange', handleThemeChange);
@@ -67,14 +74,14 @@ export default function CourseManagerModal({ onClose }: { onClose: () => void })
       
       setFormData({ name: '', max_attendees: 12 });
       fetchCourses();
-    } catch (error: any) {
-      alert(error.message);
+    } catch (error: unknown) {
+      alert(error instanceof Error ? error.message : 'Unable to save course');
     } finally {
       setLoading(false);
     }
   };
 
-  const handleEdit = (course: any) => {
+  const handleEdit = (course: CourseItem) => {
     setEditingId(course.id);
     setFormData({
       name: course.name,
@@ -93,8 +100,8 @@ export default function CourseManagerModal({ onClose }: { onClose: () => void })
       const { error } = await supabase.from('courses').delete().eq('id', id);
       if (error) throw error;
       fetchCourses();
-    } catch (error: any) {
-      alert(error.message);
+    } catch (error: unknown) {
+      alert(error instanceof Error ? error.message : 'Unable to delete course');
     }
   };
 
@@ -138,8 +145,8 @@ export default function CourseManagerModal({ onClose }: { onClose: () => void })
       
       fetchCourses();
       alert(`Course "${courseName}" has been cancelled and all participants have been removed.`);
-    } catch (error: any) {
-      alert('Error cancelling course: ' + error.message);
+    } catch (error: unknown) {
+      alert('Error cancelling course: ' + (error instanceof Error ? error.message : String(error)));
     }
   };
 

@@ -1,11 +1,18 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { supabase } from '@/lib/supabase';
 import UniformButton from './UniformButton';
 
+interface CourseOverride {
+  id: string;
+  event_date: string;
+  max_attendees: number;
+  reason?: string | null;
+}
+
 export default function CourseOverrideModal({ courseId, courseName, onClose }: { courseId: string; courseName: string; onClose: () => void }) {
-  const [overrides, setOverrides] = useState<any[]>([]);
+  const [overrides, setOverrides] = useState<CourseOverride[]>([]);
   const [isDark, setIsDark] = useState(true);
   const [loading, setLoading] = useState(false);
   const [formData, setFormData] = useState({ 
@@ -15,13 +22,9 @@ export default function CourseOverrideModal({ courseId, courseName, onClose }: {
   });
 
   useEffect(() => {
-    checkTheme();
-    fetchOverrides();
-  }, []);
-
-  useEffect(() => {
-    const handleThemeChange = (event: any) => {
-      setIsDark(event.detail.isDark);
+    const handleThemeChange = (event: Event) => {
+      const customEvent = event as CustomEvent<{ isDark?: boolean }>;
+      if (typeof customEvent.detail?.isDark === 'boolean') setIsDark(customEvent.detail.isDark);
     };
     
     window.addEventListener('themeChange', handleThemeChange);
@@ -36,14 +39,19 @@ export default function CourseOverrideModal({ courseId, courseName, onClose }: {
     }
   }
 
-  async function fetchOverrides() {
+  const fetchOverrides = useCallback(async () => {
     const { data } = await supabase
       .from('course_event_overrides')
       .select('*')
       .eq('course_id', courseId)
       .order('event_date', { ascending: false });
     setOverrides(data || []);
-  }
+  }, [courseId]);
+
+  useEffect(() => {
+    checkTheme();
+    void fetchOverrides();
+  }, [fetchOverrides]);
 
   const handleAdd = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -61,8 +69,8 @@ export default function CourseOverrideModal({ courseId, courseName, onClose }: {
       
       setFormData({ event_date: '', max_attendees: 1, reason: '' });
       fetchOverrides();
-    } catch (error: any) {
-      alert(error.message);
+    } catch (error: unknown) {
+      alert(error instanceof Error ? error.message : 'Unable to add override');
     } finally {
       setLoading(false);
     }
@@ -74,8 +82,8 @@ export default function CourseOverrideModal({ courseId, courseName, onClose }: {
       const { error } = await supabase.from('course_event_overrides').delete().eq('id', id);
       if (error) throw error;
       fetchOverrides();
-    } catch (error: any) {
-      alert(error.message);
+    } catch (error: unknown) {
+      alert(error instanceof Error ? error.message : 'Unable to remove override');
     }
   };
 

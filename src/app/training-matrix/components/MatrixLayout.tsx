@@ -12,7 +12,7 @@ interface SummaryCellProps {
   matrixData: Record<string, Record<string, MatrixCell>>;
   isDark: boolean;
   onExpandClick: () => void;
-  checkStatus: (cell: any, course: any) => 'valid' | 'expiring' | 'expired';
+  checkStatus: (cell: MatrixCell, course: Course) => 'valid' | 'expiring' | 'expired';
 }
 
 function detailPriority(statusText: string): number {
@@ -123,16 +123,15 @@ function CategorySummaryCell({ staffMember, coursesInCat, matrixData, isDark, on
 
 export function MatrixLayout() {
   const {
-    user, userRole, selectedLocation, setSelectedLocation, locations, staff, setStaff, courses, setCourses, matrixData, setMatrixData,
-    loading, setLoading, isDark, setIsDark, tableScrollContainerRef, editingCell, setEditingCell,
-    editDate, setEditDate, editStatus, setEditStatus, staffDividers, setStaffDividers, showAddCourse, setShowAddCourse,
-    newCourseName, setNewCourseName, draggedCourse, setDraggedCourse, showAddDivider, setShowAddDivider, newDividerName, setNewDividerName,
-    draggedStaff, setDraggedStaff, editingHeader, setEditingHeader, editHeaderValue, setEditHeaderValue, editNeverExpires, setEditNeverExpires,
-    lastRemovedCourse, setLastRemovedCourse, selectedCells, setSelectedCells, bulkEditMode, setBulkEditMode, bulkEditStatus, setBulkEditStatus,
-    bulkEditDate, setBulkEditDate, getCategoryOverrides, saveCategoryOverride, formatExpiryDisplay,
-    fetchMatrixData, saveCourseChanges, getDateStatus, getDateColor, getStatusDisplay, canEditMatrix, handleCourseDropStart, handleCourseDragOver,
-    handleCourseDropEnd, handleStaffDropStart, handleStaffDragOver, persistStaffOrdering, persistCourseOrdering, handleStaffDropEnd, addNewCourse, deleteCourse,
-    undoRemoveCourse, addNewDivider, exportMatrixCsv, deleteStaffMember, toggleCellSelection, selectAllInCourse, deselectAllInCourse,
+    userRole, selectedLocation, setSelectedLocation, locations, staff, courses, setCourses, matrixData,
+    loading, isDark, tableScrollContainerRef, editingCell, setEditingCell,
+    editDate, setEditDate, editStatus, setEditStatus, staffDividers, showAddCourse, setShowAddCourse,
+    newCourseName, setNewCourseName, editingHeader, setEditingHeader, editHeaderValue, setEditHeaderValue, editNeverExpires, setEditNeverExpires,
+    lastRemovedCourse, setLastRemovedCourse, selectedCells, bulkEditMode, setBulkEditMode, bulkEditStatus, setBulkEditStatus,
+    bulkEditDate, setBulkEditDate, saveCategoryOverride, formatExpiryDisplay,
+    saveCourseChanges, getDateStatus, getDateColor, getStatusDisplay, canEditMatrix, handleCourseDropStart, handleCourseDragOver,
+    handleCourseDropEnd, handleStaffDropStart, handleStaffDragOver, persistCourseOrdering, handleStaffDropEnd, addNewCourse, deleteCourse,
+    undoRemoveCourse, exportMatrixCsv, deleteStaffMember, toggleCellSelection, selectAllInCourse, deselectAllInCourse,
     selectAllForStaff, clearAllSelections, applyBulkUpdate, updateAllExpiriesForCourse, handleSaveTraining
   } = useMatrix();
 
@@ -188,7 +187,7 @@ export function MatrixLayout() {
     };
   }, [tableScrollContainerRef, loading, staff.length, courses.length, collapsedCategories.size, matrixScrollMetrics.contentWidth]);
 
-  const checkStatus = (cell: any, course: any): 'valid' | 'expiring' | 'expired' => {
+  const checkStatus = (cell: MatrixCell, course: Course): 'valid' | 'expiring' | 'expired' => {
     if (course.never_expires || course.expiry_months === 9999 || course.expiry_months === null) return 'valid';
     if (!cell?.expiry_date) return 'expired';
     const today = new Date();
@@ -202,13 +201,13 @@ export function MatrixLayout() {
 
   const categories = useMemo(() => {
     const unique = new Set<string>();
-    courses.forEach((c: any) => unique.add(c.category || 'Uncategorized'));
+    courses.forEach((c: Course) => unique.add(c.category || 'Uncategorized'));
     return Array.from(unique);
   }, [courses]);
 
   const coursesByCategory = useMemo(() => {
-    const groups: Record<string, any[]> = {};
-    courses.forEach((course: any) => {
+    const groups: Record<string, Course[]> = {};
+    courses.forEach((course: Course) => {
       const cat = course.category || 'Uncategorized';
       if (!groups[cat]) groups[cat] = [];
       groups[cat].push(course);
@@ -217,10 +216,10 @@ export function MatrixLayout() {
   }, [courses]);
 
   const staffByDivider = useMemo(() => {
-    const mapping: Record<string, any[]> = {};
+    const mapping: Record<string, Staff[]> = {};
     let currentDividerId = '__unassigned__';
     mapping[currentDividerId] = [];
-    staff.forEach((member: any) => {
+    staff.forEach((member: Staff) => {
       if (staffDividers.has(member.id)) {
         currentDividerId = member.id;
         mapping[currentDividerId] = [];
@@ -235,8 +234,8 @@ export function MatrixLayout() {
     const members = staffByDivider[dividerId] || [];
     if (members.length === 0) return { staffCount: 0, complianceRate: 100, expiredCount: 0 };
     let totalRequired = 0; let compliantCount = 0; let expiredCount = 0;
-    members.forEach((member: any) => {
-      courses.forEach((course: any) => {
+    members.forEach((member: Staff) => {
+      courses.forEach((course: Course) => {
         totalRequired++;
         const cell = matrixData[member.id]?.[course.id];
         if (cell?.status === 'na' || cell?.status === 'not_yet_due') compliantCount++;
@@ -254,12 +253,12 @@ export function MatrixLayout() {
     if (!searchQuery.trim()) return staff;
     const query = searchQuery.toLowerCase().trim();
     const matchingIds = new Set<string>();
-    staff.forEach((m: any) => {
+    staff.forEach((m: Staff) => {
       if (!staffDividers.has(m.id) && m.name.toLowerCase().includes(query)) matchingIds.add(m.id);
     });
-    const result: any[] = [];
-    let lastDivider: any = null;
-    staff.forEach((m: any) => {
+    const result: Staff[] = [];
+    let lastDivider: Staff | null = null;
+    staff.forEach((m: Staff) => {
       if (staffDividers.has(m.id)) {
         lastDivider = m;
       } else if (matchingIds.has(m.id)) {
@@ -281,7 +280,7 @@ export function MatrixLayout() {
   });
 
   const dashboardStats = useMemo(() => {
-    const activeStaff = staff.filter((s: any) => !staffDividers.has(s.id));
+    const activeStaff = staff.filter((s: Staff) => !staffDividers.has(s.id));
     if (activeStaff.length === 0 || courses.length === 0) {
       return { compliance: 0, expired: 0, staffCount: 0, allocated: 0, expiredList: [], allocatedList: [] };
     }
@@ -289,8 +288,8 @@ export function MatrixLayout() {
     const expiredList: DisplayRecordItem[] = [];
     const allocatedList: DisplayRecordItem[] = [];
 
-    activeStaff.forEach((m: any) => {
-      courses.forEach((c: any) => {
+    activeStaff.forEach((m: Staff) => {
+      courses.forEach((c: Course) => {
         total++;
         const cell = matrixData[m.id]?.[c.id];
         if (cell?.status === 'allocated' || cell?.status === 'booked' || cell?.status === 'awaiting') {
@@ -345,8 +344,18 @@ export function MatrixLayout() {
     };
   }, [staff, courses, matrixData, staffDividers]);
 
-  const toggleCategory = (cat: string) => setCollapsedCategories(prev => { const n = new Set(prev); n.has(cat) ? n.delete(cat) : n.add(cat); return n; });
-  const toggleDivider = (id: string) => setCollapsedDividers(prev => { const n = new Set(prev); n.has(id) ? n.delete(id) : n.add(id); return n; });
+  const toggleCategory = (cat: string) => setCollapsedCategories(prev => {
+    const n = new Set(prev);
+    if (n.has(cat)) n.delete(cat);
+    else n.add(cat);
+    return n;
+  });
+  const toggleDivider = (id: string) => setCollapsedDividers(prev => {
+    const n = new Set(prev);
+    if (n.has(id)) n.delete(id);
+    else n.add(id);
+    return n;
+  });
 
   const handleCategoryDrop = async (targetCat: string) => {
     if (!canEditMatrix || !draggedCategory || draggedCategory === targetCat) return;
@@ -371,7 +380,7 @@ export function MatrixLayout() {
     await persistCourseOrdering(newCourses);
   };
 
-  const dividerIds = staff.filter((s: any) => staffDividers.has(s.id)).map((s: any) => s.id);
+  const dividerIds = staff.filter((s: Staff) => staffDividers.has(s.id)).map((s: Staff) => s.id);
   const allCatsCollapsed = collapsedCategories.size === categories.length;
   const allDividersCollapsed = collapsedDividers.size === dividerIds.length;
 
@@ -403,7 +412,7 @@ export function MatrixLayout() {
                 onChange={(e) => setSelectedLocation(e.target.value)}
                 className={`px-4 py-2 rounded-xl text-sm font-bold shadow-sm border focus:outline-none focus:ring-2 focus:ring-blue-500/20 transition-all ${isDark ? 'bg-gray-800 border-gray-700 text-white' : 'bg-white border-gray-300 text-gray-800'}`}
               >
-                {locations.map((loc: any) => <option key={loc.id} value={loc.id}>{loc.name}</option>)}
+                {locations.map((loc: { id: string; name: string }) => <option key={loc.id} value={loc.id}>{loc.name}</option>)}
               </select>
             </div>
           )}
@@ -648,10 +657,10 @@ export function MatrixLayout() {
                         {categories.map(cat => {
                           if (collapsedCategories.has(cat)) return null;
                           const catCourses = coursesByCategory[cat] || [];
-                          return catCourses.map((course: any) => (
+                          return catCourses.map((course: Course) => (
                             <th key={`name-${course.id}`} draggable={canEditMatrix && !editingHeader} onDragStart={(e) => handleCourseDropStart(e, course.id)} onDragOver={handleCourseDragOver} onDrop={(e) => handleCourseDropEnd(e, course.id)} onClick={() => { if (!canEditMatrix) return; setEditingHeader({ courseId: course.id, type: 'name' }); setEditHeaderValue(course.name); }} className={`relative px-3 py-1.5 text-center text-xs font-bold border-r border-b ${canEditMatrix ? 'cursor-grab active:cursor-grabbing' : ''} min-w-[160px] transition-all group/hdr ${thBg} hover:opacity-80`} title={canEditMatrix ? 'Drag to reorder, click to edit' : course.name}>
                               {editingHeader?.courseId === course.id && editingHeader?.type === 'name' ? (
-                                <input type="text" value={editHeaderValue} onChange={(e) => setEditHeaderValue(e.target.value)} onBlur={() => { if (editHeaderValue.trim()) { const u = courses.map((c: any) => c.id === course.id ? { ...c, name: editHeaderValue.trim() } : c); setCourses(u); saveCourseChanges(course.id, { name: editHeaderValue.trim() }, true); } setEditingHeader(null); }} onKeyDown={(e) => { if (e.key === 'Enter') { if (editHeaderValue.trim()) { const u = courses.map((c: any) => c.id === course.id ? { ...c, name: editHeaderValue.trim() } : c); setCourses(u); saveCourseChanges(course.id, { name: editHeaderValue.trim() }, true); } setEditingHeader(null); } if (e.key === 'Escape') setEditingHeader(null); }} className={`w-full text-xs px-1.5 py-0.5 rounded border ${isDark ? 'bg-gray-700 border-gray-600 text-white' : 'bg-white border-gray-400 text-gray-900'}`} autoFocus />
+                                <input type="text" value={editHeaderValue} onChange={(e) => setEditHeaderValue(e.target.value)} onBlur={() => { if (editHeaderValue.trim()) { const u = courses.map((c: Course) => c.id === course.id ? { ...c, name: editHeaderValue.trim() } : c); setCourses(u); saveCourseChanges(course.id, { name: editHeaderValue.trim() }, true); } setEditingHeader(null); }} onKeyDown={(e) => { if (e.key === 'Enter') { if (editHeaderValue.trim()) { const u = courses.map((c: Course) => c.id === course.id ? { ...c, name: editHeaderValue.trim() } : c); setCourses(u); saveCourseChanges(course.id, { name: editHeaderValue.trim() }, true); } setEditingHeader(null); } if (e.key === 'Escape') setEditingHeader(null); }} className={`w-full text-xs px-1.5 py-0.5 rounded border ${isDark ? 'bg-gray-700 border-gray-600 text-white' : 'bg-white border-gray-400 text-gray-900'}`} autoFocus />
                               ) : (
                                 <div className="flex items-center justify-between gap-1">
                                   <span className="text-slate-400 font-extrabold text-[10px]">⋮⋮</span>
@@ -669,14 +678,14 @@ export function MatrixLayout() {
                               {editingHeader?.courseId === course.id && editingHeader?.type === 'category' && (
                                 <div className={`absolute z-50 top-full left-1/2 -translate-x-1/2 mt-1 p-3 rounded-xl shadow-xl border flex flex-col gap-2 min-w-[200px] text-left ${isDark ? 'bg-gray-800 border-gray-700' : 'bg-white border-slate-300'}`} onClick={e => e.stopPropagation()}>
                                   <span className="text-[10px] font-black uppercase tracking-widest text-slate-400">Course Group</span>
-                                  <input list="matrix-course-groups" type="text" value={editHeaderValue} onChange={(e) => setEditHeaderValue(e.target.value)} placeholder="Pick or type a new group" onKeyDown={(e) => { if (e.key === 'Enter') { const val = editHeaderValue.trim(); const u = courses.map((c: any) => c.id === course.id ? { ...c, category: val || undefined } : c); setCourses(u); if (selectedLocation) saveCategoryOverride(selectedLocation, course.id, val); saveCourseChanges(course.id, { category: val || null }, true); setEditingHeader(null); } if (e.key === 'Escape') setEditingHeader(null); }} className={`w-full text-xs px-2 py-1 rounded border ${isDark ? 'bg-gray-700 border-gray-600 text-white' : 'bg-white border-gray-400 text-gray-900'}`} autoFocus />
+                                  <input list="matrix-course-groups" type="text" value={editHeaderValue} onChange={(e) => setEditHeaderValue(e.target.value)} placeholder="Pick or type a new group" onKeyDown={(e) => { if (e.key === 'Enter') { const val = editHeaderValue.trim(); const u = courses.map((c: Course) => c.id === course.id ? { ...c, category: val || undefined } : c); setCourses(u); if (selectedLocation) saveCategoryOverride(selectedLocation, course.id, val); saveCourseChanges(course.id, { category: val || null }, true); setEditingHeader(null); } if (e.key === 'Escape') setEditingHeader(null); }} className={`w-full text-xs px-2 py-1 rounded border ${isDark ? 'bg-gray-700 border-gray-600 text-white' : 'bg-white border-gray-400 text-gray-900'}`} autoFocus />
                                   <datalist id="matrix-course-groups">
                                     {categories.filter(c => c !== 'Uncategorized').map(c => <option key={c} value={c} />)}
                                   </datalist>
                                   <div className="flex gap-1 justify-between items-center">
-                                    <button onClick={() => { const u = courses.map((c: any) => c.id === course.id ? { ...c, category: undefined } : c); setCourses(u); if (selectedLocation) saveCategoryOverride(selectedLocation, course.id, ''); saveCourseChanges(course.id, { category: null }, true); setEditingHeader(null); }} className="text-[10px] text-slate-400 hover:text-red-400 font-bold" title="Remove from group">Clear</button>
+                                    <button onClick={() => { const u = courses.map((c: Course) => c.id === course.id ? { ...c, category: undefined } : c); setCourses(u); if (selectedLocation) saveCategoryOverride(selectedLocation, course.id, ''); saveCourseChanges(course.id, { category: null }, true); setEditingHeader(null); }} className="text-[10px] text-slate-400 hover:text-red-400 font-bold" title="Remove from group">Clear</button>
                                     <div className="flex gap-1">
-                                      <button onClick={() => { const val = editHeaderValue.trim(); const u = courses.map((c: any) => c.id === course.id ? { ...c, category: val || undefined } : c); setCourses(u); if (selectedLocation) saveCategoryOverride(selectedLocation, course.id, val); saveCourseChanges(course.id, { category: val || null }, true); setEditingHeader(null); }} className="px-2 py-0.5 bg-blue-600 hover:bg-blue-700 text-white rounded text-[10px] font-bold">Save</button>
+                                      <button onClick={() => { const val = editHeaderValue.trim(); const u = courses.map((c: Course) => c.id === course.id ? { ...c, category: val || undefined } : c); setCourses(u); if (selectedLocation) saveCategoryOverride(selectedLocation, course.id, val); saveCourseChanges(course.id, { category: val || null }, true); setEditingHeader(null); }} className="px-2 py-0.5 bg-blue-600 hover:bg-blue-700 text-white rounded text-[10px] font-bold">Save</button>
                                       <button onClick={() => setEditingHeader(null)} className="px-2 py-0.5 bg-gray-500 hover:bg-gray-600 text-white rounded text-[10px]">×</button>
                                     </div>
                                   </div>
@@ -693,14 +702,14 @@ export function MatrixLayout() {
                         {categories.map(cat => {
                           if (collapsedCategories.has(cat)) return null;
                           const catCourses = coursesByCategory[cat] || [];
-                          return catCourses.map((course: any) => (
+                          return catCourses.map((course: Course) => (
                             <th key={`expiry-${course.id}`} onClick={() => { if (!canEditMatrix) return; setEditingHeader({ courseId: course.id, type: 'expiry' }); setEditHeaderValue(String(course.expiry_months || 12)); setEditNeverExpires(course.never_expires || false); }} className={`px-3 py-1 text-center text-[10px] border-r border-b ${canEditMatrix ? 'cursor-pointer' : ''} hover:opacity-80 relative ${isDark ? 'text-gray-400' : 'text-gray-500'}`} title={canEditMatrix ? 'Click to edit expiry' : undefined}>
                               {editingHeader?.courseId === course.id && editingHeader?.type === 'expiry' ? (
                                 <div className={`absolute z-50 top-full left-1/2 -translate-x-1/2 mt-1 p-3 rounded-xl shadow-xl border flex flex-col gap-2 min-w-[160px] ${isDark ? 'bg-gray-800 border-gray-700' : 'bg-white border-slate-300'}`} onClick={e => e.stopPropagation()}>
                                   <label className="text-[10px] font-bold flex items-center gap-1 cursor-pointer"><input type="checkbox" checked={editNeverExpires} onChange={(e) => setEditNeverExpires(e.target.checked)} />Never expires</label>
                                   {!editNeverExpires && <input type="number" value={editHeaderValue} onChange={(e) => setEditHeaderValue(e.target.value)} className={`w-full text-xs px-2 py-1 rounded border ${isDark ? 'bg-gray-700 border-gray-600 text-white' : 'bg-white border-gray-400 text-gray-900'}`} placeholder="months" autoFocus />}
                                   <div className="flex gap-1 justify-end">
-                                    <button onClick={async () => { if (editNeverExpires) { const u = courses.map((c: any) => c.id === course.id ? { ...c, never_expires: true, expiry_months: 9999 } : c); setCourses(u); await saveCourseChanges(course.id, { never_expires: true, expiry_months: 9999 }, true); await updateAllExpiriesForCourse(course.id, 9999, true); } else { const m = parseInt(editHeaderValue) || 12; const u = courses.map((c: any) => c.id === course.id ? { ...c, never_expires: false, expiry_months: m } : c); setCourses(u); await saveCourseChanges(course.id, { expiry_months: m, never_expires: false }, true); await updateAllExpiriesForCourse(course.id, m, false); } setEditingHeader(null); }} className="px-2 py-0.5 bg-blue-600 hover:bg-blue-700 text-white rounded text-[10px] font-bold">Save</button>
+                                    <button onClick={async () => { if (editNeverExpires) { const u = courses.map((c: Course) => c.id === course.id ? { ...c, never_expires: true, expiry_months: 9999 } : c); setCourses(u); await saveCourseChanges(course.id, { never_expires: true, expiry_months: 9999 }, true); await updateAllExpiriesForCourse(course.id, 9999, true); } else { const m = parseInt(editHeaderValue) || 12; const u = courses.map((c: Course) => c.id === course.id ? { ...c, never_expires: false, expiry_months: m } : c); setCourses(u); await saveCourseChanges(course.id, { expiry_months: m, never_expires: false }, true); await updateAllExpiriesForCourse(course.id, m, false); } setEditingHeader(null); }} className="px-2 py-0.5 bg-blue-600 hover:bg-blue-700 text-white rounded text-[10px] font-bold">Save</button>
                                     <button onClick={() => setEditingHeader(null)} className="px-2 py-0.5 bg-gray-500 hover:bg-gray-600 text-white rounded text-[10px]">×</button>
                                   </div>
                                 </div>
@@ -714,7 +723,7 @@ export function MatrixLayout() {
                     <tbody>
                       {(() => {
                         let currentDividerCollapsed = false;
-                        return filteredStaff.map((staffMember: any) => {
+                        return filteredStaff.map((staffMember: Staff) => {
                           const isDivider = staffDividers.has(staffMember.id);
 
                           if (isDivider) {
@@ -748,7 +757,7 @@ export function MatrixLayout() {
                               <td className={`px-4 py-3 text-xs sticky left-0 z-10 border-r min-w-[240px] group/staff ${stickyLeft}`}>
                                 <div className="flex items-center justify-between gap-2">
                                   <div className="flex items-center gap-2">
-                                    {canEditMatrix && <input type="checkbox" onChange={() => selectAllForStaff(staffMember.id)} checked={courses.every((c: any) => selectedCells.has(`${staffMember.id}|${c.id}`))} className="w-3.5 h-3.5 cursor-pointer" title="Select all" />}
+                                    {canEditMatrix && <input type="checkbox" onChange={() => selectAllForStaff(staffMember.id)} checked={courses.every((c: Course) => selectedCells.has(`${staffMember.id}|${c.id}`))} className="w-3.5 h-3.5 cursor-pointer" title="Select all" />}
                                     <span className="truncate max-w-[160px] font-medium" title={staffMember.name}>{staffMember.name}</span>
                                   </div>
                                   {canEditMatrix && <button onClick={(e) => { e.stopPropagation(); deleteStaffMember(staffMember.id); }} className="opacity-0 group-hover/staff:opacity-100 transition-opacity text-red-500 hover:text-red-400 text-[10px] p-0.5 hover:bg-red-500/10 rounded flex-shrink-0" title="Remove">✕</button>}
@@ -772,7 +781,7 @@ export function MatrixLayout() {
                                   );
                                 }
 
-                                return catCourses.map((course: any) => {
+                                return catCourses.map((course: Course) => {
                                   const cellKey = `${staffMember.id}|${course.id}`;
                                   const isSelected = selectedCells.has(cellKey);
                                   const cell = matrixData[staffMember.id]?.[course.id];
@@ -783,7 +792,7 @@ export function MatrixLayout() {
                                   const statusDisplay = getStatusDisplay(cell?.status);
 
                                   return (
-                                    <td key={cellKey} className={`px-3 py-3 text-center border-r border-b transition-all duration-100 relative group/cell ${rowBorder} ${canEditMatrix ? 'cursor-pointer' : ''} ${isSelected ? (isDark ? 'bg-blue-950/25' : 'bg-blue-50') : ''} ${canEditMatrix ? (isDark ? 'hover:bg-gray-800/40' : 'hover:bg-slate-50') : ''}`} onClick={(e) => { if ((e.target as HTMLElement).tagName === 'INPUT') return; if (canEditMatrix && !isEditing) { setEditingCell({ staffId: staffMember.id, courseId: course.id }); setEditDate(cell?.completion_date || ''); const rawStatus = cell?.status as any; const norm = rawStatus === 'booked' || rawStatus === 'awaiting' ? 'allocated' : rawStatus; setEditStatus(norm || 'completed'); } }}>
+                                    <td key={cellKey} className={`px-3 py-3 text-center border-r border-b transition-all duration-100 relative group/cell ${rowBorder} ${canEditMatrix ? 'cursor-pointer' : ''} ${isSelected ? (isDark ? 'bg-blue-950/25' : 'bg-blue-50') : ''} ${canEditMatrix ? (isDark ? 'hover:bg-gray-800/40' : 'hover:bg-slate-50') : ''}`} onClick={(e) => { if ((e.target as HTMLElement).tagName === 'INPUT') return; if (canEditMatrix && !isEditing) { setEditingCell({ staffId: staffMember.id, courseId: course.id }); setEditDate(cell?.completion_date || ''); const rawStatus = cell?.status as MatrixCell['status']; const norm = rawStatus === 'booked' || rawStatus === 'awaiting' ? 'allocated' : rawStatus; setEditStatus((norm || 'completed') as 'completed' | 'allocated' | 'not_yet_due' | 'na'); } }}>
                                       {canEditMatrix && <input type="checkbox" checked={isSelected} onChange={(e) => { e.stopPropagation(); toggleCellSelection(staffMember.id, course.id); }} className="absolute top-1.5 left-1.5 w-3.5 h-3.5 cursor-pointer opacity-0 group-hover/cell:opacity-100 transition-opacity" title="Select cell" />}
                                       {isEditing ? (
                                         <span className={`px-2 py-1 rounded-lg text-[10px] font-black uppercase tracking-wider ${isDark ? 'bg-blue-950/30 text-blue-400' : 'bg-blue-50 text-blue-600'}`}>Editing</span>
@@ -831,7 +840,7 @@ export function MatrixLayout() {
               <label className={`block text-[10px] font-black uppercase tracking-widest mb-2 ${isDark ? 'text-gray-400' : 'text-slate-500'}`}>Status</label>
               <div className="grid grid-cols-2 gap-2">
                 {[['completed', 'In Date', 'bg-green-600'], ['allocated', 'Allocated', 'bg-blue-600'], ['not_yet_due', 'Not Yet Due', 'bg-purple-600'], ['na', 'N/A', 'bg-slate-600']].map(([val, label, activeCls]) => (
-                  <button key={val} onClick={() => setEditStatus(val as any)} className={`px-3 py-2.5 rounded-xl text-xs font-bold transition-all ${editStatus === val ? `${activeCls} text-white shadow-sm` : isDark ? 'bg-gray-800 text-gray-300 hover:bg-gray-700' : 'bg-slate-100 text-slate-700 hover:bg-slate-200'}`}>{label}</button>
+                  <button key={val} onClick={() => setEditStatus(val as 'completed' | 'allocated' | 'not_yet_due' | 'na')} className={`px-3 py-2.5 rounded-xl text-xs font-bold transition-all ${editStatus === val ? `${activeCls} text-white shadow-sm` : isDark ? 'bg-gray-800 text-gray-300 hover:bg-gray-700' : 'bg-slate-100 text-slate-700 hover:bg-slate-200'}`}>{label}</button>
                 ))}
               </div>
             </div>
@@ -843,7 +852,7 @@ export function MatrixLayout() {
               </div>
             )}
             <div className="flex gap-2">
-              <button onClick={() => { if (editStatus === 'completed' && !editDate) { alert('Please select a completion date'); return; } if (!editStatus) { alert('Please select a status'); return; } const sm = staff.find((s: any) => s.id === editingCell.staffId); const co = courses.find((c: any) => c.id === editingCell.courseId); const ce = matrixData[editingCell.staffId]?.[editingCell.courseId]; if (sm && co) handleSaveTraining(sm.id, co.id, ce?.training_id || null, editStatus === 'completed' ? editDate : null, editStatus); }} className="flex-1 px-4 py-2.5 bg-green-600 hover:bg-green-700 text-white rounded-xl text-xs font-bold transition-colors">Save</button>
+              <button onClick={() => { if (editStatus === 'completed' && !editDate) { alert('Please select a completion date'); return; } if (!editStatus) { alert('Please select a status'); return; } const sm = staff.find((s: Staff) => s.id === editingCell.staffId); const co = courses.find((c: Course) => c.id === editingCell.courseId); const ce = matrixData[editingCell.staffId]?.[editingCell.courseId]; if (sm && co) handleSaveTraining(sm.id, co.id, ce?.training_id || null, editStatus === 'completed' ? editDate : null, editStatus); }} className="flex-1 px-4 py-2.5 bg-green-600 hover:bg-green-700 text-white rounded-xl text-xs font-bold transition-colors">Save</button>
               <button onClick={() => { setEditingCell(null); setEditDate(''); setEditStatus(null); }} className={`flex-1 px-4 py-2.5 rounded-xl text-xs font-bold transition-colors ${isDark ? 'bg-gray-800 hover:bg-gray-700 text-gray-200' : 'bg-slate-100 hover:bg-slate-200 text-slate-700'}`}>Cancel</button>
             </div>
           </div>
@@ -859,7 +868,7 @@ export function MatrixLayout() {
               <label className={`block text-[10px] font-black uppercase tracking-widest mb-2 ${isDark ? 'text-gray-400' : 'text-slate-500'}`}>Status</label>
               <div className="grid grid-cols-2 gap-2">
                 {[['completed', 'In Date', 'bg-green-600'], ['allocated', 'Allocated', 'bg-blue-600'], ['not_yet_due', 'Not Yet Due', 'bg-purple-600'], ['na', 'N/A', 'bg-slate-600']].map(([val, label, activeCls]) => (
-                  <button key={val} onClick={() => setBulkEditStatus(val as any)} className={`px-3 py-2.5 rounded-xl text-xs font-bold transition-all ${bulkEditStatus === val ? `${activeCls} text-white shadow-sm` : isDark ? 'bg-gray-800 text-gray-300 hover:bg-gray-700' : 'bg-slate-100 text-slate-700 hover:bg-slate-200'}`}>{label}</button>
+                  <button key={val} onClick={() => setBulkEditStatus(val as 'completed' | 'allocated' | 'not_yet_due' | 'na')} className={`px-3 py-2.5 rounded-xl text-xs font-bold transition-all ${bulkEditStatus === val ? `${activeCls} text-white shadow-sm` : isDark ? 'bg-gray-800 text-gray-300 hover:bg-gray-700' : 'bg-slate-100 text-slate-700 hover:bg-slate-200'}`}>{label}</button>
                 ))}
               </div>
             </div>

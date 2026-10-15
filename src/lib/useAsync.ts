@@ -5,8 +5,8 @@
 
 import { useEffect, useRef, useState, useCallback } from 'react';
 
-interface UseAsyncOptions {
-  onSuccess?: (data: any) => void;
+interface UseAsyncOptions<T> {
+  onSuccess?: (data: T) => void;
   onError?: (error: Error) => void;
   onAbort?: () => void;
 }
@@ -19,8 +19,7 @@ interface UseAsyncState<T> {
 
 export function useAsync<T>(
   asyncFn: (signal: AbortSignal) => Promise<T>,
-  dependencies: any[] = [],
-  options: UseAsyncOptions = {}
+  options: UseAsyncOptions<T> = {}
 ): UseAsyncState<T> {
   const [state, setState] = useState<UseAsyncState<T>>({
     data: null,
@@ -36,7 +35,7 @@ export function useAsync<T>(
     if (abortControllerRef.current) {
       try {
         abortControllerRef.current.abort();
-      } catch (e) {
+      } catch {
         // Ignore abort errors
       }
     }
@@ -80,12 +79,12 @@ export function useAsync<T>(
       if (abortControllerRef.current) {
         try {
           abortControllerRef.current.abort();
-        } catch (e) {
+      } catch {
           // Ignore abort errors
         }
       }
     };
-  }, dependencies);
+  }, [execute]);
 
   return state;
 }
@@ -95,8 +94,7 @@ export function useAsync<T>(
  */
 export function useFetch<T>(
   url: string | null,
-  options?: RequestInit,
-  dependencies: any[] = []
+  options?: RequestInit
 ) {
   return useAsync<T>(
     async (signal) => {
@@ -105,7 +103,6 @@ export function useFetch<T>(
       if (!response.ok) throw new Error(`HTTP ${response.status}`);
       return response.json();
     },
-    [url, ...(dependencies || [])],
     {}
   );
 }

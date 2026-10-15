@@ -38,8 +38,8 @@ export async function POST(request: NextRequest) {
       .eq('location_id', locationId);
 
     const items: Item[] = [
-      ...(slRows || []).map((r: any) => ({ key: r.staff_id as string, isDivider: false, order: r.display_order ?? 9999 })),
-      ...(divRows || []).map((r: any) => ({ key: `divider-${r.id}`, isDivider: true, name: r.name as string, order: r.display_order ?? 9999 })),
+      ...(slRows || []).map((r) => ({ key: r.staff_id as string, isDivider: false, order: r.display_order ?? 9999 })),
+      ...(divRows || []).map((r) => ({ key: `divider-${r.id}`, isDivider: true, name: r.name as string, order: r.display_order ?? 9999 })),
     ].sort((a, b) => a.order - b.order);
 
     let newOrder: Item[] = [];
@@ -111,7 +111,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Renumber sequentially and persist.
-    const staffUpserts: any[] = [];
+    const staffUpserts: Array<{ staff_id: string; location_id: string; display_order: number }> = [];
     const dividerUpdates: { id: string; display_order: number }[] = [];
     newOrder.forEach((it, idx) => {
       const display_order = idx + 1;

@@ -180,7 +180,7 @@ function FeedbackForm() {
     }
 
     // Build the submission data
-    const submissionData: any = {
+    const submissionData: Record<string, unknown> = {
       event_id: eventId || null,
       course_name: courseName || null,
       event_date: eventDate || null,
