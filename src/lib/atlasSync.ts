@@ -96,6 +96,8 @@ type IHascoResponse = {
 
 const MAX_API_PAGES = 100;
 const REQUEST_TIMEOUT_MS = 30_000;
+const ATLAS_PAGE_CONCURRENCY = 5;
+const MATRIX_UPDATE_CONCURRENCY = 10;
 const SUPABASE_PAGE_SIZE = 1000;
 
 function asRecord(value: unknown): JsonRecord | null {
@@ -291,6 +293,57 @@ const GRAPHQL_QUERY = (page: number) => `{
   }
 }`;
 
+async function fetchAtlasPage(page: number, endpoint: string, token: string): Promise<IHascoResponse['data']> {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
+  let response: Response;
+
+  try {
+    response = await fetch(endpoint, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${token}`,
+        Accept: 'application/json',
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ query: GRAPHQL_QUERY(page) }),
+      cache: 'no-store',
+      signal: controller.signal,
+    });
+  } catch (error) {
+    if (error instanceof Error && error.name === 'AbortError') {
+      throw new Error(`iHasco request timed out while loading page ${page}.`);
+    }
+    throw new Error(`Could not connect to iHasco while loading page ${page}.`);
+  } finally {
+    clearTimeout(timeout);
+  }
+
+  if (!response.ok) {
+    const detail = (await response.text()).slice(0, 300);
+    throw new Error(`iHasco API returned ${response.status}: ${detail || response.statusText}`);
+  }
+
+  const payload = await response.json() as IHascoResponse;
+  const schemaError = payload.errors?.find((error) => error.message)?.message;
+  if (schemaError) throw new Error(`iHasco GraphQL error: ${schemaError}`);
+  return payload.data;
+}
+
+async function runWithConcurrency<T>(items: T[], concurrency: number, task: (item: T) => Promise<void>): Promise<void> {
+  if (items.length === 0) return;
+
+  let nextIndex = 0;
+  const workerCount = Math.min(concurrency, items.length);
+  await Promise.all(Array.from({ length: workerCount }, async () => {
+    while (nextIndex < items.length) {
+      const item = items[nextIndex];
+      nextIndex += 1;
+      await task(item);
+    }
+  }));
+}
+
 async function fetchAtlasCompletedRecords(): Promise<unknown[]> {
   const endpoint = process.env.ATLAS_GRAPHQL_URL || 'https://api.ihasco.co.uk/graphql';
   const token = process.env.ATLAS_API_TOKEN || process.env.ATLAS_API_KEY;
@@ -299,40 +352,7 @@ async function fetchAtlasCompletedRecords(): Promise<unknown[]> {
   }
 
   const records: unknown[] = [];
-  let page = 1;
-  let hasMore = true;
-  while (hasMore && page <= MAX_API_PAGES) {
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
-    let response: Response;
-    try {
-      response = await fetch(endpoint, {
-        method: 'POST',
-        headers: {
-          Authorization: `Bearer ${token}`,
-          Accept: 'application/json',
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ query: GRAPHQL_QUERY(page) }),
-        cache: 'no-store',
-        signal: controller.signal,
-      });
-    } finally {
-      clearTimeout(timeout);
-    }
-
-    if (!response.ok) {
-      const detail = (await response.text()).slice(0, 300);
-      throw new Error(`iHasco API returned ${response.status}: ${detail || response.statusText}`);
-    }
-
-    const payload = await response.json() as IHascoResponse;
-    const schemaError = payload.errors?.find((error) => error.message)?.message;
-    if (schemaError) throw new Error(`iHasco GraphQL error: ${schemaError}`);
-
-    const users = payload.data?.users?.data || [];
-    if (users.length === 0) break;
-
+  const processUsers = (users: IHascoUser[]) => {
     for (const user of users) {
       const userId = user.id === null || user.id === undefined ? '' : String(user.id);
       if (!userId) continue;
@@ -365,19 +385,37 @@ async function fetchAtlasCompletedRecords(): Promise<unknown[]> {
         });
       }
     }
+  };
 
-    const paginator = payload.data?.users?.paginatorInfo;
-    const currentPage = paginator?.currentPage;
-    const lastPage = paginator?.lastPage;
-    hasMore = paginator?.hasMorePages ?? (
-      typeof currentPage === 'number'
-      && typeof lastPage === 'number'
-      && currentPage < lastPage
-    );
-    page += 1;
+  const firstPage = await fetchAtlasPage(1, endpoint, token);
+  const firstUsersPage = firstPage?.users;
+  processUsers(firstUsersPage?.data || []);
+
+  const firstPaginator = firstUsersPage?.paginatorInfo;
+  const lastPage = firstPaginator?.lastPage;
+  if (typeof lastPage === 'number') {
+    if (lastPage > MAX_API_PAGES) throw new Error(`iHasco pagination exceeded ${MAX_API_PAGES} pages.`);
+
+    for (let startPage = 2; startPage <= lastPage; startPage += ATLAS_PAGE_CONCURRENCY) {
+      const pageNumbers = Array.from(
+        { length: Math.min(ATLAS_PAGE_CONCURRENCY, lastPage - startPage + 1) },
+        (_, index) => startPage + index
+      );
+      const pages = await Promise.all(pageNumbers.map((page) => fetchAtlasPage(page, endpoint, token)));
+      for (const page of pages) processUsers(page?.users?.data || []);
+    }
+  } else {
+    let page = 2;
+    let hasMore = firstPaginator?.hasMorePages === true;
+    while (hasMore && page <= MAX_API_PAGES) {
+      const nextPage = await fetchAtlasPage(page, endpoint, token);
+      processUsers(nextPage?.users?.data || []);
+      hasMore = nextPage?.users?.paginatorInfo?.hasMorePages === true;
+      page += 1;
+    }
+    if (hasMore) throw new Error(`iHasco pagination exceeded ${MAX_API_PAGES} pages.`);
   }
 
-  if (hasMore) throw new Error(`iHasco pagination exceeded ${MAX_API_PAGES} pages.`);
   return records;
 }
 
@@ -432,7 +470,7 @@ export async function runAtlasCompletedCourseSync(options: AtlasSyncOptions = {}
   const [profiles, courses, matrix] = await Promise.all([
     fetchAllRows(service, 'profiles', 'id, full_name, email, is_deleted'),
     fetchAllRows(service, 'training_courses', 'id, name, careskills_name, expiry_months, never_expires'),
-    fetchAllRows(service, 'staff_training_matrix', 'id, staff_id, course_id, completion_date, expiry_date, status, training_courses(id, name, careskills_name, expiry_months, never_expires)'),
+    fetchAllRows(service, 'staff_training_matrix', 'id, staff_id, course_id, completion_date, expiry_date, status'),
   ]);
 
   const staffByName = new Map<string, StaffRow[]>();
@@ -460,10 +498,15 @@ export async function runAtlasCompletedCourseSync(options: AtlasSyncOptions = {}
     }
   }
 
+  const coursesById = new Map<string, CourseRow>();
+  for (const course of (courses || []) as CourseRow[]) {
+    if (course.id) coursesById.set(course.id, course);
+  }
+
   const matrixByKey = new Map<string, MatrixRow[]>();
   for (const row of (matrix || []) as MatrixRow[]) {
     const course = getCourseRelation(row);
-    const courseWithFallback = course || (courses || []).find((item) => item.id === row.course_id) as CourseRow | undefined;
+    const courseWithFallback = course || coursesById.get(row.course_id);
     if (!row.id || !row.staff_id || !row.course_id || !courseWithFallback) continue;
     matrixByKey.set(
       `${row.staff_id}|${row.course_id}`,
@@ -485,6 +528,14 @@ export async function runAtlasCompletedCourseSync(options: AtlasSyncOptions = {}
     dryRun: options.dryRun === true,
     skipped: [],
   };
+
+  const pendingUpdates: Array<{
+    rowId: string;
+    staffName: string;
+    courseName: string;
+    completionDate: string;
+    expiryDate: string | null;
+  }> = [];
 
   for (const record of completedRecords) {
     const emailMatches = record.staffEmail ? staffByEmail.get(normalizeEmail(record.staffEmail)) || [] : [];
@@ -536,23 +587,33 @@ export async function runAtlasCompletedCourseSync(options: AtlasSyncOptions = {}
         continue;
       }
 
-      const { error } = await service
-        .from('staff_training_matrix')
-        .update({
-          completion_date: record.completionDate,
-          expiry_date: expiryDate,
-          status: 'completed',
-        })
-        .eq('id', row.id);
-
-      if (error) {
-        summary.errors += 1;
-        addSkipped(summary, `update_failed: ${error.message}`, record.staffName, record.courseName);
-      } else {
-        summary.updated += 1;
-      }
+      pendingUpdates.push({
+        rowId: row.id,
+        staffName: record.staffName,
+        courseName: record.courseName,
+        completionDate: record.completionDate,
+        expiryDate,
+      });
     }
   }
+
+  await runWithConcurrency(pendingUpdates, MATRIX_UPDATE_CONCURRENCY, async (update) => {
+    const { error } = await service
+      .from('staff_training_matrix')
+      .update({
+        completion_date: update.completionDate,
+        expiry_date: update.expiryDate,
+        status: 'completed',
+      })
+      .eq('id', update.rowId);
+
+    if (error) {
+      summary.errors += 1;
+      addSkipped(summary, `update_failed: ${error.message}`, update.staffName, update.courseName);
+    } else {
+      summary.updated += 1;
+    }
+  });
 
   return summary;
 }

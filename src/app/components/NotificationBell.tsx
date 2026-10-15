@@ -28,6 +28,18 @@ function formatNotificationTime(value: string) {
   }).format(date);
 }
 
+function isMissingNotificationsTableError(error: { code?: string; message?: string } | null | undefined) {
+  if (!error) return false;
+
+  const code = error.code?.toUpperCase() || '';
+  const message = error.message?.toLowerCase() || '';
+
+  return code === 'PGRST205'
+    || code === '42P01'
+    || message.includes('does not exist')
+    || message.includes('notifications');
+}
+
 export default function NotificationBell() {
   const router = useRouter();
   const containerRef = useRef<HTMLDivElement | null>(null);
@@ -60,6 +72,10 @@ export default function NotificationBell() {
       if (error) {
         // The bell remains available while a deployment is waiting for the
         // notification migration; avoid turning that into a noisy UI error.
+        if (isMissingNotificationsTableError(error)) {
+          setNotifications([]);
+          return;
+        }
         setNotifications([]);
         return;
       }

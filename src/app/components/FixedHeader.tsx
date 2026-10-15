@@ -61,6 +61,11 @@ export default function FixedHeader() {
     () => getProfileAvatarUrl(avatarPath, process.env.NEXT_PUBLIC_SUPABASE_URL),
     [avatarPath]
   );
+  const [avatarBroken, setAvatarBroken] = useState(false);
+
+  useEffect(() => {
+    setAvatarBroken(false);
+  }, [avatarUrl]);
 
   // Auto-refresh profile if role_tier is missing when authenticated
   useEffect(() => {
@@ -180,11 +185,17 @@ export default function FixedHeader() {
               </p>
             </div>
             <div className="flex h-10 w-10 items-center justify-center overflow-hidden rounded-full bg-slate-200 text-sm font-black text-slate-700 shadow-inner dark:bg-[#1b2740] dark:text-slate-100">
-              {avatarUrl ? (
+              {avatarUrl && !avatarBroken ? (
                 // Profile photos are runtime Supabase URLs; the host is
                 // tenant-configured and cannot be statically optimized here.
+                // If the image 404s (e.g. missing/privileged object), fall back to initials.
                 // eslint-disable-next-line @next/next/no-img-element
-                <img src={avatarUrl} alt="Profile" className="h-full w-full object-cover" />
+                <img
+                  src={avatarUrl}
+                  alt="Profile"
+                  className="h-full w-full object-cover"
+                  onError={() => setAvatarBroken(true)}
+                />
               ) : (
                 <span>{getProfileInitials(fullName, email)}</span>
               )}
