@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import UniformButton from './UniformButton';
 
@@ -64,7 +64,6 @@ export default function CourseExpiryChecker({ isDark }: { isDark: boolean }) {
   
   const [startDate, setStartDate] = useState('');
   const [endDate, setEndDate] = useState('');
-  const [user, setUser] = useState<any>(null);
   const [selectedLocations, setSelectedLocations] = useState<string[]>([]);
   const [showLocationDropdown, setShowLocationDropdown] = useState(false);
   const [locations, setLocations] = useState<Array<{ id: string; name: string }>>([]);
@@ -97,10 +96,6 @@ export default function CourseExpiryChecker({ isDark }: { isDark: boolean }) {
   }, []);
 
   useEffect(() => {
-    applyFilters();
-  }, [allData, filters]);
-
-  useEffect(() => {
     if (locations.length === 0) return;
     const locationIds = new Set(locations.map(loc => loc.id));
     setSelectedLocations(prev => {
@@ -127,7 +122,6 @@ export default function CourseExpiryChecker({ isDark }: { isDark: boolean }) {
       } = await supabase.auth.getSession();
 
       if (session?.user) {
-        setUser(session.user);
         return;
       }
 
@@ -136,7 +130,6 @@ export default function CourseExpiryChecker({ isDark }: { isDark: boolean }) {
       } = await supabase.auth.getUser();
 
       if (authUser) {
-        setUser(authUser);
       }
     } catch (error) {
       console.error('Auth error:', error);
@@ -181,7 +174,7 @@ export default function CourseExpiryChecker({ isDark }: { isDark: boolean }) {
     }
   }
 
-  function categorizeDeliveryType(courseName: string, deliveryType?: string): 'Atlas' | 'Online' | 'Face to Face' {
+  const categorizeDeliveryType = useCallback((courseName: string, deliveryType?: string): 'Atlas' | 'Online' | 'Face to Face' => {
     const courseNameLower = courseName.toLowerCase();
     const deliveryLower = (deliveryType || '').toLowerCase();
     const isAtlasFromMatrixHeader = matrixHeaderData.atlasCourses.some(
@@ -205,7 +198,7 @@ export default function CourseExpiryChecker({ isDark }: { isDark: boolean }) {
 
     // Everything else is Face to Face (includes Face to Face, Classroom, Internal, Accredited, Workshop, etc.)
     return 'Face to Face';
-  }
+  }, [matrixHeaderData.atlasCourses]);
 
   function initializeDates() {
     const today = new Date();
@@ -296,9 +289,9 @@ export default function CourseExpiryChecker({ isDark }: { isDark: boolean }) {
       setAllData(dedupedData);
       buildFilterOptions(dedupedData);
       setStatus(`Found ${dedupedData.length} expiring courses`);
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error('Error fetching courses:', error);
-      setStatus(error?.message || 'Error loading courses. Please check your Google Sheets connection.');
+      setStatus(error instanceof Error ? error.message : 'Error loading courses. Please check your Google Sheets connection.');
     } finally {
       setLoading(false);
     }
@@ -332,9 +325,9 @@ export default function CourseExpiryChecker({ isDark }: { isDark: boolean }) {
       setAllData(dedupedData);
       buildFilterOptions(dedupedData);
       setStatus(`Found ${dedupedData.length} courses allocated for training`);
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error('Error fetching courses:', error);
-      setStatus(error?.message || 'Error loading courses. Please check your Google Sheets connection.');
+      setStatus(error instanceof Error ? error.message : 'Error loading courses. Please check your Google Sheets connection.');
     } finally {
       setLoading(false);
     }
@@ -368,15 +361,15 @@ export default function CourseExpiryChecker({ isDark }: { isDark: boolean }) {
       setAllData(dedupedData);
       buildFilterOptions(dedupedData);
       setStatus(`Found ${dedupedData.length} expired courses`);
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error('Error fetching courses:', error);
-      setStatus(error?.message || 'Error loading courses. Please check your Google Sheets connection.');
+      setStatus(error instanceof Error ? error.message : 'Error loading courses. Please check your Google Sheets connection.');
     } finally {
       setLoading(false);
     }
   }
 
-  function applyFilters() {
+  const applyFilters = useCallback(() => {
     let filtered = [...allData];
 
     if (filters.name) {
@@ -394,6 +387,7 @@ export default function CourseExpiryChecker({ isDark }: { isDark: boolean }) {
     }
 
     // Sort expiring/expired courses by expiry date (nearest/oldest first)
+    const isExpiredView = allData.length > 0 && allData[0].expiredSince !== undefined;
     if ((activeTab === 'expiring' || isExpiredView) && filtered.length > 0) {
       filtered = filtered.sort((a, b) => {
         const dateA = new Date(a.expiry || '');
@@ -403,7 +397,11 @@ export default function CourseExpiryChecker({ isDark }: { isDark: boolean }) {
     }
 
     setFilteredData(filtered);
-  }
+  }, [activeTab, allData, categorizeDeliveryType, filters]);
+
+  useEffect(() => {
+    applyFilters();
+  }, [applyFilters]);
 
   const isExpiredView = allData.length > 0 && allData[0].expiredSince !== undefined;
 
@@ -697,8 +695,6 @@ export default function CourseExpiryChecker({ isDark }: { isDark: boolean }) {
     </div>
   );
 }
-
-import { useCallback } from 'react';
 
 function useMatrixHeaders(location: string) {
   const [headerData, setHeaderData] = useState<MatrixHeaderData>({ headers: ['Face to Face'], atlasCourses: [] });

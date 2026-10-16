@@ -95,8 +95,8 @@ export default function ArchivePage() {
         throw new Error(result?.error || 'Failed to restore item');
       }
       await loadItems();
-    } catch (error: any) {
-      alert(`Restore failed: ${error.message}`);
+    } catch (error: unknown) {
+      alert(`Restore failed: ${error instanceof Error ? error.message : String(error)}`);
     } finally {
       setRestoringId(null);
     }
@@ -124,8 +124,8 @@ export default function ArchivePage() {
         throw new Error(result?.error || 'Failed to delete archive entry');
       }
       await loadItems();
-    } catch (error: any) {
-      alert(`Delete failed: ${error.message}`);
+    } catch (error: unknown) {
+      alert(`Delete failed: ${error instanceof Error ? error.message : String(error)}`);
     } finally {
       setDeletingId(null);
     }

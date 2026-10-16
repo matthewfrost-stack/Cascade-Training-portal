@@ -126,7 +126,16 @@ export default function ProfilePage() {
         }),
       });
 
-      let result: any;
+      let result: {
+        error?: string;
+        profile?: {
+          full_name?: string;
+          email?: string;
+          phone_number?: string;
+          avatar_path?: string | null;
+          role_tier?: string;
+        };
+      };
       try {
         result = await response.json();
       } catch {

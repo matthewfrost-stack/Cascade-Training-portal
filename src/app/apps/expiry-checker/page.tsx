@@ -11,8 +11,9 @@ export default function ExpiryCheckerPage() {
   }, []);
 
   useEffect(() => {
-    const handleThemeChange = (event: any) => {
-      setIsDark(event.detail.isDark);
+    const handleThemeChange = (event: Event) => {
+      const customEvent = event as CustomEvent<{ isDark?: boolean }>;
+      if (typeof customEvent.detail?.isDark === 'boolean') setIsDark(customEvent.detail.isDark);
     };
 
     window.addEventListener('themeChange', handleThemeChange);

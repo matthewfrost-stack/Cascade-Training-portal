@@ -7,6 +7,15 @@ function isIsoDate(value: string | null): value is string {
   return Boolean(value && /^\d{4}-\d{2}-\d{2}$/.test(value));
 }
 
+type BookingEventRow = {
+  id: string;
+  event_date: string;
+  course_id: string | null;
+  bookings?: { profile_id?: string }[];
+  course_event_overrides?: unknown[];
+  [key: string]: unknown;
+};
+
 const bookingEventSelection = 'id, event_date, start_time, end_time, am_break_minutes, pm_break_minutes, location, venue_id, course_id, notes, courses(id, name, max_attendees), bookings(id, event_id, profile_id, attended_at, minutes_late, late_reason, lateness_minutes, lateness_reason, absence_reason, attendance_source, attendance_marked_at, profiles:profile_id(id, full_name, location))';
 const legacyBookingEventSelection = 'id, event_date, start_time, end_time, location, venue_id, course_id, notes, courses(id, name, max_attendees), bookings(id, event_id, profile_id, attended_at, minutes_late, late_reason, lateness_minutes, lateness_reason, absence_reason, attendance_source, attendance_marked_at, profiles:profile_id(id, full_name, location))';
 
@@ -100,7 +109,7 @@ export async function GET(request: NextRequest) {
       }
     }
 
-    let events: any[] | null = null;
+    let events: BookingEventRow[] | null = null;
     let error: { code?: string; message?: string } | null = null;
     ({ data: events, error } = await query);
     if (error && isMissingBreakColumnsError(error)) {

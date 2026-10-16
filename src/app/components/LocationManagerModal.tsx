@@ -4,9 +4,12 @@ import { useState, useEffect } from 'react';
 import { supabase } from '@/lib/supabase';
 import Icon from './Icon';
 
+interface ManagedLocation { id: string; name: string; accessible_office_regions?: string[] | null }
+interface ManagedVenue { id: string; name: string; office_region?: string | null }
+
 export default function LocationManagerModal({ onClose }: { onClose: () => void }) {
-  const [locations, setLocations] = useState<any[]>([]);
-  const [venues, setVenues] = useState<any[]>([]);
+  const [locations, setLocations] = useState<ManagedLocation[]>([]);
+  const [venues, setVenues] = useState<ManagedVenue[]>([]);
   const [newLocationName, setNewLocationName] = useState('');
   const [newLocationAccessible, setNewLocationAccessible] = useState<string[]>(['Hull']);
   const [editingLocationId, setEditingLocationId] = useState<string | null>(null);
@@ -27,8 +30,9 @@ export default function LocationManagerModal({ onClose }: { onClose: () => void 
   }, []);
 
   useEffect(() => {
-    const handleThemeChange = (event: any) => {
-      setIsDark(event.detail.isDark);
+    const handleThemeChange = (event: Event) => {
+      const customEvent = event as CustomEvent<{ isDark?: boolean }>;
+      if (typeof customEvent.detail?.isDark === 'boolean') setIsDark(customEvent.detail.isDark);
     };
     
     window.addEventListener('themeChange', handleThemeChange);
@@ -46,7 +50,7 @@ export default function LocationManagerModal({ onClose }: { onClose: () => void 
   async function fetchData() {
     const { data: locData } = await supabase.from('locations').select('*').order('name');
     // Deduplicate locations by id to prevent duplicates in dropdown
-    const uniqueLocations = locData ? Array.from(new Map(locData.map((loc: any) => [loc.id, loc])).values()) : [];
+    const uniqueLocations = locData ? Array.from(new Map(locData.map((loc) => [loc.id, loc])).values()) as ManagedLocation[] : [];
     setLocations(uniqueLocations);
     
     const { data: venueData } = await supabase.from('venues').select('*').order('name');
@@ -66,8 +70,8 @@ export default function LocationManagerModal({ onClose }: { onClose: () => void 
       setNewLocationName('');
       setNewLocationAccessible(['Hull']);
       fetchData();
-    } catch (error: any) {
-      alert(error.message);
+    } catch (error: unknown) {
+      alert(error instanceof Error ? error.message : 'Unable to add location');
     } finally {
       setLoading(false);
     }
@@ -83,8 +87,8 @@ export default function LocationManagerModal({ onClose }: { onClose: () => void 
       setNewVenueName('');
       setNewVenueOffice('Hull');
       fetchData();
-    } catch (error: any) {
-      alert(error.message);
+    } catch (error: unknown) {
+      alert(error instanceof Error ? error.message : 'Unable to add venue');
     } finally {
       setLoading(false);
     }
@@ -96,12 +100,12 @@ export default function LocationManagerModal({ onClose }: { onClose: () => void 
       const { error } = await supabase.from('locations').delete().eq('id', id);
       if (error) throw error;
       fetchData();
-    } catch (error: any) {
-      alert(error.message);
+    } catch (error: unknown) {
+      alert(error instanceof Error ? error.message : 'Unable to delete location');
     }
   };
 
-  const handleEditLocation = (loc: any) => {
+  const handleEditLocation = (loc: ManagedLocation) => {
     setEditingLocationId(loc.id);
     setEditingLocationName(loc.name);
     setEditingLocationAccessible(loc.accessible_office_regions || ['Hull']);
@@ -121,8 +125,8 @@ export default function LocationManagerModal({ onClose }: { onClose: () => void 
       setEditingLocationName('');
       setEditingLocationAccessible(['Hull']);
       await fetchData();
-    } catch (error: any) {
-      alert(error.message || 'Failed to save location');
+    } catch (error: unknown) {
+      alert(error instanceof Error ? error.message : 'Failed to save location');
     } finally {
       setLoading(false);
     }
@@ -134,12 +138,12 @@ export default function LocationManagerModal({ onClose }: { onClose: () => void 
       const { error } = await supabase.from('venues').delete().eq('id', id);
       if (error) throw error;
       fetchData();
-    } catch (error: any) {
-      alert(error.message);
+    } catch (error: unknown) {
+      alert(error instanceof Error ? error.message : 'Unable to delete venue');
     }
   };
 
-  const handleEditVenue = (venue: any) => {
+  const handleEditVenue = (venue: ManagedVenue) => {
     setEditingVenueId(venue.id);
     setEditingVenueName(venue.name);
     setEditingVenueOffice(venue.office_region || 'Hull');
@@ -159,8 +163,8 @@ export default function LocationManagerModal({ onClose }: { onClose: () => void 
       setEditingVenueName('');
       setEditingVenueOffice('Hull');
       await fetchData();
-    } catch (error: any) {
-      alert(error.message || 'Failed to save venue');
+    } catch (error: unknown) {
+      alert(error instanceof Error ? error.message : 'Failed to save venue');
     } finally {
       setLoading(false);
     }

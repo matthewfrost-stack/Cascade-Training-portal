@@ -32,7 +32,16 @@ interface FeedbackRow {
   session_descriptors: string[];
   skills_gained: boolean;
   additional_comments: string | null;
-  responses?: Record<string, any>;
+  responses?: {
+    knowledge_before?: number;
+    knowledge_after?: number;
+    confidence_before?: number;
+    confidence_after?: number;
+    relevance?: number;
+    skills_gained?: boolean | 'Yes' | 'No';
+    descriptors?: string[];
+    comments?: string;
+  };
 }
 
 function avg(nums: number[]) {
@@ -69,7 +78,10 @@ export default function FeedbackResultsPage() {
   useEffect(() => {
     const isDarkMode = document.documentElement.classList.contains('dark');
     setIsDark(isDarkMode);
-    const handleTheme = (e: any) => setIsDark(e.detail.isDark);
+    const handleTheme = (e: Event) => {
+      const customEvent = e as CustomEvent<{ isDark?: boolean }>;
+      if (typeof customEvent.detail?.isDark === 'boolean') setIsDark(customEvent.detail.isDark);
+    };
     window.addEventListener('themeChange', handleTheme);
     return () => window.removeEventListener('themeChange', handleTheme);
   }, []);
@@ -83,7 +95,7 @@ export default function FeedbackResultsPage() {
     if (initializedRef.current) return;
     initializedRef.current = true;
     fetchFeedback();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+
   }, [authLoading, isAuthenticated, profile, router]);
 
   async function deleteResponse(id: string) {

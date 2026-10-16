@@ -78,7 +78,6 @@ export default function ProfileDropdown({ user, isDark = true }: ProfileDropdown
 
       {showChangePassword && user && (
         <ChangePasswordModal
-          userId={user.id}
           onClose={() => setShowChangePassword(false)}
           onSuccess={() => {
             // Optional: show success message or refresh

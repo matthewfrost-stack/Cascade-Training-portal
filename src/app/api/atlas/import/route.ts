@@ -15,6 +15,29 @@ type ImportChangeRecord = {
 };
 
 type IgnoredStaffReason = 'manual_ignore' | 'not_in_database';
+type AtlasRecord = { staffName: string; [courseName: string]: string };
+type AtlasLocation = { id: string; name: string };
+type StaffLocationRow = {
+  staff_id?: string;
+  location_id?: string;
+  locations?: { name?: string } | { name?: string }[] | null;
+};
+type AtlasUpdate = {
+  staff_id: string;
+  staff_name: string;
+  course_id: string;
+  course_name: string;
+  completion_date: string;
+  completed_at_location_id: string;
+};
+type AtlasError = { row?: number; name?: string; error: string };
+type ExistingTrainingRecord = {
+  id: string;
+  staff_id: string;
+  course_id: string;
+  completion_date: string | null;
+  completed_at_location_id?: string | null;
+};
 
 function normalizeName(value: string): string {
   return value.trim().toLowerCase().replace(/\s+/g, ' ');
@@ -73,7 +96,7 @@ export async function POST(request: NextRequest) {
     // Row 1: Keys/Legend
     // Row 2: Course names (starting from column B)
     // Rows 3+: Staff names in column A with dates in course columns
-    let records: any[] = [];
+    let records: AtlasRecord[] = [];
     try {
       const buffer = await file.arrayBuffer();
       const rows = await readXlsxFile(Buffer.from(buffer));
@@ -92,27 +115,27 @@ export async function POST(request: NextRequest) {
       
       // With header: 1, the data is in allData[0] onwards as arrays
       // We need to manually create records from the raw arrays
-      const headerRowIndex = allData.findIndex((row: any, idx: number) => {
+      const headerRowIndex = allData.findIndex((row, idx) => {
         if (idx > 10) return false; // Only scan the first few rows
         const firstCell = String(row?.[0] || '').trim().toLowerCase();
         return firstCell.includes('staff name') || firstCell.includes("learner's name") || firstCell === 'learner name';
       });
 
       const resolvedHeaderRowIndex = headerRowIndex >= 0 ? headerRowIndex : 1;
-      const headerRow = allData[resolvedHeaderRowIndex] as any[]; // Row with course names
+      const headerRow = allData[resolvedHeaderRowIndex] || []; // Row with course names
       const dataRows = allData.slice(resolvedHeaderRowIndex + 1); // Rows after header contain staff data
       
       console.log(`Header row index: ${resolvedHeaderRowIndex}`);
       console.log(`Header row (headers): ${JSON.stringify(headerRow)}`);
       
       // Create records array from raw data
-      records = dataRows.map((row: any, idx: number) => {
+      records = dataRows.map((row): AtlasRecord | null => {
         if (!row || row.length === 0) return null;
         
         const staffName = String(row[0] || '').trim(); // Column A = staff name
         if (!staffName) return null;
         
-        const record: any = { staffName };
+        const record: AtlasRecord = { staffName };
         
         // Map course columns (starting from column B, index 1)
         for (let colIdx = 1; colIdx < headerRow.length; colIdx++) {
@@ -123,7 +146,7 @@ export async function POST(request: NextRequest) {
         }
         
         return record;
-      }).filter((r: any) => r !== null && r.staffName);
+      }).filter((r): r is AtlasRecord => r !== null && Boolean(r.staffName));
       
       console.log(`Extracted ${records.length} staff records from data rows`);
       if (records.length > 0) {
@@ -159,8 +182,6 @@ export async function POST(request: NextRequest) {
       }, { status: 400 });
     }
 
-    const firstColumnName = headers[0]; // Name of the first column (should be "Keys" or "Learner's Name")
-    
     // Get all TRAINING courses (Careskills) and staff from database FIRST
     const { data: dbTrainingCourses } = await supabase
       .from('training_courses')
@@ -187,13 +208,13 @@ export async function POST(request: NextRequest) {
       locationNameToId.set(loc.name.toLowerCase().trim(), loc.id);
     });
 
-    const staffMap = new Map();
-    const staffLocations = new Map();
+    const staffMap = new Map<string, string>();
+    const staffLocations = new Map<string, AtlasLocation[]>();
     
     if (dbStaff && dbStaff.length > 0) {
       dbStaff.forEach(staff => {
         staffMap.set(staff.full_name.toLowerCase(), staff.id);
-        const initialLocs: any[] = [];
+        const initialLocs: AtlasLocation[] = [];
         if (staff.location) {
           const matchedId = locationNameToId.get(staff.location.toLowerCase().trim());
           if (matchedId) {
@@ -209,13 +230,14 @@ export async function POST(request: NextRequest) {
         .select('staff_id, location_id, locations(name)');
 
       if (staffLocData) {
-        staffLocData.forEach((sl: any) => {
+        staffLocData.forEach((sl: StaffLocationRow) => {
           const staffId = sl.staff_id;
           const locId = sl.location_id;
-          const locName = sl.locations?.name;
-          if (locName) {
+          const location = Array.isArray(sl.locations) ? sl.locations[0] : sl.locations;
+          const locName = location?.name;
+          if (staffId && locId && locName) {
             const existing = staffLocations.get(staffId) || [];
-            if (!existing.some((e: any) => e.id === locId)) {
+            if (!existing.some((e) => e.id === locId)) {
               staffLocations.set(staffId, [...existing, { id: locId, name: locName }]);
             }
           }
@@ -321,8 +343,8 @@ export async function POST(request: NextRequest) {
     }
 
     // Parse data rows with new record structure
-    const updates: any[] = [];
-    const errors: any[] = [];
+    const updates: AtlasUpdate[] = [];
+    const errors: AtlasError[] = [];
     const ignoredStaff = new Set<string>();
     const ignoredMissingStaff = new Set<string>();
     const ignoredStaffReasons = new Map<string, IgnoredStaffReason>();
@@ -372,7 +394,7 @@ export async function POST(request: NextRequest) {
 
       // Process each course key in this staff record
       for (const [excelCourseName, courseInfo] of recordCourseToDB) {
-        const dateValue = (row as any)[excelCourseName]?.toString().trim();
+        const dateValue = row[excelCourseName]?.toString().trim();
         
         if (!dateValue || dateValue.length === 0) {
           continue; // No data in this cell
@@ -418,11 +440,11 @@ export async function POST(request: NextRequest) {
     // headers, or duplicate sections). Keep the populated value for each
     // staff/course pair once so a duplicate cannot make an entire upsert batch
     // fail or cause one matrix location to be skipped.
-    const uniqueUpdates: any[] = Array.from(
+    const uniqueUpdates: AtlasUpdate[] = Array.from(
       updates.reduce((map, update) => {
         map.set(`${update.staff_id}|${update.course_id}`, update);
         return map;
-      }, new Map<string, any>()).values()
+      }, new Map<string, AtlasUpdate>()).values()
     );
     console.log(`Using ${uniqueUpdates.length} unique populated staff/course values`);
 
@@ -459,7 +481,7 @@ export async function POST(request: NextRequest) {
         }
 
         const rows = existingRecords || [];
-        rows.forEach((record: any) => {
+        rows.forEach((record: ExistingTrainingRecord) => {
           const locationKey = record.completed_at_location_id || '';
           const key = `${record.staff_id}|${record.course_id}|${locationKey}`;
           existingMap.set(key, {
@@ -510,12 +532,12 @@ export async function POST(request: NextRequest) {
       const staffLocs = staffLocations.get(update.staff_id) || [];
       const targetLocationIds: string[] = Array.from(new Set(
         staffLocs
-          .map((loc: any) => typeof loc === 'string' ? loc : loc?.id)
-          .filter((id: any): id is string => Boolean(id))
+          .map((loc) => typeof loc === 'string' ? loc : loc?.id)
+          .filter((id): id is string => Boolean(id))
       ));
 
       const locations = staffLocations.get(update.staff_id) || [];
-      const locationNames = locations.map((l: any) => typeof l === 'string' ? l : l.name).join(', ');
+      const locationNames = locations.map((l) => typeof l === 'string' ? l : l.name).join(', ');
 
       // Get course expiry_months to calculate expiry_date
       const course = dbTrainingCourses?.find(c => c.id === update.course_id);
@@ -639,7 +661,7 @@ export async function POST(request: NextRequest) {
       console.log(`Inserting batch of ${payload.length} records...`);
       console.log(`  Sample: ${payload[0] ? `${payload[0].staff_id} / ${payload[0].course_id} -> ${payload[0].completion_date}` : 'none'}`);
       
-      let { error, data } = await supabase
+      let { error } = await supabase
         .from('staff_training_matrix')
         .upsert(payload, { onConflict: 'staff_id,course_id,completed_at_location_id' });
 
@@ -649,7 +671,6 @@ export async function POST(request: NextRequest) {
           .from('staff_training_matrix')
           .upsert(payload, { onConflict: 'staff_id,course_id' });
         error = fallback.error;
-        data = fallback.data;
       }
 
       if (!error) {

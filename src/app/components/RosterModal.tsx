@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { supabase } from '@/lib/supabase';
 import Icon from './Icon';
 
@@ -11,33 +11,42 @@ interface RosterModalProps {
   userRole?: 'staff' | 'manager' | 'scheduler' | 'admin';
   userLocation?: string;
 }
+interface RosterStaff {
+  id: string;
+  full_name: string | null;
+  home_house: string | null;
+  location?: string | null;
+}
+interface BookedRosterStaff extends RosterStaff {
+  booking_id: string;
+  attended_at: string | null;
+  is_late?: boolean | null;
+  absence_reason?: string | null;
+  lateness_minutes?: number | null;
+  lateness_reason?: string | null;
+}
+type BookingStatusUpdates = Partial<Pick<BookedRosterStaff, 'attended_at' | 'absence_reason' | 'lateness_minutes' | 'lateness_reason'>>;
 
 export default function RosterModal({ event, onClose, onRefresh, userRole = 'admin', userLocation }: RosterModalProps) {
   const [loading, setLoading] = useState(false);
   const [isDark, setIsDark] = useState(true);
-  const [availableStaff, setAvailableStaff] = useState<any[]>([]);
-  const [bookedStaff, setBookedStaff] = useState<any[]>([]);
+  const [availableStaff, setAvailableStaff] = useState<RosterStaff[]>([]);
+  const [bookedStaff, setBookedStaff] = useState<BookedRosterStaff[]>([]);
 
   // Check if user can remove staff from roster
   const canRemoveStaff = userRole !== 'staff';
   
   // Check if manager can remove a specific staff member (only from their location)
-  const canRemoveFromLocation = (staffLocation?: string) => {
+  const canRemoveFromLocation = (staffLocation?: string | null) => {
     if (userRole === 'admin' || userRole === 'scheduler') return true;
     if (userRole === 'manager' && userLocation && staffLocation === userLocation) return true;
     return false;
   };
 
   useEffect(() => {
-    if (event) {
-      checkTheme();
-      fetchData();
-    }
-  }, [event]);
-
-  useEffect(() => {
-    const handleThemeChange = (event: any) => {
-      setIsDark(event.detail.isDark);
+    const handleThemeChange = (event: Event) => {
+      const customEvent = event as CustomEvent<{ isDark?: boolean }>;
+      if (typeof customEvent.detail?.isDark === 'boolean') setIsDark(customEvent.detail.isDark);
     };
     
     window.addEventListener('themeChange', handleThemeChange);
@@ -52,7 +61,7 @@ export default function RosterModal({ event, onClose, onRefresh, userRole = 'adm
     }
   }
 
-  async function fetchData() {
+  const fetchData = useCallback(async () => {
     setLoading(true);
     try {
       // Fetch all active staff (exclude deleted)
@@ -85,7 +94,7 @@ export default function RosterModal({ event, onClose, onRefresh, userRole = 'adm
           id: b.profile_id,
           full_name: profile?.full_name,
           home_house: profile?.home_house,
-          location: (profile as any)?.location,
+          location: (profile as RosterStaff | null)?.location,
           attended_at: b.attended_at,
           is_late: b.is_late,
           absence_reason: b.absence_reason,
@@ -103,7 +112,14 @@ export default function RosterModal({ event, onClose, onRefresh, userRole = 'adm
     } finally {
       setLoading(false);
     }
-  }
+  }, [event]);
+
+  useEffect(() => {
+    if (event) {
+      checkTheme();
+      void fetchData();
+    }
+  }, [event, fetchData]);
 
   async function handleBookStaff(staffId: string) {
     setLoading(true);
@@ -118,8 +134,8 @@ export default function RosterModal({ event, onClose, onRefresh, userRole = 'adm
 
       await fetchData();
       onRefresh();
-    } catch (err: any) {
-      alert(err.message);
+    } catch (err: unknown) {
+      alert(err instanceof Error ? err.message : 'Unable to book staff member');
     } finally {
       setLoading(false);
     }
@@ -148,14 +164,14 @@ export default function RosterModal({ event, onClose, onRefresh, userRole = 'adm
 
       await fetchData();
       onRefresh();
-    } catch (err: any) {
-      alert(err.message);
+    } catch (err: unknown) {
+      alert(err instanceof Error ? err.message : 'Unable to remove staff member');
     } finally {
       setLoading(false);
     }
   }
 
-  async function updateBookingStatus(bookingId: string, updates: any) {
+  async function updateBookingStatus(bookingId: string, updates: BookingStatusUpdates) {
     // Optimistic update
     setBookedStaff(prev => prev.map(staff =>
       staff.booking_id === bookingId ? { ...staff, ...updates } : staff
@@ -170,7 +186,7 @@ export default function RosterModal({ event, onClose, onRefresh, userRole = 'adm
       if (error) throw error;
       // Background refresh to ensure consistency
       fetchData();
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error("Error updating booking:", err);
       alert("Failed to update status");
       fetchData(); // Revert on error
@@ -200,7 +216,7 @@ export default function RosterModal({ event, onClose, onRefresh, userRole = 'adm
               {bookedStaff.length === 0 ? (
                 <p style={{ color: isDark ? '#94a3b8' : '#64748b' }} className="text-sm text-center py-8">No staff booked yet</p>
               ) : (
-                bookedStaff.map((staff: any) => (
+                bookedStaff.map((staff) => (
                   <div key={staff.booking_id} style={{ backgroundColor: isDark ? '#0f172a' : '#f1f5f9', borderColor: isDark ? '#334155' : '#e2e8f0' }} className="p-3 border rounded-xl flex flex-col gap-3 group transition-all hover:border-emerald-500">
                     <div className="flex justify-between items-center">
                       <div>
@@ -302,7 +318,7 @@ export default function RosterModal({ event, onClose, onRefresh, userRole = 'adm
               {availableStaff.length === 0 ? (
                 <p style={{ color: isDark ? '#94a3b8' : '#64748b' }} className="text-sm text-center py-8">All staff are booked or unavailable</p>
               ) : (
-                availableStaff.map((staff: any) => (
+                availableStaff.map((staff) => (
                   <div key={staff.id} style={{ backgroundColor: isDark ? '#0f172a' : '#f1f5f9', borderColor: isDark ? '#334155' : '#e2e8f0' }} className="p-3 border rounded-xl flex justify-between items-center group transition-all hover:border-blue-500">
                     <div>
                       <p style={{ color: isDark ? '#f1f5f9' : '#1e293b' }} className="font-bold text-sm">{staff.full_name}</p>

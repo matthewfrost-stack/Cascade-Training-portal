@@ -278,11 +278,12 @@ export async function POST(request: NextRequest) {
       linkedDayBookedCount: linkedBookingData.length,
       linkedDayCapacity: linkedEventCapacity
     });
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error('Booking error:', error);
     
     // Handle capacity constraint errors
-    if (error.message && error.message.includes('at full capacity')) {
+    const errorMessage = error instanceof Error ? error.message : String(error);
+    if (errorMessage.includes('at full capacity')) {
       return NextResponse.json(
         { 
           error: `❌ Course is now full! Another user just booked the last available spot(s). Please refresh and try again.`,
@@ -293,7 +294,7 @@ export async function POST(request: NextRequest) {
     }
     
     return NextResponse.json(
-      { error: error.message || 'Internal server error' },
+      { error: errorMessage || 'Internal server error' },
       { status: 500 }
     );
   }

@@ -73,7 +73,7 @@ export async function POST(request: NextRequest) {
           status: 'sent',
           message_id: info.messageId,
         });
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.warn('Could not log email:', err);
     }
 

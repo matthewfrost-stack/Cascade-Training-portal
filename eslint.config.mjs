@@ -1,7 +1,7 @@
 import nextCoreWebVitals from "eslint-config-next/core-web-vitals";
 import nextTypeScript from "eslint-config-next/typescript";
 
-export default [
+const eslintConfig = [
   ...nextCoreWebVitals,
   ...nextTypeScript,
   {
@@ -21,7 +21,11 @@ export default [
     // so builds are not blocked while the typing work is in progress.
     rules: {
       "@typescript-eslint/no-explicit-any": "warn",
-      "@typescript-eslint/no-unused-vars": "warn",
+      "@typescript-eslint/no-unused-vars": ["warn", {
+        argsIgnorePattern: "^_",
+        caughtErrorsIgnorePattern: "^_",
+        varsIgnorePattern: "^_",
+      }],
       "@typescript-eslint/no-require-imports": "off",
       "@typescript-eslint/no-this-alias": "off",
       "react-hooks/exhaustive-deps": "warn",
@@ -35,3 +39,5 @@ export default [
     },
   },
 ];
+
+export default eslintConfig;

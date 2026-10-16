@@ -25,12 +25,12 @@ export function GroupManagerModal({ initialType = 'staff', editKey = null, onClo
 
   // Existing groups of the active type -> { key, name }
   const staffGroups = useMemo(
-    () => staff.filter((s: any) => staffDividers.has(s.id)).map((d: any) => ({ key: d.id, name: d.name })),
+    () => staff.filter((s) => staffDividers.has(s.id)).map((d) => ({ key: d.id, name: d.name })),
     [staff, staffDividers]
   );
   const courseGroups = useMemo(() => {
     const names = new Set<string>();
-    courses.forEach((c: any) => { if (c.category) names.add(c.category); });
+    courses.forEach((c) => { if (c.category) names.add(c.category); });
     return Array.from(names).sort().map(n => ({ key: n, name: n }));
   }, [courses]);
   const existingGroups = type === 'staff' ? staffGroups : courseGroups;
@@ -39,12 +39,12 @@ export function GroupManagerModal({ initialType = 'staff', editKey = null, onClo
   const currentMembers = useMemo(() => {
     if (!selectedKey) return new Set<string>();
     if (type === 'course') {
-      return new Set<string>(courses.filter((c: any) => c.category === selectedKey).map((c: any) => c.id));
+      return new Set<string>(courses.filter((c) => c.category === selectedKey).map((c) => c.id));
     }
     // staff: positional — members are the rows between this divider and the next
     const ids = new Set<string>();
     let inGroup = false;
-    for (const item of staff as any[]) {
+    for (const item of staff) {
       if (staffDividers.has(item.id)) { inGroup = item.id === selectedKey; continue; }
       if (inGroup) ids.add(item.id);
     }
@@ -65,7 +65,7 @@ export function GroupManagerModal({ initialType = 'staff', editKey = null, onClo
   const seedKey = `${type}:${selectedKey}`;
   if (seedRef.current !== seedKey) {
     seedRef.current = seedKey;
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+
     setName(originalName);
     setChecked(new Set(currentMembers));
   }
@@ -73,14 +73,19 @@ export function GroupManagerModal({ initialType = 'staff', editKey = null, onClo
   const items = useMemo(() => {
     const q = search.trim().toLowerCase();
     const list = type === 'staff'
-      ? (staff as any[]).filter(s => !staffDividers.has(s.id)).map(s => ({ id: s.id, label: s.name }))
-      : (courses as any[]).map(c => ({ id: c.id, label: c.name }));
+      ? staff.filter(s => !staffDividers.has(s.id)).map(s => ({ id: s.id, label: s.name }))
+      : courses.map(c => ({ id: c.id, label: c.name }));
     if (!q) return list;
     return list.filter(i => i.label?.toLowerCase().includes(q));
   }, [type, staff, staffDividers, courses, search]);
 
   const toggle = (id: string) => {
-    setChecked(prev => { const n = new Set(prev); n.has(id) ? n.delete(id) : n.add(id); return n; });
+    setChecked(prev => {
+      const n = new Set(prev);
+      if (n.has(id)) n.delete(id);
+      else n.add(id);
+      return n;
+    });
   };
   const selectAllShown = () => setChecked(prev => { const n = new Set(prev); items.forEach(i => n.add(i.id)); return n; });
   const clearShown = () => setChecked(prev => { const n = new Set(prev); items.forEach(i => n.delete(i.id)); return n; });

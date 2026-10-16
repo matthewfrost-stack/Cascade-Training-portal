@@ -5,16 +5,70 @@ import { useRouter } from 'next/navigation';
 import { supabase } from '@/lib/supabase';
 import BackButton from '@/app/components/BackButton';
 import { debugLog, debugWarn } from '@/lib/debug';
+import type { User } from '@supabase/supabase-js';
+
+interface AnalyticsBooking {
+  id: string;
+  profile_id: string;
+  event_id: string;
+  attended_at: string | null;
+  minutes_late: number | null;
+  late_reason: string | null;
+  absence_reason: string | null;
+  created_at: string;
+}
+
+interface AnalyticsEvent {
+  id: string;
+  event_date: string;
+  course_id: string;
+  courses?: { id: string; name: string } | { id: string; name: string }[] | null;
+}
+
+interface AnalyticsProfile {
+  id: string;
+  full_name: string | null;
+  location: string | null;
+}
+
+interface AnalyticsRow extends AnalyticsBooking {
+  training_events?: AnalyticsEvent;
+  profiles?: AnalyticsProfile;
+}
+
+interface AnalyticsStats {
+  key: string;
+  booked: number;
+  attended: number;
+  late: number;
+  absences: number;
+}
+
+interface DetailRecord {
+  name: string;
+  location: string;
+  course: string;
+  event_date?: string;
+  minutes_late?: number | null;
+  absence_reason?: string;
+}
+
+type GroupedDetails = Record<string, Record<string, DetailRecord[]>>;
+
+function getCourseName(event?: AnalyticsEvent): string | undefined {
+  const course = event?.courses;
+  return Array.isArray(course) ? course[0]?.name : course?.name;
+}
 
 export default function AnalyticsDashboard() {
   const router = useRouter();
   const [loading, setLoading] = useState(true);
-  const [data, setData] = useState<any[]>([]);
+  const [data, setData] = useState<AnalyticsRow[]>([]);
   const [filterYear, setFilterYear] = useState('2026');
   const [filterPeriod, setFilterPeriod] = useState('Full Year');
   const [groupBy, setGroupBy] = useState<'location' | 'course' | 'person'>('location');
   const [isDark, setIsDark] = useState(true);
-  const [user, setUser] = useState<any>(null);
+  const [user, setUser] = useState<User | null>(null);
   const [selectedReason, setSelectedReason] = useState<{ type: 'lateness' | 'absence'; reason: string } | null>(null);
   const [selectedAbsenceGroup, setSelectedAbsenceGroup] = useState<{ key: string } | null>(null);
   const [collapsedCourses, setCollapsedCourses] = useState<Set<string>>(new Set());
@@ -23,12 +77,13 @@ export default function AnalyticsDashboard() {
   useEffect(() => {
     checkAuth();
     checkTheme();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+
   }, []);
 
   useEffect(() => {
-    const handleThemeChange = (event: any) => {
-      setIsDark(event.detail.isDark);
+    const handleThemeChange = (event: Event) => {
+      const customEvent = event as CustomEvent<{ isDark?: boolean }>;
+      if (typeof customEvent.detail?.isDark === 'boolean') setIsDark(customEvent.detail.isDark);
     };
     
     window.addEventListener('themeChange', handleThemeChange);
@@ -123,7 +178,7 @@ export default function AnalyticsDashboard() {
 
     try {
       // First fetch all bookings with basic fields using pagination (page size: 1000)
-      let bookings: any[] = [];
+      let bookings: AnalyticsBooking[] = [];
       let pageNumber = 0;
       const pageSize = 1000;
       let hasMore = true;
@@ -162,14 +217,14 @@ export default function AnalyticsDashboard() {
       debugLog('Total bookings:', bookings.length);
 
       // Get all unique event IDs and profile IDs
-      const eventIds = Array.from(new Set(bookings.map((b: any) => b.event_id).filter(Boolean)));
-      const profileIds = Array.from(new Set(bookings.map((b: any) => b.profile_id).filter(Boolean)));
+      const eventIds = Array.from(new Set(bookings.map((b) => b.event_id).filter(Boolean)));
+      const profileIds = Array.from(new Set(bookings.map((b) => b.profile_id).filter(Boolean)));
 
       debugLog('Unique event IDs:', eventIds.length, eventIds);
       debugLog('Unique profile IDs:', profileIds.length);
 
-      let events: any[] = [];
-      let profiles: any[] = [];
+      let events: AnalyticsEvent[] = [];
+      let profiles: AnalyticsProfile[] = [];
 
       // Fetch training events in chunks of 500 if we have event IDs
       if (eventIds.length > 0) {
@@ -210,17 +265,17 @@ export default function AnalyticsDashboard() {
       }
 
       // Merge data
-      const eventMap = new Map(events.map((e: any) => [e.id, e]));
-      const profileMap = new Map(profiles.map((p: any) => [p.id, p]));
+      const eventMap = new Map(events.map((e) => [e.id, e]));
+      const profileMap = new Map(profiles.map((p) => [p.id, p]));
 
-      const mergedData = bookings.map((booking: any) => ({
+      const mergedData: AnalyticsRow[] = bookings.map((booking) => ({
         ...booking,
         training_events: eventMap.get(booking.event_id),
         profiles: profileMap.get(booking.profile_id),
       }));
 
       // Filter by date range and only include past events
-      const filtered = mergedData.filter((booking: any) => {
+      const filtered = mergedData.filter((booking) => {
         const eventDate = booking?.training_events?.event_date;
         return eventDate && eventDate >= startDate && eventDate <= endDate && eventDate <= today;
       });
@@ -237,16 +292,16 @@ export default function AnalyticsDashboard() {
 
   const processStats = () => {
     try {
-      const stats: any = {};
+      const stats: Record<string, AnalyticsStats> = {};
       
-      data.forEach((item: any) => {
+      data.forEach((item) => {
         try {
           let key = '';
           
           if (groupBy === 'location') {
             key = item?.profiles?.location || 'Unassigned Location';
           } else if (groupBy === 'course') {
-            key = item?.training_events?.courses?.name || 'Unknown Course';
+            key = getCourseName(item.training_events) || 'Unknown Course';
           } else if (groupBy === 'person') {
             key = item?.profiles?.full_name || 'Unknown Staff';
           }
@@ -269,7 +324,7 @@ export default function AnalyticsDashboard() {
         }
       });
       
-      return Object.values(stats).sort((a: any, b: any) => {
+      return Object.values(stats).sort((a, b) => {
         const attendanceRateA = a.booked > 0 ? a.attended / a.booked : 0;
         const attendanceRateB = b.booked > 0 ? b.attended / b.booked : 0;
 
@@ -283,13 +338,13 @@ export default function AnalyticsDashboard() {
 
   const dashboardStats = processStats();
   const totalBooked = data.length;
-  const totalAttended = data.filter((d: any) => d?.attended_at).length;
+  const totalAttended = data.filter((d) => d?.attended_at).length;
   const totalAbsences = totalBooked - totalAttended;
-  const totalLate = data.filter((d: any) => d?.minutes_late && d.minutes_late > 0).length;
+  const totalLate = data.filter((d) => d?.minutes_late && d.minutes_late > 0).length;
   const attendanceRate = totalBooked > 0 ? Math.round((totalAttended / totalBooked) * 100) : 0;
 
   // Calculate lateness reasons breakdown
-  const latenessReasons = data.reduce((acc: any, item: any) => {
+  const latenessReasons = data.reduce<Record<string, number>>((acc, item) => {
     if (item?.minutes_late && item.minutes_late > 0) {
       const reason = item?.late_reason || 'Not specified';
       acc[reason] = (acc[reason] || 0) + 1;
@@ -302,7 +357,7 @@ export default function AnalyticsDashboard() {
     .sort((a, b) => b.count - a.count);
 
   // Calculate absence reasons breakdown
-  const absenceReasons = data.reduce((acc: any, item: any) => {
+  const absenceReasons = data.reduce<Record<string, number>>((acc, item) => {
     if (!item?.attended_at) {
       const reason = item?.absence_reason || 'Not specified';
       acc[reason] = (acc[reason] || 0) + 1;
@@ -318,38 +373,38 @@ export default function AnalyticsDashboard() {
   const getDetailedData = (type: 'lateness' | 'absence', reason: string) => {
     if (type === 'lateness') {
       return data
-        .filter((item: any) => item?.minutes_late && item.minutes_late > 0 && (item?.late_reason || 'Not specified') === reason)
-        .map((item: any) => ({
+        .filter((item) => item?.minutes_late && item.minutes_late > 0 && (item?.late_reason || 'Not specified') === reason)
+        .map((item) => ({
           name: item?.profiles?.full_name || 'Unknown',
           location: item?.profiles?.location || 'Unassigned Location',
           minutes_late: item?.minutes_late,
           event_date: item?.training_events?.event_date,
-          course: item?.training_events?.courses?.name || 'Unknown'
+          course: getCourseName(item.training_events) || 'Unknown'
         }));
     } else {
       return data
-        .filter((item: any) => !item?.attended_at && (item?.absence_reason || 'Not specified') === reason)
-        .map((item: any) => ({
+        .filter((item) => !item?.attended_at && (item?.absence_reason || 'Not specified') === reason)
+        .map((item) => ({
           name: item?.profiles?.full_name || 'Unknown',
           location: item?.profiles?.location || 'Unassigned Location',
           event_date: item?.training_events?.event_date,
-          course: item?.training_events?.courses?.name || 'Unknown'
+          course: getCourseName(item.training_events) || 'Unknown'
         }));
     }
   };
 
   const getGroupAbsences = (groupKey: string) => {
     return data
-      .filter((item: any) => {
+      .filter((item) => {
         if (item?.attended_at) return false;
         if (groupBy === 'location') return (item?.profiles?.location || 'Unassigned Location') === groupKey;
-        if (groupBy === 'course') return (item?.training_events?.courses?.name || 'Unknown Course') === groupKey;
+        if (groupBy === 'course') return (getCourseName(item.training_events) || 'Unknown Course') === groupKey;
         return (item?.profiles?.full_name || 'Unknown Staff') === groupKey;
       })
-      .map((item: any) => ({
+      .map((item) => ({
         name: item?.profiles?.full_name || 'Unknown',
         location: item?.profiles?.location || 'Unassigned Location',
-        course: item?.training_events?.courses?.name || 'Unknown',
+        course: getCourseName(item.training_events) || 'Unknown',
         event_date: item?.training_events?.event_date,
         absence_reason: item?.absence_reason || 'Not specified'
       }));
@@ -419,7 +474,7 @@ export default function AnalyticsDashboard() {
               <label style={{ color: isDark ? '#94a3b8' : '#64748b' }} className="text-[10px] font-bold uppercase mb-1">Group By</label>
               <select 
                 value={groupBy} 
-                onChange={e => setGroupBy(e.target.value as any)} 
+                onChange={e => setGroupBy(e.target.value as 'location' | 'course' | 'person')}
                 style={{ backgroundColor: isDark ? '#0f172a' : '#f1f5f9', color: isDark ? '#f1f5f9' : '#1e293b', borderColor: isDark ? '#334155' : '#cbd5e1' }}
                 className="bg-slate-50 border rounded-md p-2 text-sm outline-none"
               >
@@ -469,8 +524,8 @@ export default function AnalyticsDashboard() {
               {latenessReasonsList.length === 0 ? (
                 <p style={{ color: isDark ? '#94a3b8' : '#64748b' }} className="text-sm text-center py-8">No late arrivals recorded</p>
               ) : (
-                latenessReasonsList.map((item: any, idx: number) => {
-                  const maxLate = Math.max(...latenessReasonsList.map((r: any) => r.count), 1);
+                latenessReasonsList.map((item, idx: number) => {
+                  const maxLate = Math.max(...latenessReasonsList.map((r) => r.count), 1);
                   const percentage = (item.count / maxLate) * 100;
                   return (
                     <div 
@@ -507,8 +562,8 @@ export default function AnalyticsDashboard() {
               {absenceReasonsList.length === 0 ? (
                 <p style={{ color: isDark ? '#94a3b8' : '#64748b' }} className="text-sm text-center py-8">No absences recorded</p>
               ) : (
-                absenceReasonsList.map((item: any, idx: number) => {
-                  const maxAbsences = Math.max(...absenceReasonsList.map((r: any) => r.count), 1);
+                absenceReasonsList.map((item, idx: number) => {
+                  const maxAbsences = Math.max(...absenceReasonsList.map((r) => r.count), 1);
                   const percentage = (item.count / maxAbsences) * 100;
                   return (
                     <div 
@@ -560,7 +615,7 @@ export default function AnalyticsDashboard() {
                   </td>
                 </tr>
               ) : (
-                dashboardStats.map((row: any) => (
+                dashboardStats.map((row) => (
                   <tr key={row.key} className="hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-colors">
                     <td style={{ color: isDark ? '#cbd5e1' : '#1e293b' }} className="p-4 font-bold">{row.key}</td>
                     <td style={{ color: isDark ? '#94a3b8' : '#64748b' }} className="p-4 text-center">{row.booked}</td>
@@ -618,7 +673,7 @@ export default function AnalyticsDashboard() {
                   }
                   
                   // Group data by course and date
-                  const groupedData = detailedData.reduce((acc: any, record: any) => {
+                  const groupedData = detailedData.reduce<GroupedDetails>((acc, record) => {
                     const courseKey = record.course || 'Unknown Course';
                     const dateKey = record.event_date || 'Unknown Date';
                     if (!acc[courseKey]) {
@@ -631,7 +686,7 @@ export default function AnalyticsDashboard() {
                     return acc;
                   }, {});
 
-                  return Object.entries(groupedData).map(([course, dates]: [string, any]) => {
+                  return Object.entries(groupedData).map(([course, dates]) => {
                     const isCourseCollapsed = collapsedCourses.has(course);
                     return (
                       <div key={course} className="mb-6">
@@ -643,7 +698,7 @@ export default function AnalyticsDashboard() {
                           <span className="text-sm">{isCourseCollapsed ? '▶' : '▼'}</span>
                           📚 {course}
                         </button>
-                        {!isCourseCollapsed && Object.entries(dates).map(([date, records]: [string, any]) => {
+                        {!isCourseCollapsed && Object.entries(dates).map(([date, records]) => {
                           const isDateCollapsed = collapsedDates.has(`${course}-${date}`);
                           return (
                             <div key={date} className="mb-4">
@@ -657,7 +712,7 @@ export default function AnalyticsDashboard() {
                               </button>
                               {!isDateCollapsed && (
                                 <div className="space-y-2">
-                                  {records.map((record: any, idx: number) => (
+                                  {records.map((record, idx: number) => (
                                     <div
                                       key={idx}
                                       style={{
@@ -730,7 +785,7 @@ export default function AnalyticsDashboard() {
                   }
                   
                   // Group data by course and date
-                  const groupedData = detailedData.reduce((acc: any, record: any) => {
+                  const groupedData = detailedData.reduce<GroupedDetails>((acc, record) => {
                     const courseKey = record.course || 'Unknown Course';
                     const dateKey = record.event_date || 'Unknown Date';
                     if (!acc[courseKey]) {
@@ -743,7 +798,7 @@ export default function AnalyticsDashboard() {
                     return acc;
                   }, {});
 
-                  return Object.entries(groupedData).map(([course, dates]: [string, any]) => {
+                  return Object.entries(groupedData).map(([course, dates]) => {
                     const isCourseCollapsed = collapsedCourses.has(course);
                     return (
                       <div key={course} className="mb-6">
@@ -755,7 +810,7 @@ export default function AnalyticsDashboard() {
                           <span className="text-sm">{isCourseCollapsed ? '▶' : '▼'}</span>
                           📚 {course}
                         </button>
-                        {!isCourseCollapsed && Object.entries(dates).map(([date, records]: [string, any]) => {
+                        {!isCourseCollapsed && Object.entries(dates).map(([date, records]) => {
                           const isDateCollapsed = collapsedDates.has(`${course}-${date}`);
                           return (
                             <div key={date} className="mb-4">
@@ -769,7 +824,7 @@ export default function AnalyticsDashboard() {
                               </button>
                               {!isDateCollapsed && (
                                 <div className="space-y-2">
-                                  {records.map((record: any, idx: number) => (
+                                  {records.map((record, idx: number) => (
                                     <div
                                       key={idx}
                                       style={{

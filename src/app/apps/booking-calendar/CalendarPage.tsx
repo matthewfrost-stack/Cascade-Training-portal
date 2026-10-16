@@ -1,8 +1,8 @@
 'use client';
 
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import Icon from '@/app/components/Icon';
-import { usePathname, useRouter } from 'next/navigation';
+import { useRouter } from 'next/navigation';
 import { format, startOfMonth, endOfMonth, startOfWeek, endOfWeek, eachDayOfInterval, isSameDay, isSameMonth, subMonths, addMonths, parseISO } from 'date-fns';
 import ScheduleModal from '@/app/components/ScheduleModal';
 import UniformButton from '@/app/components/UniformButton';
@@ -11,20 +11,35 @@ import BookingChecklistModal from '@/app/components/BookingChecklistModal';
 import { hasPermission } from '@/lib/permissions';
 import { useCurrentUserProfile } from '@/lib/useCurrentUserProfile';
 
+function isTestCourseName(courseName?: string | null) {
+  return !!courseName && /^e2e[-_ ]/i.test(courseName.trim());
+}
+
+interface CalendarEvent {
+  id: string;
+  course_id: string;
+  event_date: string;
+  start_time?: string | null;
+  end_time?: string | null;
+  location?: string | null;
+  booking_count?: number | null;
+  bookings?: unknown[] | null;
+  courses?: { name?: string | null; max_attendees?: number | null } | null;
+  course_event_overrides?: Array<{ max_attendees: number }> | null;
+}
+
 export default function CalendarPage() {
   const router = useRouter();
-  const pathname = usePathname();
   const { profile, isAuthenticated } = useCurrentUserProfile();
   const [today, setToday] = useState(() => new Date());
   const [currentMonth, setCurrentMonth] = useState(() => new Date());
   const previousTodayRef = useRef(today);
-  const [events, setEvents] = useState<any[]>([]);
+  const [events, setEvents] = useState<CalendarEvent[]>([]);
   const [showSchedule, setShowSchedule] = useState(false);
   const [scheduleDefaultDate, setScheduleDefaultDate] = useState<string | null>(null);
-  const [selectedEvent, setSelectedEvent] = useState<any>(null);
+  const [selectedEvent, setSelectedEvent] = useState<CalendarEvent | null>(null);
   const [showChecklist, setShowChecklist] = useState(false);
   const [selectedChecklistEventId, setSelectedChecklistEventId] = useState<string | null>(null);
-  const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [isDark, setIsDark] = useState(true);
   const [filterCourse, setFilterCourse] = useState<string>('all');
@@ -62,9 +77,6 @@ export default function CalendarPage() {
     }
     previousTodayRef.current = today;
   }, [today, currentMonth]);
-
-  const isTestCourseName = (courseName?: string | null) =>
-    !!courseName && /^e2e[-_ ]/i.test(courseName.trim());
 
   // Helper for colors - All distinct vibrant colors with fallback to dynamic generation
   const courseColors: { [key: string]: { bg: string; text: string } } = {
@@ -160,12 +172,7 @@ export default function CalendarPage() {
 
   // We don't toggle dark mode here; we only react to the global control.
 
-  useEffect(() => {
-    fetchEvents();
-  }, [currentMonth]);
-
-  async function fetchEvents() {
-    setLoading(true);
+  const fetchEvents = useCallback(async () => {
     setLoadError(null);
     const startDate = format(startOfMonth(currentMonth), 'yyyy-MM-dd');
     const endDate = format(endOfMonth(currentMonth), 'yyyy-MM-dd');
@@ -177,18 +184,21 @@ export default function CalendarPage() {
       if (!response.ok) {
         throw new Error(payload?.error || `Calendar request failed (${response.status})`);
       }
-      const data = Array.isArray(payload?.events) ? payload.events : [];
-      setEvents(data.filter((event: any) => !isTestCourseName(event.courses?.name)));
+      const data = (Array.isArray(payload?.events) ? payload.events : []) as CalendarEvent[];
+      setEvents(data.filter((event) => !isTestCourseName(event.courses?.name)));
     } catch (error) {
       console.error('Error loading booking calendar:', error);
       setEvents([]);
       setLoadError(error instanceof Error ? error.message : 'Unable to load booking dates.');
     }
-    setLoading(false);
-  }
+  }, [currentMonth]);
+
+  useEffect(() => {
+    void fetchEvents();
+  }, [fetchEvents]);
 
   // Helper function to get max capacity for an event
-  const getMaxCapacity = (event: any) => {
+  const getMaxCapacity = (event: CalendarEvent) => {
     const baseCapacity = event.courses?.max_attendees || 10;
     
     // Check if there's an override for this event date
@@ -204,7 +214,7 @@ export default function CalendarPage() {
     end: endOfWeek(endOfMonth(currentMonth))
   });
 
-  const uniqueCourses = Array.from(new Set(events.map(e => e.courses?.name).filter(Boolean)));
+  const uniqueCourses = Array.from(new Set(events.map(e => e.courses?.name).filter((course): course is string => Boolean(course))));
   const filteredEvents = filterCourse === 'all' ? events : events.filter(e => e.courses?.name === filterCourse);
   const isStaff = profile?.role_tier === 'staff';
   const canViewAdmin = hasPermission(profile?.role_tier || null, 'ADMIN_DASHBOARD', 'canView');

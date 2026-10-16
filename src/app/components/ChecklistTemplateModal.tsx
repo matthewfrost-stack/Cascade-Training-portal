@@ -28,7 +28,10 @@ export default function ChecklistTemplateModal({ onClose }: { onClose: () => voi
   }, []);
 
   useEffect(() => {
-    const handleThemeChange = (event: any) => setIsDark(event.detail.isDark);
+    const handleThemeChange = (event: Event) => {
+      const customEvent = event as CustomEvent<{ isDark?: boolean }>;
+      if (typeof customEvent.detail?.isDark === 'boolean') setIsDark(customEvent.detail.isDark);
+    };
     window.addEventListener('themeChange', handleThemeChange);
     return () => window.removeEventListener('themeChange', handleThemeChange);
   }, []);
@@ -74,8 +77,8 @@ export default function ChecklistTemplateModal({ onClose }: { onClose: () => voi
       setNewItemName('');
       setNewIsInvoiceNumber(false);
       await fetchItems();
-    } catch (err: any) {
-      alert(err.message || 'Failed to add checklist item');
+    } catch (err: unknown) {
+      alert(err instanceof Error ? err.message : 'Failed to add checklist item');
     } finally {
       setLoading(false);
     }
@@ -90,8 +93,8 @@ export default function ChecklistTemplateModal({ onClose }: { onClose: () => voi
         .eq('id', item.id);
       if (error) throw error;
       await fetchItems();
-    } catch (err: any) {
-      alert(err.message || 'Failed to update checklist item');
+    } catch (err: unknown) {
+      alert(err instanceof Error ? err.message : 'Failed to update checklist item');
     } finally {
       setLoading(false);
     }
@@ -106,8 +109,8 @@ export default function ChecklistTemplateModal({ onClose }: { onClose: () => voi
         .eq('id', item.id);
       if (error) throw error;
       await fetchItems();
-    } catch (err: any) {
-      alert(err.message || 'Failed to update checklist item');
+    } catch (err: unknown) {
+      alert(err instanceof Error ? err.message : 'Failed to update checklist item');
     } finally {
       setLoading(false);
     }
@@ -129,8 +132,8 @@ export default function ChecklistTemplateModal({ onClose }: { onClose: () => voi
       if (!response.ok) throw new Error(result?.error || 'Failed to remove checklist item');
       if (editingId === item.id) cancelEdit();
       await fetchItems();
-    } catch (err: any) {
-      alert(err.message || 'Failed to remove checklist item');
+    } catch (err: unknown) {
+      alert(err instanceof Error ? err.message : 'Failed to remove checklist item');
     } finally {
       setLoading(false);
     }
@@ -158,8 +161,8 @@ export default function ChecklistTemplateModal({ onClose }: { onClose: () => voi
       if (error) throw error;
       cancelEdit();
       await fetchItems();
-    } catch (err: any) {
-      alert(err.message || 'Failed to save changes');
+    } catch (err: unknown) {
+      alert(err instanceof Error ? err.message : 'Failed to save changes');
     } finally {
       setLoading(false);
     }
@@ -186,8 +189,8 @@ export default function ChecklistTemplateModal({ onClose }: { onClose: () => voi
       if (e2) throw e2;
 
       await fetchItems();
-    } catch (err: any) {
-      alert(err.message || 'Failed to reorder items');
+    } catch (err: unknown) {
+      alert(err instanceof Error ? err.message : 'Failed to reorder items');
     } finally {
       setLoading(false);
     }

@@ -141,7 +141,7 @@ export async function GET(request: NextRequest) {
 
     if (eventIds) query = query.in('id', eventIds);
 
-    let events: any[] | null = null;
+    let events: SummaryEventRow[] | null = null;
     let error: { code?: string; message?: string } | null = null;
     ({ data: events, error } = await query);
     // The break columns were introduced in a later migration than the
@@ -155,7 +155,9 @@ export async function GET(request: NextRequest) {
         .lte('event_date', endDate)
         .order('event_date', { ascending: true });
       if (eventIds) legacyQuery = legacyQuery.in('id', eventIds);
-      ({ data: events, error } = await legacyQuery);
+      const legacyResult = await legacyQuery;
+      events = legacyResult.data as unknown as SummaryEventRow[];
+      error = legacyResult.error;
     }
     if (error) {
       console.error('Error fetching booking calendar summary:', error);

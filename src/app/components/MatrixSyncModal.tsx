@@ -1,11 +1,19 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
-import AtlasImportModal from '@/app/components/AtlasImportModal';
+import AtlasSyncPanel from '@/app/components/AtlasSyncPanel';
 import UniformButton from '@/app/components/UniformButton';
 import { supabase } from '@/lib/supabase';
 
 type LocationRow = { id: string; name: string };
+type SyncResult = {
+  success?: boolean;
+  summary?: Record<string, number>;
+  requiresStaffApproval?: boolean;
+  unknownStaff?: string[];
+  unknownCourses?: string[];
+  errors?: string[];
+};
 
 export default function MatrixSyncModal({ onClose }: { onClose: () => void }) {
   const [isDark, setIsDark] = useState(true);
@@ -14,7 +22,7 @@ export default function MatrixSyncModal({ onClose }: { onClose: () => void }) {
   const [locationId, setLocationId] = useState('');
   const [file, setFile] = useState<File | null>(null);
   const [importing, setImporting] = useState(false);
-  const [result, setResult] = useState<any>(null);
+  const [result, setResult] = useState<SyncResult | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -40,12 +48,12 @@ export default function MatrixSyncModal({ onClose }: { onClose: () => void }) {
           headers: { Authorization: `Bearer ${token}` },
         });
         const body = await res.json().catch(() => ({}));
-        const list = Array.isArray(body?.locations) ? body.locations : [];
+        const list = (Array.isArray(body?.locations) ? body.locations : []) as Array<{ id?: unknown; name?: unknown }>;
         const mapped = Array.from(
           new Map<string, LocationRow>(
             list
-              .map((l: any) => ({ id: String(l.id || ''), name: String(l.name || '') }))
-              .filter((l: any) => l.id && l.name)
+              .map((l) => ({ id: String(l.id || ''), name: String(l.name || '') }))
+              .filter((l) => l.id && l.name)
               .map((l: LocationRow) => [l.id, l])
           ).values()
         ).sort((a, b) => a.name.localeCompare(b.name));
@@ -55,8 +63,8 @@ export default function MatrixSyncModal({ onClose }: { onClose: () => void }) {
         // fallback: direct query for admins
         const { data } = await supabase.from('locations').select('id, name').order('name', { ascending: true });
         const mapped = (data || [])
-          .map((l: any) => ({ id: String(l.id || ''), name: String(l.name || '') }))
-          .filter((l: any) => l.id && l.name);
+          .map((l) => ({ id: String(l.id || ''), name: String(l.name || '') }))
+          .filter((l) => l.id && l.name);
         setLocations(mapped);
         if (!locationId && mapped[0]?.id) setLocationId(mapped[0].id);
       }
@@ -151,7 +159,7 @@ export default function MatrixSyncModal({ onClose }: { onClose: () => void }) {
 
       {mode === 'atlas' && (
         <div className="rounded-lg">
-          <AtlasImportModal onClose={onClose} />
+          <AtlasSyncPanel isDark={isDark} />
         </div>
       )}
 

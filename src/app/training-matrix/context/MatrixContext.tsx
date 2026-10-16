@@ -15,15 +15,45 @@ function getCsvUrlForLocation(locationName: string): string {
 // client cannot read all matrix tables under RLS, so the server route returns
 // the same data set after enforcing the caller's location permissions.
 type MatrixBootstrapPayload = {
-  staffLocations: any[];
-  records: any[];
-  profiles: any[];
-  dividers: any[];
-  locationCourses: any[];
-  allCourses: any[];
-  locations?: any[];
+  staffLocations: MatrixStaffLocationRow[];
+  records: MatrixTrainingRow[];
+  profiles: MatrixProfile[];
+  dividers: MatrixDivider[];
+  locationCourses: MatrixLocationCourseRow[];
+  allCourses: Course[];
+  locations?: MatrixLocation[];
   selectedLocationId?: string;
   userRole?: string;
+};
+
+type MatrixUser = { id: string };
+type MatrixLocation = { id: string; name: string };
+type MatrixProfile = {
+  id: string;
+  full_name: string | null;
+  is_deleted?: boolean | null;
+  location?: string | null;
+};
+type MatrixStaffLocationRow = {
+  staff_id: string;
+  display_order?: number | null;
+  profiles?: MatrixProfile | MatrixProfile[] | null;
+  locations?: MatrixLocation | MatrixLocation[] | null;
+};
+type MatrixTrainingRow = {
+  id: string;
+  staff_id: string;
+  course_id: string;
+  completion_date: string | null;
+  expiry_date: string | null;
+  completed_at_location_id?: string | null;
+  status: MatrixCell['status'];
+};
+type MatrixDivider = { id: string; name: string; display_order?: number | null };
+type MatrixLocationCourseRow = {
+  training_course_id: string;
+  display_order?: number | null;
+  training_courses?: Course | Course[] | null;
 };
 
 async function fetchMatrixBootstrapForLocation(locationId: string, signal?: AbortSignal): Promise<MatrixBootstrapPayload> {
@@ -58,8 +88,101 @@ function normalizeCourseName(name: string): string {
   return name.replace(/\s+/g, ' ').trim().toLowerCase();
 }
 
+type MatrixEditStatus = 'completed' | 'allocated' | 'not_yet_due' | 'na' | null;
+type CourseUpdate = Omit<Partial<Course>, 'category'> & { category?: string | null };
 interface MatrixContextType {
-  [key: string]: any;
+  user: MatrixUser | null;
+  userRole: string;
+  selectedLocation: string;
+  setSelectedLocation: React.Dispatch<React.SetStateAction<string>>;
+  locations: MatrixLocation[];
+  staff: Staff[];
+  setStaff: React.Dispatch<React.SetStateAction<Staff[]>>;
+  courses: Course[];
+  setCourses: React.Dispatch<React.SetStateAction<Course[]>>;
+  matrixData: Record<string, Record<string, MatrixCell>>;
+  setMatrixData: React.Dispatch<React.SetStateAction<Record<string, Record<string, MatrixCell>>>>;
+  loading: boolean;
+  setLoading: React.Dispatch<React.SetStateAction<boolean>>;
+  isDark: boolean;
+  setIsDark: React.Dispatch<React.SetStateAction<boolean>>;
+  tableScrollContainerRef: React.MutableRefObject<HTMLDivElement | null>;
+  fetchAbortControllerRef: React.MutableRefObject<AbortController | null>;
+  editingCell: { staffId: string; courseId: string } | null;
+  setEditingCell: React.Dispatch<React.SetStateAction<{ staffId: string; courseId: string } | null>>;
+  editDate: string;
+  setEditDate: React.Dispatch<React.SetStateAction<string>>;
+  editStatus: MatrixEditStatus;
+  setEditStatus: React.Dispatch<React.SetStateAction<MatrixEditStatus>>;
+  staffDividers: Set<string>;
+  setStaffDividers: React.Dispatch<React.SetStateAction<Set<string>>>;
+  showAddCourse: boolean;
+  setShowAddCourse: React.Dispatch<React.SetStateAction<boolean>>;
+  newCourseName: string;
+  setNewCourseName: React.Dispatch<React.SetStateAction<string>>;
+  draggedCourse: string | null;
+  setDraggedCourse: React.Dispatch<React.SetStateAction<string | null>>;
+  showAddDivider: boolean;
+  setShowAddDivider: React.Dispatch<React.SetStateAction<boolean>>;
+  newDividerName: string;
+  setNewDividerName: React.Dispatch<React.SetStateAction<string>>;
+  draggedStaff: string | null;
+  setDraggedStaff: React.Dispatch<React.SetStateAction<string | null>>;
+  editingHeader: { courseId: string; type: 'name' | 'category' | 'expiry' } | null;
+  setEditingHeader: React.Dispatch<React.SetStateAction<{ courseId: string; type: 'name' | 'category' | 'expiry' } | null>>;
+  editHeaderValue: string;
+  setEditHeaderValue: React.Dispatch<React.SetStateAction<string>>;
+  editNeverExpires: boolean;
+  setEditNeverExpires: React.Dispatch<React.SetStateAction<boolean>>;
+  lastRemovedCourse: RemovedCourseEntry | null;
+  setLastRemovedCourse: React.Dispatch<React.SetStateAction<RemovedCourseEntry | null>>;
+  selectedCells: Set<string>;
+  setSelectedCells: React.Dispatch<React.SetStateAction<Set<string>>>;
+  bulkEditMode: boolean;
+  setBulkEditMode: React.Dispatch<React.SetStateAction<boolean>>;
+  bulkEditStatus: MatrixEditStatus;
+  setBulkEditStatus: React.Dispatch<React.SetStateAction<MatrixEditStatus>>;
+  bulkEditDate: string;
+  setBulkEditDate: React.Dispatch<React.SetStateAction<string>>;
+  getCategoryOverrides: (locationId: string) => Record<string, string>;
+  saveCategoryOverride: (locationId: string, courseId: string, value: string) => void;
+  formatExpiryDisplay: (months?: number, neverExpires?: boolean) => string;
+  checkAuth: () => Promise<void>;
+  checkTheme: () => void;
+  fetchLocations: () => Promise<void>;
+  fetchMatrixData: (signal?: AbortSignal) => Promise<void>;
+  saveCourseChanges: (courseId: string, updates: CourseUpdate, skipRefresh?: boolean) => Promise<void>;
+  getDateStatus: (expiryDate: string) => 'expired' | 'expiring' | 'valid';
+  getDateColor: (status: string) => string;
+  getStatusDisplay: (status: string | null) => { label: string | null; color: string };
+  canEditMatrix: boolean;
+  handleCourseDropStart: (event: React.DragEvent, courseId: string) => void;
+  handleCourseDragOver: (event: React.DragEvent) => void;
+  handleCourseDropEnd: (event: React.DragEvent, courseId: string) => Promise<void>;
+  handleStaffDropStart: (event: React.DragEvent, staffId: string) => void;
+  handleStaffDragOver: (event: React.DragEvent) => void;
+  handleStaffDropEnd: (event: React.DragEvent, staffId: string) => Promise<void>;
+  persistCourseOrdering: (courses: Course[]) => Promise<void>;
+  persistStaffOrdering: (staff: Staff[]) => Promise<void>;
+  addNewCourse: () => Promise<void>;
+  deleteCourse: (courseId: string) => Promise<void>;
+  undoRemoveCourse: () => Promise<void>;
+  addNewDivider: () => Promise<void>;
+  exportMatrixCsv: () => void;
+  deleteStaffMember: (staffId: string) => Promise<void>;
+  toggleCellSelection: (staffId: string, courseId: string) => void;
+  selectAllInCourse: (courseId: string) => void;
+  deselectAllInCourse: (courseId: string) => void;
+  selectAllForStaff: (staffId: string) => void;
+  clearAllSelections: () => void;
+  applyBulkUpdate: () => Promise<void>;
+  updateAllExpiriesForCourse: (courseId: string, months: number, neverExpires?: boolean) => Promise<void>;
+  handleSaveTraining: (staffId: string, courseId: string, trainingId: string | null, completionDate?: string | null, status?: Exclude<MatrixEditStatus, null>) => Promise<void>;
+  createStaffGroup: (name: string, memberIds: string[]) => Promise<void>;
+  updateStaffGroup: (dividerId: string, name: string, memberIds: string[]) => Promise<void>;
+  deleteStaffGroup: (dividerId: string) => Promise<void>;
+  setCourseGroup: (name: string, originalName: string | null, courseIds: string[]) => Promise<void>;
+  deleteCourseGroup: (name: string) => Promise<void>;
 }
 
 const MatrixContext = createContext<MatrixContextType | undefined>(undefined);
@@ -71,10 +194,10 @@ export function MatrixProvider({ children }: { children: React.ReactNode }) {
   // client session wasn't restored, so user was never set, fetchLocations never
   // ran, and the site selector stayed empty.
   const { profile, isAuthenticated, loading: authLoading } = useCurrentUserProfile();
-  const [user, setUser] = useState<any>(null);
+  const [user, setUser] = useState<MatrixUser | null>(null);
   const [userRole, setUserRole] = useState<string>('');
   const [selectedLocation, setSelectedLocation] = useState<string>('');
-  const [locations, setLocations] = useState<any[]>([]);
+  const [locations, setLocations] = useState<MatrixLocation[]>([]);
   const [staff, setStaff] = useState<Staff[]>([]);
   const [courses, setCourses] = useState<Course[]>([]);
   const [matrixData, setMatrixData] = useState<Record<string, Record<string, MatrixCell>>>({});
@@ -153,7 +276,7 @@ export function MatrixProvider({ children }: { children: React.ReactNode }) {
   // what triggers fetchLocations below.
   useEffect(() => {
     if (profile?.id) {
-      setUser((prev: any) => (prev?.id === profile.id ? prev : { id: profile.id }));
+      setUser((prev) => (prev?.id === profile.id ? prev : { id: profile.id }));
       const nextRole = profile.role_tier || 'staff';
       setUserRole((prev) => (prev === nextRole ? prev : nextRole));
     } else if (!authLoading && !isAuthenticated) {
@@ -164,8 +287,9 @@ export function MatrixProvider({ children }: { children: React.ReactNode }) {
   }, [profile, authLoading, isAuthenticated]);
 
   useEffect(() => {
-    const handleThemeChange = (event: any) => {
-      setIsDark(event.detail.isDark);
+    const handleThemeChange = (event: Event) => {
+      const customEvent = event as CustomEvent<{ isDark?: boolean }>;
+      if (typeof customEvent.detail?.isDark === 'boolean') setIsDark(customEvent.detail.isDark);
     };
     window.addEventListener('themeChange', handleThemeChange);
     return () => window.removeEventListener('themeChange', handleThemeChange);
@@ -185,6 +309,9 @@ export function MatrixProvider({ children }: { children: React.ReactNode }) {
     }
   }, [user, userRole]);
 
+  const fetchMatrixDataRef = useRef(fetchMatrixData);
+  fetchMatrixDataRef.current = fetchMatrixData;
+
   useEffect(() => {
     if (!selectedLocation) return;
 
@@ -200,7 +327,7 @@ export function MatrixProvider({ children }: { children: React.ReactNode }) {
     fetchAbortControllerRef.current = abortController;
     let isCurrentRequest = true;
 
-    fetchMatrixData(abortController.signal).then(() => {
+    fetchMatrixDataRef.current(abortController.signal).then(() => {
       if (isCurrentRequest && abortController === fetchAbortControllerRef.current) {
         // Active request handling
       }
@@ -260,7 +387,7 @@ export function MatrixProvider({ children }: { children: React.ReactNode }) {
                   },
                 ], { onConflict: 'location_id,training_course_id' });
             }
-            fetchMatrixData();
+            void fetchMatrixDataRef.current();
           } catch (e) {
             console.warn('Could not complete the operation', e);
           }
@@ -365,8 +492,8 @@ export function MatrixProvider({ children }: { children: React.ReactNode }) {
       const scopedLocations = payload.locations || [];
 
       if (scopedLocations.length > 0) {
-        const uniqueLocations: any[] = Array.from(
-          new Map<string, any>(scopedLocations.map((loc: any) => [loc.id, loc])).values()
+        const uniqueLocations: MatrixLocation[] = Array.from(
+          new Map<string, MatrixLocation>(scopedLocations.map((loc) => [loc.id, loc])).values()
         );
         setLocations(uniqueLocations);
         const locationIds = new Set(uniqueLocations.map((loc) => loc.id));
@@ -425,9 +552,12 @@ export function MatrixProvider({ children }: { children: React.ReactNode }) {
       const staffLocationsData = matrixBootstrap.staffLocations;
 
       const visibleStaffLocationsData = userRole === 'staff'
-        ? staffLocationsData?.filter((sl: any) => sl.staff_id === user?.id)
+        ? staffLocationsData?.filter((sl) => sl.staff_id === user?.id)
         : staffLocationsData;
-      const activeStaffLocationsData = visibleStaffLocationsData?.filter((sl: any) => !sl.profiles?.is_deleted) || [];
+      const activeStaffLocationsData = visibleStaffLocationsData?.filter((sl) => {
+        const profile = Array.isArray(sl.profiles) ? sl.profiles[0] : sl.profiles;
+        return !profile?.is_deleted;
+      }) || [];
 
       // Training records AND dividers come from the authenticated server route
       // (service client) because the browser anon client is blocked by RLS on
@@ -436,23 +566,24 @@ export function MatrixProvider({ children }: { children: React.ReactNode }) {
       const { records: allTrainingData, dividers: dividersData } = matrixBootstrap;
 
       const uniqueStaffIds = new Set<string>();
-      allTrainingData?.forEach((t: any) => { if (t.staff_id) uniqueStaffIds.add(t.staff_id); });
+      allTrainingData?.forEach((t) => { if (t.staff_id) uniqueStaffIds.add(t.staff_id); });
 
-      const staffLocationsIds = new Set(activeStaffLocationsData.map((sl: any) => sl.staff_id));
+      const staffLocationsIds = new Set(activeStaffLocationsData.map((sl) => sl.staff_id));
       const filteredTrainingStaffIds = Array.from(uniqueStaffIds).filter(id => staffLocationsIds.has(id));
 
-      const profilesById = new Map(matrixBootstrap.profiles.map((profile: any) => [profile.id, profile]));
+      const profilesById = new Map(matrixBootstrap.profiles.map((profile) => [profile.id, profile]));
       const trainingStaffData = filteredTrainingStaffIds
         .map(id => profilesById.get(id))
-        .filter((profile): profile is any => Boolean(profile && !profile.is_deleted))
-        .map((profile: any) => ({ profiles: profile }));
+        .filter((profile): profile is MatrixProfile => Boolean(profile && !profile.is_deleted))
+        .map((profile) => ({ profiles: profile }));
 
-      const staffMap = new Map<string, any>();
-      activeStaffLocationsData?.forEach((s: any) => {
-        if (s.profiles) staffMap.set(s.profiles.id, { id: s.profiles.id, full_name: s.profiles.full_name });
+      const staffMap = new Map<string, MatrixProfile>();
+      activeStaffLocationsData?.forEach((s) => {
+        const profile = Array.isArray(s.profiles) ? s.profiles[0] : s.profiles;
+        if (profile) staffMap.set(profile.id, profile);
       });
-      trainingStaffData?.forEach((s: any) => {
-        if (s.profiles && !staffMap.has(s.profiles.id)) staffMap.set(s.profiles.id, { id: s.profiles.id, full_name: s.profiles.full_name });
+      trainingStaffData?.forEach((s) => {
+        if (s.profiles && !staffMap.has(s.profiles.id)) staffMap.set(s.profiles.id, s.profiles);
       });
 
       const staffData = Array.from(staffMap.values()).map(s => ({ profiles: { id: s.id, full_name: s.full_name } }));
@@ -460,7 +591,7 @@ export function MatrixProvider({ children }: { children: React.ReactNode }) {
       const locationCoursesData = matrixBootstrap.locationCourses;
 
       let filteredCourses = (locationCoursesData || [])
-        .map((lc: any) => {
+        .map((lc) => {
           const joinedCourse = Array.isArray(lc.training_courses) ? lc.training_courses[0] : lc.training_courses;
           if (!joinedCourse) return null;
           return {
@@ -500,10 +631,10 @@ export function MatrixProvider({ children }: { children: React.ReactNode }) {
       const careskillsToBaseMap = new Map<string, string>();
       if (allCoursesForMapping) {
         const baseCourses = new Map<string, string>();
-        allCoursesForMapping.forEach((c: any) => {
+        allCoursesForMapping.forEach((c) => {
           if (!c.name.includes('(Careskills)')) baseCourses.set(c.name.toLowerCase().trim(), c.id);
         });
-        allCoursesForMapping.forEach((c: any) => {
+        allCoursesForMapping.forEach((c) => {
           if (c.name.includes('(Careskills)')) {
             const baseName = c.name.replace(' (Careskills)', '').toLowerCase().trim();
             const baseId = baseCourses.get(baseName);
@@ -514,16 +645,16 @@ export function MatrixProvider({ children }: { children: React.ReactNode }) {
 
       // allTrainingData was already loaded from the server route above.
       const staffFromTrainingSet = new Set<string>();
-      allTrainingData?.forEach((t: any) => { if (t.completed_at_location_id === selectedLocation) staffFromTrainingSet.add(t.staff_id); });
+      allTrainingData?.forEach((t) => { if (t.completed_at_location_id === selectedLocation) staffFromTrainingSet.add(t.staff_id); });
 
       const allStaffIds = new Set<string>();
-      staffData?.forEach((s: any) => { if (s.profiles) allStaffIds.add(s.profiles.id); });
+      staffData?.forEach((s) => { if (s.profiles) allStaffIds.add(s.profiles.id); });
       staffFromTrainingSet.forEach(id => allStaffIds.add(id));
 
       const allStaffProfiles = staffData
-        .filter((s: any) => s.profiles)
-        .filter((s: any) => userRole !== 'staff' || s.profiles.id === user?.id);
-      const staffIdsInProfiles = new Set(allStaffProfiles.map((s: any) => s.profiles.id));
+        .filter((s) => s.profiles)
+        .filter((s) => userRole !== 'staff' || s.profiles.id === user?.id);
+      const staffIdsInProfiles = new Set(allStaffProfiles.map((s) => s.profiles.id));
       const missingIds = Array.from(allStaffIds).filter(id => !staffIdsInProfiles.has(id));
 
       if (missingIds.length > 0) {
@@ -532,16 +663,16 @@ export function MatrixProvider({ children }: { children: React.ReactNode }) {
           .select('id, full_name')
           .in('id', missingIds)
           .eq('is_deleted', false);
-        missingProfiles?.forEach((p: any) => allStaffProfiles.push({ profiles: p }));
+        missingProfiles?.forEach((p) => allStaffProfiles.push({ profiles: p }));
       }
 
       const staffWithOrder = allStaffProfiles
-        .filter((s: any) => s.profiles && !s.profiles.full_name?.toLowerCase().includes('deleted'))
-        .map((s: any) => {
-          const staffLoc = activeStaffLocationsData?.find((sl: any) => sl.staff_id === s.profiles.id);
+        .filter((s) => s.profiles && !s.profiles.full_name?.toLowerCase().includes('deleted'))
+        .map((s) => {
+          const staffLoc = activeStaffLocationsData?.find((sl) => sl.staff_id === s.profiles.id);
           return {
             id: s.profiles.id,
-            name: s.profiles.full_name,
+            name: s.profiles.full_name || 'Unknown Staff',
             location_id: selectedLocation,
             display_order: staffLoc?.display_order || 9999,
           };
@@ -554,27 +685,27 @@ export function MatrixProvider({ children }: { children: React.ReactNode }) {
       });
 
       const dividerItems = (userRole === 'staff' ? [] : dividersData || [])
-        .filter((d: any) => d.name !== 'Staff Name')
-        .map((d: any) => ({
+        .filter((d) => d.name !== 'Staff Name')
+        .map((d) => ({
           id: `divider-${d.id}`,
-          name: d.name,
+          name: d.name || 'Unnamed Group',
           location_id: selectedLocation,
-          display_order: d.display_order,
+          display_order: d.display_order ?? 9999,
           isDivider: true,
         }));
 
       const combinedListDeduped = [...dedupedStaffWithOrder, ...dividerItems]
         .sort((a, b) => (a.display_order || 9999) - (b.display_order || 9999));
 
-      setStaffDividers(new Set<string>(dividerItems.map((d: any) => d.id)));
-      setStaff(combinedListDeduped as any);
+      setStaffDividers(new Set<string>(dividerItems.map((d) => d.id)));
+      setStaff(combinedListDeduped);
 
       if (filteredCourses && filteredCourses.length > 0) setCourses(filteredCourses);
 
       const plainMatrix: Record<string, Record<string, MatrixCell>> = {};
-      allStaffProfiles?.forEach((s: any) => { if (s.profiles) plainMatrix[s.profiles.id] = {}; });
+      allStaffProfiles?.forEach((s) => { if (s.profiles) plainMatrix[s.profiles.id] = {}; });
 
-      allTrainingData?.forEach((t: any) => {
+      allTrainingData?.forEach((t) => {
         if (t.completed_at_location_id === selectedLocation && plainMatrix[t.staff_id]) {
           const effectiveCourseId = careskillsToBaseMap.get(t.course_id) || t.course_id;
           plainMatrix[t.staff_id][effectiveCourseId] = {
@@ -595,7 +726,7 @@ export function MatrixProvider({ children }: { children: React.ReactNode }) {
     }
   }
 
-  async function saveCourseChanges(courseId: string, updates: Partial<Course>, skipRefresh = false) {
+  async function saveCourseChanges(courseId: string, updates: CourseUpdate, skipRefresh = false) {
     try {
       const response = await fetch('/api/update-course', {
         method: 'POST',
@@ -686,8 +817,8 @@ export function MatrixProvider({ children }: { children: React.ReactNode }) {
 
   const persistStaffOrdering = async (orderedStaff: Staff[]) => {
     if (!selectedLocation) return;
-    const staffRows: any[] = [];
-    const dividerUpdates: any[] = [];
+    const staffRows: Array<{ staff_id: string; location_id: string; display_order: number }> = [];
+    const dividerUpdates: Array<{ divider_id: string; display_order: number }> = [];
 
     orderedStaff.forEach((s, idx) => {
       const displayOrder = idx + 1;
@@ -820,7 +951,7 @@ export function MatrixProvider({ children }: { children: React.ReactNode }) {
   // because the browser anon client is blocked by RLS on divider/staff_locations
   // writes. On success we reload authoritative state via fetchMatrixData.
 
-  const callStaffGroupApi = async (body: Record<string, any>) => {
+  const callStaffGroupApi = async (body: Record<string, unknown>) => {
     const { data: sessionData } = await supabase.auth.getSession();
     const token = sessionData.session?.access_token;
     const headers: Record<string, string> = { 'Content-Type': 'application/json' };
@@ -860,7 +991,7 @@ export function MatrixProvider({ children }: { children: React.ReactNode }) {
     const target = name.trim();
     const idSet = new Set(courseIds);
     const changes: { id: string; category: string | null }[] = [];
-    courses.forEach((c: any) => {
+    courses.forEach((c: Course) => {
       const oldCat = c.category ?? null;
       let newCat: string | null;
       if (idSet.has(c.id)) newCat = target || null;
@@ -870,7 +1001,7 @@ export function MatrixProvider({ children }: { children: React.ReactNode }) {
     });
     if (changes.length === 0) return;
 
-    setCourses(courses.map((c: any) => {
+    setCourses(courses.map((c: Course) => {
       const ch = changes.find(x => x.id === c.id);
       return ch ? { ...c, category: ch.category || undefined } : c;
     }));
@@ -879,7 +1010,7 @@ export function MatrixProvider({ children }: { children: React.ReactNode }) {
       saveCategoryOverride(selectedLocation, ch.id, ch.category || '');
       // category can be null (clears the group in the DB); saveCourseChanges
       // forwards it to the update-course endpoint verbatim.
-      await saveCourseChanges(ch.id, { category: ch.category } as Partial<Course>, true);
+      await saveCourseChanges(ch.id, { category: ch.category }, true);
     }
   };
 
@@ -987,7 +1118,7 @@ export function MatrixProvider({ children }: { children: React.ReactNode }) {
 
   async function updateAllExpiriesForCourse(courseId: string, newExpiryMonths: number, neverExpires: boolean = false) {
     try {
-      let allTrainings: any[] = [];
+      let allTrainings: Array<{ id: string; completion_date: string }> = [];
       let pageNum = 0;
       const pageSize = 1000;
       let hasMore = true;
@@ -1084,16 +1215,16 @@ export function MatrixProvider({ children }: { children: React.ReactNode }) {
       const targetLocations = new Set<string>();
       targetLocations.add(selectedLocation);
       if (!staffLocsError && staffLocs) {
-        staffLocs.forEach((sl: any) => {
+        staffLocs.forEach((sl: { location_id: string | null }) => {
           if (sl.location_id) targetLocations.add(sl.location_id);
         });
       }
 
-      let savedRecord: any = null;
-      let saveError: any = null;
+      let savedRecord: Pick<MatrixTrainingRow, 'id' | 'completion_date' | 'expiry_date' | 'status'> | null = null;
+      let saveError: { message: string } | null = null;
 
       for (const locId of targetLocations) {
-        const upsertData: any = {
+        const upsertData: Record<string, string | null> = {
           staff_id: staffId,
           course_id: courseId,
           completion_date: effectiveCompletionDate || null,

@@ -1,8 +1,6 @@
 'use client';
 
-import { Fragment, useEffect, useMemo, useRef, useState } from 'react';
-import { useRouter } from 'next/navigation';
-import UniformButton from './UniformButton';
+import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import BackButton from '@/app/components/BackButton';
 import { supabase } from '@/lib/supabase';
 import { ClockIcon, ExclamationCircleIcon, CalendarIcon } from '@/app/components/icons';
@@ -250,7 +248,6 @@ function SymbolHoverCount({
 }
 
 export default function TrainingCourseChecker({ isDark }: { isDark: boolean }) {
-  const router = useRouter();
   const [loading, setLoading] = useState(false);
   const [status, setStatus] = useState('Ready to load course breakdown');
   const [courseStats, setCourseStats] = useState<CourseStats[]>([]);
@@ -283,13 +280,7 @@ export default function TrainingCourseChecker({ isDark }: { isDark: boolean }) {
     loadAtlasCourses();
   }, []);
 
-  useEffect(() => {
-    if (hasLoaded) return;
-    setHasLoaded(true);
-    fetchBreakdown();
-  }, [hasLoaded]);
-
-  async function ensureAtlasCourses(): Promise<string[]> {
+  const ensureAtlasCourses = useCallback(async (): Promise<string[]> => {
     if (atlasCourses.length > 0) return atlasCourses;
     try {
       const res = await fetch('/api/matrix-headers');
@@ -302,9 +293,9 @@ export default function TrainingCourseChecker({ isDark }: { isDark: boolean }) {
       console.error('Failed to load Atlas courses:', error);
       return [];
     }
-  }
+  }, [atlasCourses]);
 
-  async function fetchBreakdown() {
+  const fetchBreakdown = useCallback(async () => {
     setLoading(true);
     setStatus('Loading course breakdown...');
 
@@ -409,7 +400,7 @@ export default function TrainingCourseChecker({ isDark }: { isDark: boolean }) {
           staffName: record.name || 'Unknown Staff',
           courseName: canonicalCourseName(record.course || 'Unknown Course'),
           location,
-          date: record.expiry || (record as any).allocatedTrainingDate,
+          date: record.expiry || (typeof record.allocatedTrainingDate === 'string' ? record.allocatedTrainingDate : undefined),
           type: 'allocated',
         });
       }
@@ -438,13 +429,19 @@ export default function TrainingCourseChecker({ isDark }: { isDark: boolean }) {
       setCourseStats(stats);
       setExpandedCourse(null);
       setStatus(`Loaded ${stats.length} courses across all locations`);
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error('Error loading breakdown:', error);
-      setStatus(error?.message || 'Error loading breakdown');
+      setStatus(error instanceof Error ? error.message : 'Error loading breakdown');
     } finally {
       setLoading(false);
     }
-  }
+  }, [ensureAtlasCourses]);
+
+  useEffect(() => {
+    if (hasLoaded) return;
+    setHasLoaded(true);
+    void fetchBreakdown();
+  }, [fetchBreakdown, hasLoaded]);
 
   const filteredStats = useMemo(() => courseStats, [courseStats]);
 
@@ -706,9 +703,9 @@ export default function TrainingCourseChecker({ isDark }: { isDark: boolean }) {
                         }`}
                       >
                         <span className={`inline-flex items-center gap-1 justify-center ${col.color || ''}`}>
-                          {(col as any).icon === 'clock' && <ClockIcon className="w-4 h-4" />}
-                          {(col as any).icon === 'exclamation' && <ExclamationCircleIcon className="w-4 h-4" />}
-                          {(col as any).icon === 'calendar' && <CalendarIcon className="w-4 h-4" />}
+                          {col.icon === 'clock' && <ClockIcon className="w-4 h-4" />}
+                          {col.icon === 'exclamation' && <ExclamationCircleIcon className="w-4 h-4" />}
+                          {col.icon === 'calendar' && <CalendarIcon className="w-4 h-4" />}
                           {col.label}
                         </span>
                         {sortKey === col.key && (sortDir === 'desc' ? ' ↓' : ' ↑')}

@@ -21,11 +21,25 @@ interface Divider {
   location_id: string;
   is_duplicate: boolean;
 }
+interface StaffLocationLink { location_id: string; locations?: { name?: string | null } | { name?: string | null }[] | null }
+interface DuplicateCandidate {
+  id: string;
+  email?: string | null;
+  full_name?: string | null;
+  location?: string | null;
+  is_deleted?: boolean;
+  created_at?: string | null;
+  staff_locations?: StaffLocationLink[];
+}
+interface DividerSourceRow {
+  staff_id: string;
+  location_id: string;
+  profiles?: { full_name?: string | null } | null;
+}
 
 export default function DuplicateRemovalModal({ onClose }: { onClose: () => void }) {
   const [isDark, setIsDark] = useState(true);
   const [activeTab, setActiveTab] = useState<'staff' | 'dividers'>('staff');
-  const [loading, setLoading] = useState(false);
   const [analyzing, setAnalyzing] = useState(false);
   const [duplicateStaff, setDuplicateStaff] = useState<DuplicateStaff[]>([]);
   const [duplicateDividers, setDuplicateDividers] = useState<Divider[]>([]);
@@ -73,7 +87,7 @@ export default function DuplicateRemovalModal({ onClose }: { onClose: () => void
         return dp[m][n];
       };
 
-      const emailsCompatibleForMerge = (a: any, b: any): boolean => {
+      const emailsCompatibleForMerge = (a: DuplicateCandidate, b: DuplicateCandidate): boolean => {
         const emailA = String(a?.email || '').trim().toLowerCase();
         const emailB = String(b?.email || '').trim().toLowerCase();
         if (!emailA || !emailB) return true;
@@ -99,23 +113,24 @@ export default function DuplicateRemovalModal({ onClose }: { onClose: () => void
         .order('created_at', { ascending: true });
 
       if (allStaff) {
-        const toDuplicateStaff = (staff: any): DuplicateStaff => {
+        const toDuplicateStaff = (staff: DuplicateCandidate): DuplicateStaff => {
           const locationNames = (staff.staff_locations || [])
-            .map((sl: any) => sl.locations?.name)
+            .map((sl) => Array.isArray(sl.locations) ? sl.locations[0]?.name : sl.locations?.name)
             .filter(Boolean);
           return {
             id: staff.id,
             email: staff.email || '',
-            full_name: staff.full_name,
+            full_name: staff.full_name || 'Unknown Staff',
             location: locationNames.length > 0 ? locationNames.join(', ') : (staff.location || 'Unknown'),
-            is_deleted: staff.is_deleted,
-            created_at: staff.created_at,
+            is_deleted: Boolean(staff.is_deleted),
+            created_at: staff.created_at || '',
           };
         };
 
         const duplicateById = new Map<string, DuplicateStaff>();
+        const staffRows = allStaff as unknown as DuplicateCandidate[];
 
-        const markDuplicate = (staff: any, reason: string) => {
+        const markDuplicate = (staff: DuplicateCandidate, reason: string) => {
           if (!staff?.id) return;
           if (duplicateById.has(staff.id)) return;
           duplicateById.set(staff.id, {
@@ -125,8 +140,8 @@ export default function DuplicateRemovalModal({ onClose }: { onClose: () => void
         };
 
         // Rule 1: duplicate email (legacy behavior, but now null-safe)
-        const emailGroups = new Map<string, any[]>();
-        allStaff.forEach((staff: any) => {
+        const emailGroups = new Map<string, DuplicateCandidate[]>();
+        staffRows.forEach((staff) => {
           const email = String(staff.email || '').trim().toLowerCase();
           if (!email) return;
           if (!emailGroups.has(email)) {
@@ -147,13 +162,13 @@ export default function DuplicateRemovalModal({ onClose }: { onClose: () => void
         });
 
         // Rule 2: duplicate full_name in the same location
-        const nameLocationGroups = new Map<string, any[]>();
-        allStaff.forEach((staff: any) => {
+        const nameLocationGroups = new Map<string, DuplicateCandidate[]>();
+        staffRows.forEach((staff) => {
           const normalizedName = String(staff.full_name || '').trim().toLowerCase().replace(/\s+/g, ' ');
           if (!normalizedName) return;
 
           const locationIds = (staff.staff_locations || [])
-            .map((sl: any) => sl.location_id)
+            .map((sl) => sl.location_id)
             .filter(Boolean);
 
           locationIds.forEach((locationId: string) => {
@@ -169,7 +184,7 @@ export default function DuplicateRemovalModal({ onClose }: { onClose: () => void
           if (entries.length > 1) {
             const distinctNonEmptyEmails = new Set(
               entries
-                .map((entry: any) => String(entry.email || '').trim().toLowerCase())
+                .map((entry) => String(entry.email || '').trim().toLowerCase())
                 .filter(Boolean)
             );
 
@@ -190,10 +205,10 @@ export default function DuplicateRemovalModal({ onClose }: { onClose: () => void
 
         // Rule 3: near-identical name variant in the same location (e.g. spelling variation),
         // only when emails are compatible to avoid false positives.
-        const locationGroups = new Map<string, any[]>();
-        allStaff.forEach((staff: any) => {
+        const locationGroups = new Map<string, DuplicateCandidate[]>();
+        staffRows.forEach((staff) => {
           const locationIds = (staff.staff_locations || [])
-            .map((sl: any) => sl.location_id)
+            .map((sl) => sl.location_id)
             .filter(Boolean);
           locationIds.forEach((locationId: string) => {
             if (!locationGroups.has(locationId)) {
@@ -243,10 +258,10 @@ export default function DuplicateRemovalModal({ onClose }: { onClose: () => void
         const dividers: Divider[] = [];
         const dividerMap = new Map<string, string[]>(); // location_id -> divider names
 
-        allStaffData.forEach((item: any) => {
+        const dividerRows = allStaffData as unknown as DividerSourceRow[];
+        dividerRows.forEach((item) => {
           const name = (item.profiles?.full_name || '').toLowerCase();
           if (dividerKeywords.some(keyword => name.includes(keyword))) {
-            const key = `${item.location_id}|${name}`;
             const locationKey = item.location_id;
             
             if (!dividerMap.has(locationKey)) {

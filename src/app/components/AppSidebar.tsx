@@ -4,7 +4,6 @@ import { useState, useEffect } from 'react';
 import Icon from './Icon';
 import type { IconName } from './Icon';
 import { usePathname, useRouter } from 'next/navigation';
-import { signOutClientSide } from '@/lib/clientSignOut';
 import { useCurrentUserProfile } from '@/lib/useCurrentUserProfile';
 
 export default function AppSidebar({ isDark }: { isDark: boolean }) {
@@ -56,15 +55,6 @@ export default function AppSidebar({ isDark }: { isDark: boolean }) {
     (pathname.startsWith(app.path) && app.id !== 'dashboard')
   );
 
-  async function handleSignOut() {
-    try {
-      await signOutClientSide();
-    } catch (error) {
-      console.error('Error signing out:', error);
-      return;
-    }
-    router.replace('/login');
-  }
   useEffect(() => {
     // Close mobile sidebar when route changes
     setShowMobileSidebar(false);

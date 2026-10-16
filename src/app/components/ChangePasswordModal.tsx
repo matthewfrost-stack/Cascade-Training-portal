@@ -4,12 +4,11 @@ import { useState } from 'react';
 import { supabase } from '@/lib/supabase';
 
 interface ChangePasswordModalProps {
-  userId: string;
   onClose: () => void;
   onSuccess: () => void;
 }
 
-export default function ChangePasswordModal({ userId, onClose, onSuccess }: ChangePasswordModalProps) {
+export default function ChangePasswordModal({ onClose, onSuccess }: ChangePasswordModalProps) {
   const [currentPassword, setCurrentPassword] = useState('');
   const [newPassword, setNewPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');

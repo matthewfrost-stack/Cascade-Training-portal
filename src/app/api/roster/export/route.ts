@@ -3,6 +3,26 @@ import { createServiceClient, getScopedLocationIds, requireRole } from '@/lib/ap
 
 export const dynamic = 'force-dynamic';
 
+type StaffExportRow = {
+  staff_id: string;
+  display_order?: number | null;
+  profiles?: { full_name?: string; email?: string } | { full_name?: string; email?: string }[] | null;
+};
+type CourseExportRow = {
+  course_id: string;
+  display_order?: number | null;
+  courses?: { name?: string; category?: string | null } | { name?: string; category?: string | null }[] | null;
+};
+type TrainingRecord = {
+  staff_id: string;
+  course_id: string;
+  completion_date?: string | null;
+  expiry_date?: string | null;
+  status?: string | null;
+};
+type ExportStaff = { id: string; name: string; email: string };
+type ExportCourse = { id: string; name: string; category: string };
+
 export async function GET(request: NextRequest) {
   try {
     const authz = await requireRole(['manager', 'scheduler', 'admin']);
@@ -33,8 +53,8 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: 'Failed to fetch staff' }, { status: 500 });
     }
 
-    let courseData: any = null;
-    let courseError: any = null;
+    let courseData: CourseExportRow[] | null = null;
+    let courseError: { code?: string; message?: string } | null = null;
 
     {
       const res = await supabase
@@ -42,7 +62,7 @@ export async function GET(request: NextRequest) {
         .select('course_id, courses(name, category), display_order')
         .eq('location_id', locationId)
         .order('display_order', { ascending: true });
-      courseData = res.data;
+      courseData = res.data as CourseExportRow[] | null;
       courseError = res.error;
     }
 
@@ -55,7 +75,7 @@ export async function GET(request: NextRequest) {
         .select('course_id, courses(name), display_order')
         .eq('location_id', locationId)
         .order('display_order', { ascending: true });
-      courseData = fallback.data;
+      courseData = fallback.data as CourseExportRow[] | null;
       courseError = fallback.error;
     }
 
@@ -74,22 +94,22 @@ export async function GET(request: NextRequest) {
     }
 
     // Build matrix
-    const trainingMap = new Map<string, any>();
-    (trainingData || []).forEach((record) => {
+    const trainingMap = new Map<string, TrainingRecord>();
+    (trainingData || []).forEach((record: TrainingRecord) => {
       const key = `${record.staff_id}|${record.course_id}`;
       trainingMap.set(key, record);
     });
 
-    const staff = (staffData || []).map((s: any) => ({
+    const staff: ExportStaff[] = (staffData as StaffExportRow[] || []).map((s) => ({
       id: s.staff_id,
-      name: s.profiles?.full_name || 'Unknown',
-      email: s.profiles?.email || '',
+      name: (Array.isArray(s.profiles) ? s.profiles[0] : s.profiles)?.full_name || 'Unknown',
+      email: (Array.isArray(s.profiles) ? s.profiles[0] : s.profiles)?.email || '',
     }));
 
-    const courses: Array<{ id: string; name: string; category: string }> = (courseData || []).map((c: any) => ({
+    const courses: ExportCourse[] = (courseData || []).map((c) => ({
       id: c.course_id,
-      name: c.courses?.name || 'Unknown',
-      category: c.courses?.category || '',
+      name: (Array.isArray(c.courses) ? c.courses[0] : c.courses)?.name || 'Unknown',
+      category: (Array.isArray(c.courses) ? c.courses[0] : c.courses)?.category || '',
     }));
 
     if (format === 'json') {
@@ -103,9 +123,9 @@ export async function GET(request: NextRequest) {
     // CSV format
     let csv = 'Staff Name,Email,' + courses.map((c) => c.name).join(',') + '\n';
 
-    staff.forEach((s: any) => {
+    staff.forEach((s) => {
       const row = [s.name, s.email];
-      courses.forEach((c: any) => {
+      courses.forEach((c) => {
         const key = `${s.id}|${c.id}`;
         const record = trainingMap.get(key);
         if (record?.status === 'completed') {

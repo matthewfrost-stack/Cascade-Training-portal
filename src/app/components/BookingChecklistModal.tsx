@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { supabase } from '@/lib/supabase';
 import UniformButton from './UniformButton';
 import Icon from './Icon';
@@ -12,6 +12,14 @@ type TemplateItem = {
   item_order: number;
   is_active: boolean;
   is_invoice_number: boolean;
+};
+type ChecklistItem = { id: string; booking_id?: string; item_name: string; item_order: number };
+type ChecklistCompletion = {
+  checklist_item_id: string;
+  value?: string | null;
+  completed_by?: string;
+  completed_by_name?: string;
+  completed_at?: string;
 };
 
 export default function BookingChecklistModal({ 
@@ -27,8 +35,8 @@ export default function BookingChecklistModal({
   userName: string;
   userId: string;
 }) {
-  const [checklist, setChecklist] = useState<any[]>([]);
-  const [completions, setCompletions] = useState<any>({});
+  const [checklist, setChecklist] = useState<ChecklistItem[]>([]);
+  const [completions, setCompletions] = useState<Record<string, ChecklistCompletion>>({});
   const [invoiceNumber, setInvoiceNumber] = useState('');
   const [invoiceItemNames, setInvoiceItemNames] = useState<Set<string>>(new Set(['Invoice Number']));
   const [loading, setLoading] = useState(false);
@@ -37,15 +45,9 @@ export default function BookingChecklistModal({
   const canAccessChecklist = userRole === 'scheduler' || userRole === 'admin';
 
   useEffect(() => {
-    checkTheme();
-    if (canAccessChecklist) {
-      fetchChecklist();
-    }
-  }, [bookingId, canAccessChecklist]);
-
-  useEffect(() => {
-    const handleThemeChange = (event: any) => {
-      setIsDark(event.detail.isDark);
+    const handleThemeChange = (event: Event) => {
+      const customEvent = event as CustomEvent<{ isDark?: boolean }>;
+      if (typeof customEvent.detail?.isDark === 'boolean') setIsDark(customEvent.detail.isDark);
     };
     
     window.addEventListener('themeChange', handleThemeChange);
@@ -60,7 +62,7 @@ export default function BookingChecklistModal({
     }
   }
 
-  async function fetchChecklist() {
+  const fetchChecklist = useCallback(async () => {
     try {
       setError(null);
       debugLog('Fetching checklist for booking:', bookingId);
@@ -99,14 +101,14 @@ export default function BookingChecklistModal({
       }
       debugLog('Existing items:', allExistingItems);
 
-      const existingItems = Array.isArray(allExistingItems) ? allExistingItems : [];
+      const existingItems = (Array.isArray(allExistingItems) ? allExistingItems : []) as ChecklistItem[];
 
       if (templateItems.length === 0) {
         setError('Checklist template is empty. Add items in Admin → Checklist Template.');
         return;
       }
 
-      let finalChecklistItems: any[] = [];
+      let finalChecklistItems: ChecklistItem[] = [];
       if (existingItems.length === 0) {
         debugLog('Creating new checklist items from template...');
         const itemsToInsert = templateItems.map((t) => ({
@@ -122,10 +124,10 @@ export default function BookingChecklistModal({
           return;
         }
         debugLog('New items created:', newItems);
-        finalChecklistItems = (newItems || []).sort((a: any, b: any) => (a.item_order || 0) - (b.item_order || 0));
+        finalChecklistItems = ((newItems || []) as ChecklistItem[]).sort((a, b) => (a.item_order || 0) - (b.item_order || 0));
         setChecklist(finalChecklistItems);
       } else {
-        const existingNameSet = new Set(existingItems.map((i: any) => i.item_name).filter(Boolean));
+        const existingNameSet = new Set(existingItems.map((i) => i.item_name).filter(Boolean));
         const missingTemplateItems = templateItems.filter((t) => !existingNameSet.has(t.item_name));
 
         if (missingTemplateItems.length > 0) {
@@ -143,7 +145,7 @@ export default function BookingChecklistModal({
           }
         }
 
-        const visibleExisting = existingItems.filter((i: any) => templateNames.includes(i.item_name));
+        const visibleExisting = existingItems.filter((i) => templateNames.includes(i.item_name));
 
         // Ensure the per-booking orders stay aligned with the template order
         const updates: Array<{ id: string; item_order: number }> = [];
@@ -169,7 +171,7 @@ export default function BookingChecklistModal({
           setError(`Failed to refresh checklist items: ${refreshError.message}`);
           return;
         }
-        finalChecklistItems = refreshedItems || [];
+        finalChecklistItems = (refreshedItems || []) as ChecklistItem[];
         setChecklist(finalChecklistItems);
       }
 
@@ -186,7 +188,7 @@ export default function BookingChecklistModal({
       }
       debugLog('Completions data:', completionData);
 
-      const completionMap: any = {};
+      const completionMap: Record<string, ChecklistCompletion> = {};
       completionData?.forEach(comp => {
         completionMap[comp.checklist_item_id] = comp;
       });
@@ -194,17 +196,24 @@ export default function BookingChecklistModal({
 
       // Set invoice number if it exists
       const invoiceItem = completionData?.find(comp => {
-        const item = finalChecklistItems.find((i: any) => i.id === comp.checklist_item_id);
+        const item = finalChecklistItems.find((i) => i.id === comp.checklist_item_id);
         return item?.item_name && invoiceNameSet.has(item.item_name);
       });
       if (invoiceItem?.value) {
         setInvoiceNumber(invoiceItem.value);
       }
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error('Error in fetchChecklist:', error);
-      setError(error.message || 'An unexpected error occurred');
+      setError(error instanceof Error ? error.message : 'An unexpected error occurred');
     }
-  }
+  }, [bookingId]);
+
+  useEffect(() => {
+    checkTheme();
+    if (canAccessChecklist) {
+      void fetchChecklist();
+    }
+  }, [canAccessChecklist, fetchChecklist]);
 
   const handleToggleItem = async (itemId: string, itemName: string, isCompleting: boolean) => {
     if (userRole !== 'scheduler' && userRole !== 'admin') {
@@ -240,8 +249,8 @@ export default function BookingChecklistModal({
       }
 
       await fetchChecklist();
-    } catch (error: any) {
-      alert(error.message || 'Failed to update checklist');
+    } catch (error: unknown) {
+      alert(error instanceof Error ? error.message : 'Failed to update checklist');
     } finally {
       setLoading(false);
     }
@@ -286,8 +295,8 @@ export default function BookingChecklistModal({
       }
 
       await fetchChecklist();
-    } catch (error: any) {
-      alert(error.message || 'Failed to save invoice number');
+    } catch (error: unknown) {
+      alert(error instanceof Error ? error.message : 'Failed to save invoice number');
     }
   };
 
@@ -430,7 +439,7 @@ export default function BookingChecklistModal({
                       {completion && (
                         <div style={{ color: isDark ? '#94a3b8' : '#64748b' }} className="text-[9px] mt-2 space-y-1">
                           <p><span className="font-bold">Completed by:</span> {completion.completed_by_name}</p>
-                          <p><span className="font-bold">Time:</span> {new Date(completion.completed_at).toLocaleString()}</p>
+                          <p><span className="font-bold">Time:</span> {completion.completed_at ? new Date(completion.completed_at).toLocaleString() : 'Unknown'}</p>
                         </div>
                       )}
                     </div>

@@ -18,6 +18,27 @@ type ImportSummary = {
   linkedCourseLinks: number;
   errors: number;
 };
+type StaffRow = { id?: string; full_name?: string };
+type DividerRow = { id?: string; name?: string };
+type CourseRef = {
+  id?: string;
+  name?: string;
+  expiry_months?: number | null;
+  never_expires?: boolean | null;
+};
+type LocationCourseRow = { training_course_id?: string; training_courses?: CourseRef | CourseRef[] | null };
+type TrainingCourseRow = CourseRef & { category?: string | null };
+type TrainingMatrixRow = { id?: string; staff_id?: string; course_id?: string };
+type CourseInsertResult = { id?: string; expiry_months?: number | null; never_expires?: boolean | null; category?: string | null };
+type CourseUpdatePayload = { expiry_months?: number; never_expires?: boolean; category?: string };
+type TrainingUpsert = {
+  staff_id: string;
+  course_id: string;
+  completion_date: string | null;
+  expiry_date: string | null;
+  status: string;
+  completed_at_location_id: string;
+};
 
 function cleanCell(value: string): string {
   return value.replace(/\s+/g, ' ').trim();
@@ -115,10 +136,6 @@ function parseLogicalRows(content: string, maxRows = 20000): string[][] {
   }
 
   return rows;
-}
-
-function normalizeName(value: string): string {
-  return value.trim().toLowerCase().replace(/\s+/g, ' ');
 }
 
 function parseDdMmYyyy(input: string): string | null {
@@ -308,7 +325,7 @@ export async function POST(request: NextRequest) {
 
     if (staffErr) return NextResponse.json({ error: staffErr.message }, { status: 400 });
     const staffMap = new Map<string, string>();
-    (staffRows || []).forEach((s: any) => {
+    (staffRows || []).forEach((s: StaffRow) => {
       if (!s?.id || !s?.full_name) return;
       staffMap.set(normalizeStaffName(String(s.full_name)), String(s.id));
     });
@@ -320,7 +337,7 @@ export async function POST(request: NextRequest) {
 
     const existingDividerMap = new Map<string, { id: string; name: string }>();
     if (!existingDividersErr) {
-      (existingDividers || []).forEach((d: any) => {
+      (existingDividers || []).forEach((d: DividerRow) => {
         if (!d?.id || !d?.name) return;
         existingDividerMap.set(normalizeKey(String(d.name)), { id: String(d.id), name: String(d.name) });
       });
@@ -335,7 +352,7 @@ export async function POST(request: NextRequest) {
     if (courseErr) return NextResponse.json({ error: courseErr.message }, { status: 400 });
 
     const courseMap = new Map<string, { id: string; expiryMonths: number | null; neverExpires: boolean | null }>();
-    (locationCourses || []).forEach((lc: any) => {
+    (locationCourses || []).forEach((lc: LocationCourseRow) => {
       const c = Array.isArray(lc.training_courses) ? lc.training_courses[0] : lc.training_courses;
       if (!c?.id || !c?.name) return;
       courseMap.set(normalizeKey(String(c.name)), {
@@ -351,7 +368,7 @@ export async function POST(request: NextRequest) {
     if (allCoursesErr) return NextResponse.json({ error: allCoursesErr.message }, { status: 400 });
 
     const globalCourseMap = new Map<string, { id: string; expiryMonths: number | null; neverExpires: boolean | null; category: string | null }>();
-    (allTrainingCourses || []).forEach((c: any) => {
+    (allTrainingCourses || []).forEach((c: TrainingCourseRow) => {
       if (!c?.id || !c?.name) return;
       globalCourseMap.set(normalizeKey(String(c.name)), {
         id: String(c.id),
@@ -392,8 +409,9 @@ export async function POST(request: NextRequest) {
           .insert([{ name: header, expiry_months: 12, never_expires: false }])
           .select('id, expiry_months, never_expires')
           .single();
-        if (insertErr) {
-          if (errorMessages.size < 10) errorMessages.add(insertErr.message);
+        const createdCourse = inserted;
+        if (insertErr || !createdCourse?.id) {
+          if (errorMessages.size < 10) errorMessages.add(String(insertErr?.message || `Could not create course ${name}`));
           continue;
         }
         courseId = String(inserted.id);
@@ -436,15 +454,15 @@ export async function POST(request: NextRequest) {
       }
 
       if (!hit) {
-        const upsertPayload: any = {
+        const upsertPayload: CourseUpdatePayload & { name: string } = {
           name,
           expiry_months: expiryInfo.expiryMonths ?? 12,
           never_expires: expiryInfo.neverExpires,
         };
         if (category) upsertPayload.category = category;
 
-        let inserted: any = null;
-        let insertErr: any = null;
+        let inserted: CourseInsertResult | null = null;
+        let insertErr: { code?: string; message?: string } | null = null;
 
         const initialInsert = await authz.service
           .from('training_courses')
@@ -469,17 +487,18 @@ export async function POST(request: NextRequest) {
           insertErr = retryInsert.error;
         }
 
-        if (insertErr) {
-          if (errorMessages.size < 10) errorMessages.add(insertErr.message);
+        const createdCourse = inserted;
+        if (insertErr || !createdCourse?.id) {
+          if (errorMessages.size < 10) errorMessages.add(String(insertErr?.message || `Could not create course ${name}`));
           colToCourse.push(null);
           unknownCourseColumns.push(name);
           continue;
         }
 
         hit = {
-          id: String(inserted.id),
-          expiryMonths: typeof inserted.expiry_months === 'number' ? inserted.expiry_months : null,
-          neverExpires: typeof inserted.never_expires === 'boolean' ? inserted.never_expires : null,
+          id: String(createdCourse.id),
+          expiryMonths: typeof createdCourse.expiry_months === 'number' ? createdCourse.expiry_months : null,
+          neverExpires: typeof createdCourse.never_expires === 'boolean' ? createdCourse.never_expires : null,
         };
         summary.createdCourses += 1;
 
@@ -487,7 +506,7 @@ export async function POST(request: NextRequest) {
           id: hit.id,
           expiryMonths: hit.expiryMonths,
           neverExpires: hit.neverExpires,
-          category: typeof inserted.category === 'string' ? inserted.category : category,
+          category: typeof createdCourse.category === 'string' ? createdCourse.category : category,
         });
       }
 
@@ -495,7 +514,7 @@ export async function POST(request: NextRequest) {
         courseMap.set(normalizedHeader, { id: hit.id, expiryMonths: hit.expiryMonths, neverExpires: hit.neverExpires });
       }
 
-      const courseUpdates: any = {};
+      const courseUpdates: CourseUpdatePayload = {};
       if (expiryInfo.neverExpires !== hit.neverExpires || (expiryInfo.expiryMonths !== null && expiryInfo.expiryMonths !== hit.expiryMonths)) {
         courseUpdates.expiry_months = expiryInfo.neverExpires ? 9999 : expiryInfo.expiryMonths ?? hit.expiryMonths ?? 12;
         courseUpdates.never_expires = expiryInfo.neverExpires;
@@ -573,7 +592,7 @@ export async function POST(request: NextRequest) {
         summary.errors++;
         if (errorMessages.size < 10) errorMessages.add(existingErr.message);
       } else {
-        (existingRows || []).forEach((row: any) => {
+        (existingRows || []).forEach((row: TrainingMatrixRow) => {
           if (!row?.id || !row?.staff_id || !row?.course_id) return;
           existingRecordMap.set(`${row.staff_id}|${row.course_id}`, { id: String(row.id) });
         });
@@ -602,7 +621,7 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    const upserts: any[] = [];
+    const upserts: TrainingUpsert[] = [];
     const seenTrainingKeys = new Set<string>();
     const staffDisplayOrderUpdates: Map<string, number> = new Map();
     let staffRowPosition = 1;
@@ -777,12 +796,12 @@ export async function POST(request: NextRequest) {
         if (errorMessages.size < 10) errorMessages.add(existingRowsError.message);
       } else {
         const deleteIds = (existingRows || [])
-          .filter((row: any) => {
+          .filter((row: TrainingMatrixRow) => {
             if (!row?.id || !row?.staff_id || !row?.course_id) return false;
             const key = `${row.staff_id}|${row.course_id}`;
             return !seenTrainingKeys.has(key);
           })
-          .map((row: any) => String(row.id));
+          .map((row: TrainingMatrixRow) => String(row.id));
 
         const deleteChunkSize = 500;
         for (let i = 0; i < deleteIds.length; i += deleteChunkSize) {

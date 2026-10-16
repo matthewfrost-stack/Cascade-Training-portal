@@ -2,8 +2,10 @@
 
 import { useState, useEffect } from 'react';
 import { supabase } from '@/lib/supabase';
-import { getEmailTestHeaders } from '@/lib/emailTestMode';
 import Icon from './Icon';
+
+type ScheduleCourse = { id: string; name: string };
+type ScheduleVenue = { id: string; name: string };
 
 export default function ScheduleModal({
   onClose,
@@ -14,8 +16,8 @@ export default function ScheduleModal({
   onRefresh: () => void;
   defaultDate?: string;
 }) {
-  const [courses, setCourses] = useState<any[]>([]);
-  const [venues, setVenues] = useState<any[]>([]);
+  const [courses, setCourses] = useState<ScheduleCourse[]>([]);
+  const [venues, setVenues] = useState<ScheduleVenue[]>([]);
   const [loading, setLoading] = useState(false);
   const [isDark, setIsDark] = useState(true);
   
@@ -44,8 +46,9 @@ export default function ScheduleModal({
   }, []);
 
   useEffect(() => {
-    const handleThemeChange = (event: any) => {
-      setIsDark(event.detail.isDark);
+    const handleThemeChange = (event: Event) => {
+      const customEvent = event as CustomEvent<{ isDark?: boolean }>;
+      if (typeof customEvent.detail?.isDark === 'boolean') setIsDark(customEvent.detail.isDark);
     };
     
     window.addEventListener('themeChange', handleThemeChange);

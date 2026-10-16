@@ -12,6 +12,23 @@ interface CourseData {
   allocatedTrainingDate: boolean;
   isOneOff: boolean;
 }
+type CourseRef = { id?: string; name?: string; expiry_months?: number; never_expires?: boolean };
+type CourseLinkRow = {
+  location_id?: string | null;
+  training_course_id?: string | null;
+  training_courses?: CourseRef | CourseRef[] | null;
+};
+type TrainingCourseRow = {
+  course_id?: string | null;
+  completed_at_location_id?: string | null;
+  profiles?: { full_name?: string; is_deleted?: boolean } | { full_name?: string; is_deleted?: boolean }[] | null;
+  training_courses?: CourseRef | CourseRef[] | null;
+  locations?: { name?: string } | { name?: string }[] | null;
+};
+type ServiceQuery = {
+  in: (column: string, values: string[]) => ServiceQuery;
+  range: (from: number, to: number) => Promise<{ data: Record<string, unknown>[] | null; error: { message?: string; code?: string } | null }>;
+};
 
 function isDeletedProfile(profile: { full_name?: string; is_deleted?: boolean } | null): boolean {
   if (!profile) return false;
@@ -57,21 +74,20 @@ function buildCareskillsAliasMap(courses: Array<{ id?: string; name?: string }>)
 }
 
 async function fetchAllRows(
-  supabase: any,
+  supabase: ReturnType<typeof createServiceClient>,
   table: string,
   selectClause: string,
-  applyFilters?: (query: any) => any
-): Promise<{ data: any[] | null; error: any | null }> {
+  applyFilters?: (query: ServiceQuery) => ServiceQuery
+): Promise<{ data: Record<string, unknown>[] | null; error: { message?: string; code?: string } | null }> {
   const pageSize = 1000;
   let from = 0;
-  const allRows: any[] = [];
+  const allRows: Record<string, unknown>[] = [];
 
   while (true) {
-    let query = supabase.from(table).select(selectClause);
+    let query = supabase.from(table).select(selectClause) as unknown as ServiceQuery;
     if (applyFilters) query = applyFilters(query);
-    query = query.range(from, from + pageSize - 1);
 
-    const { data, error } = await query;
+    const { data, error } = await query.range(from, from + pageSize - 1);
     if (error) return { data: null, error };
 
     const rows = data || [];
@@ -158,13 +174,13 @@ export async function GET(request: NextRequest) {
     }
 
     const validLocationCourseKeys = new Set(
-      (locationCourseLinks || [])
-        .map((link: any) => buildLocationCourseKey(link.location_id, link.training_course_id))
+      ((locationCourseLinks || []) as CourseLinkRow[])
+        .map((link) => buildLocationCourseKey(link.location_id, link.training_course_id))
         .filter((key): key is string => Boolean(key))
     );
     const validLocationCourseNames = new Set(
-      (locationCourseLinks || [])
-        .map((link: any) => {
+      ((locationCourseLinks || []) as CourseLinkRow[])
+        .map((link) => {
           const linkedCourse = Array.isArray(link.training_courses) ? link.training_courses[0] : link.training_courses;
           const normalizedName = canonicalCourseName(linkedCourse?.name);
           if (!normalizedName || !link.location_id) return null;
@@ -185,17 +201,17 @@ export async function GET(request: NextRequest) {
         { status: 500 }
       );
     }
-    const careskillsAliasMap = buildCareskillsAliasMap(trainingCourses || []);
+    const careskillsAliasMap = buildCareskillsAliasMap((trainingCourses || []) as CourseRef[]);
 
     // Transform data
-    const formattedData: CourseData[] = (allocatedCourses || [])
-      .filter((record: any) => {
+    const formattedData: CourseData[] = ((allocatedCourses || []) as TrainingCourseRow[])
+      .filter((record) => {
         const primaryKey = buildLocationCourseKey(record.completed_at_location_id, record.course_id);
-        const baseCourseId = careskillsAliasMap.get(record.course_id);
+        const baseCourseId = record.course_id ? careskillsAliasMap.get(record.course_id) : undefined;
         const aliasKey = baseCourseId
           ? buildLocationCourseKey(record.completed_at_location_id, baseCourseId)
           : null;
-        const course = record.training_courses as { name?: string } | null;
+        const course = Array.isArray(record.training_courses) ? record.training_courses[0] : record.training_courses;
         const nameKey = record.completed_at_location_id
           ? `${record.completed_at_location_id}::${canonicalCourseName(course?.name)}`
           : null;
@@ -205,11 +221,14 @@ export async function GET(request: NextRequest) {
           || (nameKey && validLocationCourseNames.has(nameKey))
         );
       })
-      .filter((record: any) => !isDeletedProfile(record.profiles as { full_name?: string; is_deleted?: boolean } | null))
-      .map((record: any) => {
-        const course = record.training_courses as { name?: string; expiry_months?: number; never_expires?: boolean } | null;
-        const profiles = record.profiles as { full_name?: string; is_deleted?: boolean } | null;
-        const locations = record.locations as { name?: string } | null;
+      .filter((record) => {
+        const profiles = Array.isArray(record.profiles) ? record.profiles[0] : record.profiles;
+        return !isDeletedProfile(profiles || null);
+      })
+      .map((record) => {
+        const course = Array.isArray(record.training_courses) ? record.training_courses[0] : record.training_courses;
+        const profiles = Array.isArray(record.profiles) ? record.profiles[0] : record.profiles;
+        const locations = Array.isArray(record.locations) ? record.locations[0] : record.locations;
         const isOneOff = course?.never_expires || !course?.expiry_months || course?.expiry_months === 9999;
         
         return {
