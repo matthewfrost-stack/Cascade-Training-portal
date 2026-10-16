@@ -204,6 +204,12 @@ function interpretCell(value: string): InterpretedCell {
   const v = cleanCell(value);
   if (!v) return { kind: 'empty' };
 
+  const dateMatch = v.match(/\b(\d{1,2}[\/\.-]\d{1,2}[\/\.-](?:\d{2}|\d{4}))\b/);
+  if (dateMatch) {
+    const dateIso = parseDdMmYyyy(dateMatch[1]);
+    if (dateIso) return { kind: 'date', dateIso };
+  }
+
   const lower = v.toLowerCase();
   if (lower === 'allocated' || lower === 'booked' || lower === 'awaiting' || lower === 'appointment') return { kind: 'status', status: 'allocated' };
   if (lower === 'not yet due' || lower === 'not yet due.') return { kind: 'status', status: 'not_yet_due' };
@@ -739,23 +745,44 @@ export async function POST(request: NextRequest) {
 
         if (interpreted.kind === 'date') {
           const expiryDateIso = computeExpiryDateIso(interpreted.dateIso, mapping.expiryMonths, mapping.neverExpires);
-          if (expiryDateIso) {
-            const key = `${staffId}|${courseId}`;
-            if (seenTrainingKeys.has(key)) continue;
-            seenTrainingKeys.add(key);
+          const key = `${staffId}|${courseId}`;
+          if (seenTrainingKeys.has(key)) continue;
+          seenTrainingKeys.add(key);
 
-            upserts.push({
-              staff_id: staffId,
-              course_id: courseId,
-              completion_date: interpreted.dateIso,
-              expiry_date: expiryDateIso,
-              status: 'allocated',
-              completed_at_location_id: locationId,
-            });
-            summary.processedCells += 1;
-            summary.upserts += 1;
-          }
+          upserts.push({
+            staff_id: staffId,
+            course_id: courseId,
+            completion_date: interpreted.dateIso,
+            expiry_date: expiryDateIso,
+            status: 'completed',
+            completed_at_location_id: locationId,
+          });
+          summary.processedCells += 1;
+          summary.upserts += 1;
         } else if (interpreted.kind === 'status') {
+          const dateInStatus = raw.match(/\b(\d{1,2}[\/\.-]\d{1,2}[\/\.-](?:\d{2}|\d{4}))\b/);
+          if (dateInStatus) {
+            const embeddedDate = parseDdMmYyyy(dateInStatus[1]);
+            if (embeddedDate) {
+              const expiryDateIso = computeExpiryDateIso(embeddedDate, mapping.expiryMonths, mapping.neverExpires);
+              const key = `${staffId}|${courseId}`;
+              if (seenTrainingKeys.has(key)) continue;
+              seenTrainingKeys.add(key);
+
+              upserts.push({
+                staff_id: staffId,
+                course_id: courseId,
+                completion_date: embeddedDate,
+                expiry_date: expiryDateIso,
+                status: 'completed',
+                completed_at_location_id: locationId,
+              });
+              summary.processedCells += 1;
+              summary.upserts += 1;
+              continue;
+            }
+          }
+
           if (interpreted.status === 'allocated') {
             const key = `${staffId}|${courseId}`;
             if (seenTrainingKeys.has(key)) continue;
