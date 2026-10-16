@@ -7,23 +7,30 @@ on:
 jobs:
   cron:
     runs-on: ubuntu-latest
+    env:
+      APP_URL: ${{ secrets.APP_URL }}
+      CRON_SECRET: ${{ secrets.CRON_SECRET }}
     steps:
       - name: Call Feedback Automation Endpoint
         run: |
-          # Replace the URL below if your Vercel deployment uses a different one
-          APP_URL="https://cascade-training-calendar.vercel.app"
-          
+          if [ -z "$APP_URL" ]; then
+            echo "APP_URL secret is not set. Add your Vercel production URL to GitHub Secrets as APP_URL."
+            exit 1
+          fi
+
           echo "Calling feedback automation endpoint at $APP_URL..."
-          
+
           curl --fail-with-body --silent --show-error -X GET "$APP_URL/api/automations/feedback-emails" \
-          -H "Authorization: Bearer ${{ secrets.CRON_SECRET }}"
+          -H "Authorization: Bearer $CRON_SECRET"
 
       - name: Call Roster No-Show Notification Endpoint
         run: |
-          # Replace the URL below if your Vercel deployment uses a different one
-          APP_URL="https://cascade-training-calendar.vercel.app"
-          
+          if [ -z "$APP_URL" ]; then
+            echo "APP_URL secret is not set. Add your Vercel production URL to GitHub Secrets as APP_URL."
+            exit 1
+          fi
+
           echo "Calling roster no-show automation endpoint at $APP_URL..."
-          
+
           curl --fail-with-body --silent --show-error -X GET "$APP_URL/api/automations/roster-no-shows" \
-          -H "Authorization: Bearer ${{ secrets.CRON_SECRET }}"
+          -H "Authorization: Bearer $CRON_SECRET"
