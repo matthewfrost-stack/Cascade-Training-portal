@@ -147,17 +147,33 @@ function normalizeName(value: string): string {
     .replace(/\s+/g, ' ');
 }
 
+function withoutCareskillsSuffix(value: string): string {
+  return value
+    .normalize('NFKC')
+    .trim()
+    .replace(/\s*\(careskills\)\s*$/i, '')
+    .trim();
+}
+
+function canonicalCourseName(value: string): string {
+  return normalizeName(withoutCareskillsSuffix(value));
+}
+
+function hasCareskillsSuffix(value: string): boolean {
+  return /\s*\(careskills\)\s*$/i.test(value);
+}
+
 function courseNameAliases(value: string): string[] {
   const cleaned = value
     .normalize('NFKC')
     .trim()
     .replace(/\s+/g, ' ');
-  const withoutCareskillsSuffix = cleaned.replace(/\s*\(careskills\)\s*$/i, '').trim();
-  const withCareskillsSuffix = withoutCareskillsSuffix
-    ? `${withoutCareskillsSuffix} (Careskills)`
+  const baseName = withoutCareskillsSuffix(cleaned);
+  const withCareskillsSuffix = baseName
+    ? `${baseName} (Careskills)`
     : '';
   return Array.from(new Set(
-    [cleaned, withoutCareskillsSuffix, withCareskillsSuffix]
+    [cleaned, baseName, withCareskillsSuffix]
       .filter(Boolean)
       .map(normalizeName)
   ));
@@ -581,20 +597,19 @@ export async function runAtlasCompletedCourseSync(options: AtlasSyncOptions = {}
       const locations = courseLocationIds.get(course.id) || new Set<string>();
       return Array.from(locations).some((locationId) => staffLocationSet.has(locationId));
     });
-    const exactCourseMatches = candidateCourses.filter((course) => {
-      const normalizedRecordName = normalizeName(record.courseName);
-      return normalizeName(course.name) === normalizedRecordName
-        || normalizeName(course.careskills_name || '') === normalizedRecordName;
-    });
-    const courseMatches = linkedCourseMatches.length === 1
-      ? linkedCourseMatches
-      : linkedCourseMatches.length > 1
-        ? (() => {
-            const exactLinkedMatches = exactCourseMatches.filter((course) => linkedCourseMatches.some((linked) => linked.id === course.id));
-            return exactLinkedMatches.length > 0 ? exactLinkedMatches : linkedCourseMatches;
-          })()
-        : exactCourseMatches.length > 0
-          ? exactCourseMatches
+    const normalizedRecordName = canonicalCourseName(record.courseName);
+    const unsuffixedCourseMatches = candidateCourses.filter((course) =>
+      canonicalCourseName(course.name) === normalizedRecordName && !hasCareskillsSuffix(course.name)
+    );
+    const linkedUnsuffixedMatches = unsuffixedCourseMatches.filter((course) =>
+      linkedCourseMatches.some((linked) => linked.id === course.id)
+    );
+    const courseMatches = linkedUnsuffixedMatches.length > 0
+      ? linkedUnsuffixedMatches
+      : unsuffixedCourseMatches.length > 0
+        ? unsuffixedCourseMatches
+        : linkedCourseMatches.length > 0
+          ? linkedCourseMatches
           : candidateCourses;
     if (courseMatches.length === 0) {
       summary.skippedCourses += 1;
