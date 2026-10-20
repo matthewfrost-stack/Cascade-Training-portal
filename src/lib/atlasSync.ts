@@ -32,7 +32,18 @@ type MatrixRow = {
   completion_date: string | null;
   expiry_date: string | null;
   status: string | null;
+  completed_at_location_id?: string | null;
   training_courses?: CourseRow | CourseRow[] | null;
+};
+
+type StaffLocationRow = {
+  staff_id?: string | null;
+  location_id?: string | null;
+};
+
+type CourseLocationRow = {
+  location_id?: string | null;
+  training_course_id?: string | null;
 };
 
 type AtlasSyncOptions = {
@@ -43,6 +54,7 @@ export type AtlasSyncSummary = {
   fetched: number;
   completed: number;
   updated: number;
+  created: number;
   unchanged: number;
   skippedStaff: number;
   skippedCourses: number;
@@ -91,7 +103,6 @@ type IHascoResponse = {
 const MAX_API_PAGES = 100;
 const REQUEST_TIMEOUT_MS = 30_000;
 const ATLAS_PAGE_CONCURRENCY = 5;
-const MATRIX_UPDATE_CONCURRENCY = 10;
 const SUPABASE_PAGE_SIZE = 1000;
 
 function asRecord(value: unknown): JsonRecord | null {
@@ -136,13 +147,36 @@ function normalizeName(value: string): string {
     .replace(/\s+/g, ' ');
 }
 
+function withoutCareskillsSuffix(value: string): string {
+  return value
+    .normalize('NFKC')
+    .trim()
+    .replace(/\s*\(careskills\)\s*$/i, '')
+    .trim();
+}
+
+function canonicalCourseName(value: string): string {
+  return normalizeName(withoutCareskillsSuffix(value));
+}
+
+function hasCareskillsSuffix(value: string): boolean {
+  return /\s*\(careskills\)\s*$/i.test(value);
+}
+
 function courseNameAliases(value: string): string[] {
   const cleaned = value
     .normalize('NFKC')
     .trim()
     .replace(/\s+/g, ' ');
-  const withoutCareskillsSuffix = cleaned.replace(/\s*\(careskills\)\s*$/i, '').trim();
-  return Array.from(new Set([cleaned, withoutCareskillsSuffix].filter(Boolean).map(normalizeName)));
+  const baseName = withoutCareskillsSuffix(cleaned);
+  const withCareskillsSuffix = baseName
+    ? `${baseName} (Careskills)`
+    : '';
+  return Array.from(new Set(
+    [cleaned, baseName, withCareskillsSuffix]
+      .filter(Boolean)
+      .map(normalizeName)
+  ));
 }
 
 function normalizeEmail(value: string): string {
@@ -328,20 +362,6 @@ async function fetchAtlasPage(page: number, endpoint: string, token: string): Pr
   return payload.data;
 }
 
-async function runWithConcurrency<T>(items: T[], concurrency: number, task: (item: T) => Promise<void>): Promise<void> {
-  if (items.length === 0) return;
-
-  let nextIndex = 0;
-  const workerCount = Math.min(concurrency, items.length);
-  await Promise.all(Array.from({ length: workerCount }, async () => {
-    while (nextIndex < items.length) {
-      const item = items[nextIndex];
-      nextIndex += 1;
-      await task(item);
-    }
-  }));
-}
-
 async function fetchAtlasCompletedRecords(): Promise<unknown[]> {
   const endpoint = process.env.ATLAS_GRAPHQL_URL || 'https://api.ihasco.co.uk/graphql';
   const token = process.env.ATLAS_API_TOKEN || process.env.ATLAS_API_KEY;
@@ -460,10 +480,12 @@ export async function runAtlasCompletedCourseSync(options: AtlasSyncOptions = {}
   const completedRecords = deduplicateRecords(normalizeCompletedCourses(rawRecords));
   const service = createServiceClient();
 
-  const [profiles, courses, matrix] = await Promise.all([
+  const [profiles, courses, matrix, staffLocations, courseLocations] = await Promise.all([
     fetchAllRows(service, 'profiles', 'id, full_name, email, is_deleted'),
     fetchAllRows(service, 'training_courses', 'id, name, careskills_name, expiry_months, never_expires'),
-    fetchAllRows(service, 'staff_training_matrix', 'id, staff_id, course_id, completion_date, expiry_date, status'),
+    fetchAllRows(service, 'staff_training_matrix', 'id, staff_id, course_id, completion_date, expiry_date, status, completed_at_location_id'),
+    fetchAllRows(service, 'staff_locations', 'staff_id, location_id'),
+    fetchAllRows(service, 'location_training_courses', 'location_id, training_course_id'),
   ]);
 
   const staffByName = new Map<string, StaffRow[]>();
@@ -497,6 +519,22 @@ export async function runAtlasCompletedCourseSync(options: AtlasSyncOptions = {}
     if (course.id) coursesById.set(course.id, course);
   }
 
+  const staffLocationIds = new Map<string, Set<string>>();
+  for (const row of (staffLocations || []) as StaffLocationRow[]) {
+    if (!row.staff_id || !row.location_id) continue;
+    const locations = staffLocationIds.get(row.staff_id) || new Set<string>();
+    locations.add(row.location_id);
+    staffLocationIds.set(row.staff_id, locations);
+  }
+
+  const courseLocationIds = new Map<string, Set<string>>();
+  for (const row of (courseLocations || []) as CourseLocationRow[]) {
+    if (!row.training_course_id || !row.location_id) continue;
+    const locations = courseLocationIds.get(row.training_course_id) || new Set<string>();
+    locations.add(row.location_id);
+    courseLocationIds.set(row.training_course_id, locations);
+  }
+
   const matrixByKey = new Map<string, MatrixRow[]>();
   for (const row of (matrix || []) as MatrixRow[]) {
     const course = getCourseRelation(row);
@@ -512,6 +550,7 @@ export async function runAtlasCompletedCourseSync(options: AtlasSyncOptions = {}
     fetched: rawRecords.length,
     completed: completedRecords.length,
     updated: 0,
+    created: 0,
     unchanged: 0,
     skippedStaff: 0,
     skippedCourses: 0,
@@ -523,13 +562,13 @@ export async function runAtlasCompletedCourseSync(options: AtlasSyncOptions = {}
     skipped: [],
   };
 
-  const pendingUpdates: Array<{
-    rowId: string;
+  const matchedRecords = new Map<string, {
     staffName: string;
     courseName: string;
+    staff: StaffRow;
+    course: CourseRow;
     completionDate: string;
-    expiryDate: string | null;
-  }> = [];
+  }>();
 
   for (const record of completedRecords) {
     const emailMatches = record.staffEmail ? staffByEmail.get(normalizeEmail(record.staffEmail)) || [] : [];
@@ -546,7 +585,32 @@ export async function runAtlasCompletedCourseSync(options: AtlasSyncOptions = {}
       continue;
     }
 
-    const courseMatches = coursesByName.get(normalizeName(record.courseName)) || [];
+    const candidateCourses = Array.from(new Map(
+      courseNameAliases(record.courseName)
+        .flatMap((alias) => coursesByName.get(alias) || [])
+        .map((course) => [course.id, course] as const)
+    ).values());
+    const staffLocationSet = staffMatches.length === 1
+      ? staffLocationIds.get(staffMatches[0].id) || new Set<string>()
+      : new Set<string>();
+    const linkedCourseMatches = candidateCourses.filter((course) => {
+      const locations = courseLocationIds.get(course.id) || new Set<string>();
+      return Array.from(locations).some((locationId) => staffLocationSet.has(locationId));
+    });
+    const normalizedRecordName = canonicalCourseName(record.courseName);
+    const unsuffixedCourseMatches = candidateCourses.filter((course) =>
+      canonicalCourseName(course.name) === normalizedRecordName && !hasCareskillsSuffix(course.name)
+    );
+    const linkedUnsuffixedMatches = unsuffixedCourseMatches.filter((course) =>
+      linkedCourseMatches.some((linked) => linked.id === course.id)
+    );
+    const courseMatches = linkedUnsuffixedMatches.length > 0
+      ? linkedUnsuffixedMatches
+      : unsuffixedCourseMatches.length > 0
+        ? unsuffixedCourseMatches
+        : linkedCourseMatches.length > 0
+          ? linkedCourseMatches
+          : candidateCourses;
     if (courseMatches.length === 0) {
       summary.skippedCourses += 1;
       addSkipped(summary, 'course_not_found', record.staffName, record.courseName);
@@ -560,15 +624,39 @@ export async function runAtlasCompletedCourseSync(options: AtlasSyncOptions = {}
 
     const staff = staffMatches[0];
     const course = courseMatches[0];
-    const existingRows = matrixByKey.get(`${staff.id}|${course.id}`) || [];
-    if (existingRows.length === 0) {
-      addSkipped(summary, 'matrix_record_not_found', record.staffName, record.courseName);
-      continue;
+    const matchedKey = `${staff.id}|${course.id}`;
+    const previous = matchedRecords.get(matchedKey);
+    if (!previous || record.completionDate > previous.completionDate) {
+      matchedRecords.set(matchedKey, {
+        staffName: record.staffName,
+        courseName: record.courseName,
+        staff,
+        course,
+        completionDate: record.completionDate,
+      });
     }
+  }
 
-    const expiryDate = calculateExpiryDate(record.completionDate, course);
+  type PendingWrite = {
+    operation: 'update' | 'create';
+    payload: Record<string, string | null>;
+    staffName: string;
+    courseName: string;
+  };
+
+  const pendingWrites: PendingWrite[] = [];
+  for (const matched of matchedRecords.values()) {
+    const { staff, course, staffName, courseName, completionDate } = matched;
+    const existingRows = matrixByKey.get(`${staff.id}|${course.id}`) || [];
+    const expiryDate = calculateExpiryDate(completionDate, course);
+    const existingLocationIds = new Set(
+      existingRows
+        .map((row) => row.completed_at_location_id)
+        .filter((locationId): locationId is string => Boolean(locationId))
+    );
+
     for (const row of existingRows) {
-      const unchanged = row.completion_date === record.completionDate
+      const unchanged = row.completion_date === completionDate
         && row.expiry_date === expiryDate
         && row.status === 'completed';
       if (unchanged) {
@@ -581,33 +669,82 @@ export async function runAtlasCompletedCourseSync(options: AtlasSyncOptions = {}
         continue;
       }
 
-      pendingUpdates.push({
-        rowId: row.id,
-        staffName: record.staffName,
-        courseName: record.courseName,
-        completionDate: record.completionDate,
-        expiryDate,
+      pendingWrites.push({
+        operation: 'update',
+        payload: {
+          id: row.id,
+          staff_id: row.staff_id,
+          course_id: row.course_id,
+          completion_date: completionDate,
+          expiry_date: expiryDate,
+          status: 'completed',
+          completed_at_location_id: row.completed_at_location_id || null,
+          updated_at: new Date().toISOString(),
+        },
+        staffName,
+        courseName,
       });
+    }
+
+    const assignedStaffLocations = staffLocationIds.get(staff.id) || new Set<string>();
+    const assignedCourseLocations = courseLocationIds.get(course.id) || new Set<string>();
+    const targetLocationIds = Array.from(assignedStaffLocations)
+      .filter((locationId) => assignedCourseLocations.has(locationId));
+
+    for (const locationId of targetLocationIds) {
+      if (existingLocationIds.has(locationId)) continue;
+
+      if (summary.dryRun) {
+        summary.created += 1;
+        continue;
+      }
+
+      pendingWrites.push({
+        operation: 'create',
+        payload: {
+          staff_id: staff.id,
+          course_id: course.id,
+          completion_date: completionDate,
+          expiry_date: expiryDate,
+          status: 'completed',
+          completed_at_location_id: locationId,
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString(),
+        },
+        staffName,
+        courseName,
+      });
+    }
+
+    if (existingRows.length === 0 && targetLocationIds.length === 0) {
+      addSkipped(summary, 'matrix_record_not_found', staffName, courseName);
     }
   }
 
-  await runWithConcurrency(pendingUpdates, MATRIX_UPDATE_CONCURRENCY, async (update) => {
-    const { error } = await service
+  const WRITE_CHUNK_SIZE = 250;
+  for (let i = 0; i < pendingWrites.length; i += WRITE_CHUNK_SIZE) {
+    const chunk = pendingWrites.slice(i, i + WRITE_CHUNK_SIZE);
+    let { error } = await service
       .from('staff_training_matrix')
-      .update({
-        completion_date: update.completionDate,
-        expiry_date: update.expiryDate,
-        status: 'completed',
-      })
-      .eq('id', update.rowId);
+      .upsert(chunk.map((write) => write.payload), { onConflict: 'staff_id,course_id,completed_at_location_id' });
+
+    if (error?.code === '42P10') {
+      const fallback = await service
+        .from('staff_training_matrix')
+        .upsert(chunk.map((write) => write.payload), { onConflict: 'staff_id,course_id' });
+      error = fallback.error;
+    }
 
     if (error) {
-      summary.errors += 1;
-      addSkipped(summary, `update_failed: ${error.message}`, update.staffName, update.courseName);
+      summary.errors += chunk.length;
+      addSkipped(summary, `update_failed: ${error.message}`, chunk[0]?.staffName, chunk[0]?.courseName);
     } else {
-      summary.updated += 1;
+      for (const write of chunk) {
+        if (write.operation === 'create') summary.created += 1;
+        else summary.updated += 1;
+      }
     }
-  });
+  }
 
   return summary;
 }

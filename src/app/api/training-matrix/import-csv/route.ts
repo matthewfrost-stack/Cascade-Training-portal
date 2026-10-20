@@ -238,7 +238,6 @@ export async function POST(request: NextRequest) {
     const locationId = String(form.get('locationId') || '').trim();
     const replaceMissing = String(form.get('replaceMissing') || '').trim().toLowerCase() === '1' || String(form.get('replaceMissing') || '').trim().toLowerCase() === 'true';
     const allowNewStaff = String(form.get('allowNewStaff') || '').trim().toLowerCase() === '1' || String(form.get('allowNewStaff') || '').trim().toLowerCase() === 'true';
-    const allowNewCourses = String(form.get('allowNewCourses') || '').trim().toLowerCase() === '1' || String(form.get('allowNewCourses') || '').trim().toLowerCase() === 'true';
     const file = form.get('file');
 
     if (!locationId) {
@@ -370,9 +369,9 @@ export async function POST(request: NextRequest) {
     (locationCourses || []).forEach((lc: LocationCourseRow) => {
       const c = Array.isArray(lc.training_courses) ? lc.training_courses[0] : lc.training_courses;
       if (!c?.id || !c?.name) return;
-      for (const alias of [c.name, c.careskills_name].filter((name): name is string => Boolean(name))) {
-        for (const key of courseNameAliases(String(alias))) {
-          courseMap.set(key, {
+      for (const alias of [c.name, c.careskills_name].filter((value): value is string => Boolean(value))) {
+        for (const normalizedAlias of courseNameAliases(String(alias))) {
+          courseMap.set(normalizedAlias, {
             id: String(c.id),
             expiryMonths: typeof c.expiry_months === 'number' ? c.expiry_months : null,
             neverExpires: typeof c.never_expires === 'boolean' ? c.never_expires : null,
@@ -389,9 +388,9 @@ export async function POST(request: NextRequest) {
     const globalCourseMap = new Map<string, { id: string; expiryMonths: number | null; neverExpires: boolean | null; category: string | null }>();
     (allTrainingCourses || []).forEach((c: TrainingCourseRow) => {
       if (!c?.id || !c?.name) return;
-      for (const alias of [c.name, c.careskills_name].filter((name): name is string => Boolean(name))) {
-        for (const key of courseNameAliases(String(alias))) {
-          globalCourseMap.set(key, {
+      for (const alias of [c.name, c.careskills_name].filter((value): value is string => Boolean(value))) {
+        for (const normalizedAlias of courseNameAliases(String(alias))) {
+          globalCourseMap.set(normalizedAlias, {
             id: String(c.id),
             expiryMonths: typeof c.expiry_months === 'number' ? c.expiry_months : null,
             neverExpires: typeof c.never_expires === 'boolean' ? c.never_expires : null,
@@ -401,22 +400,12 @@ export async function POST(request: NextRequest) {
       }
     });
 
-    const unknownCourseColumns: string[] = [];
-    const requiresCourseApproval = new Set<string>();
-    const requiresStaffApproval = new Set<string>();
-
     // Build the CSV header metadata map for course columns.
     for (const header of courseNames) {
       const normalizedHeader = normalizeKey(header);
       if (!normalizedHeader) continue;
       if (ignoredMetaColumns.has(normalizedHeader)) continue;
       if (courseMap.has(normalizedHeader)) continue;
-
-      if (!allowNewCourses) {
-        requiresCourseApproval.add(header);
-        if (!unknownCourseColumns.includes(header)) unknownCourseColumns.push(header);
-        continue;
-      }
 
       // Ensure training_courses row exists
       const { data: existingCourse, error: existingCourseErr } = await authz.service
@@ -444,7 +433,7 @@ export async function POST(request: NextRequest) {
           .single();
         const createdCourse = inserted;
         if (insertErr || !createdCourse?.id) {
-          if (errorMessages.size < 10) errorMessages.add(String(insertErr?.message || `Could not create course ${header}`));
+          if (errorMessages.size < 10) errorMessages.add(String(insertErr?.message || `Could not create course ${name}`));
           continue;
         }
         courseId = String(inserted.id);
@@ -466,6 +455,8 @@ export async function POST(request: NextRequest) {
       courseMap.set(normalizedHeader, { id: courseId, expiryMonths, neverExpires });
     }
 
+    const unknownCourseColumns: string[] = [];
+
     const colToCourse: Array<{ col: number; courseId: string; displayOrder: number; expiryMonths: number | null; neverExpires: boolean | null } | null> = [];
     for (let idx = 0; idx < courseNames.length; idx += 1) {
       const name = courseNames[idx];
@@ -485,12 +476,6 @@ export async function POST(request: NextRequest) {
       }
 
       if (!hit) {
-        if (!allowNewCourses) {
-          colToCourse.push(null);
-          if (!unknownCourseColumns.includes(name)) unknownCourseColumns.push(name);
-          continue;
-        }
-
         const upsertPayload: CourseUpdatePayload & { name: string } = {
           name,
           expiry_months: expiryInfo.expiryMonths ?? 12,
@@ -528,14 +513,14 @@ export async function POST(request: NextRequest) {
         if (insertErr || !createdCourse?.id) {
           if (errorMessages.size < 10) errorMessages.add(String(insertErr?.message || `Could not create course ${name}`));
           colToCourse.push(null);
-          if (!unknownCourseColumns.includes(name)) unknownCourseColumns.push(name);
+          unknownCourseColumns.push(name);
           continue;
         }
 
         hit = {
           id: String(createdCourse.id),
           expiryMonths: typeof createdCourse.expiry_months === 'number' ? createdCourse.expiry_months : null,
-          neverExpires: typeof createdCourse.never_expires === 'boolean' ? createdCourse.never_expires : false,
+          neverExpires: typeof createdCourse.never_expires === 'boolean' ? createdCourse.never_expires : null,
         };
         summary.createdCourses += 1;
 
@@ -604,9 +589,7 @@ export async function POST(request: NextRequest) {
       const normalizedHeader = normalizeKey(name);
       if (!normalizedHeader) return;
       if (ignoredMetaColumns.has(normalizedHeader)) return;
-      if (colToCourse[idx] === null) {
-        if (!unknownCourseColumns.includes(name)) unknownCourseColumns.push(name);
-      }
+      if (colToCourse[idx] === null) unknownCourseColumns.push(name);
     });
 
     summary.skippedUnknownCourses = unknownCourseColumns.length;
@@ -733,7 +716,6 @@ export async function POST(request: NextRequest) {
           staffMap.set(normalizeStaffName(staffName), staffId);
           summary.createdProfiles += 1;
         } else {
-          requiresStaffApproval.add(staffName);
           summary.skippedUnknownStaff++;
           if (unknownStaffSamples.size < 25) unknownStaffSamples.add(staffName);
           staffRowPosition += 1;
@@ -751,135 +733,171 @@ export async function POST(request: NextRequest) {
         if (!mapping) continue;
         const raw = String(row[mapping.col] || '');
         const interpreted = interpretCell(raw);
-        if (interpreted.kind === 'invalid') {
-          summary.errors++;
-          if (errorMessages.size < 10) errorMessages.add(`Invalid cell value "${raw}" for ${staffName}`);
+        if (interpreted.kind === 'empty') {
+          if (replaceMissing) {
+            // If the full matrix import is authoritative, mark this empty cell as intentionally absent.
+            const existingKey = `${staffId}|${mapping.courseId}`;
+            if (existingRecordMap.has(existingKey)) {
+              seenTrainingKeys.delete(existingKey);
+            }
+          }
           continue;
         }
 
-        const courseId = mapping.courseId;
+        if (interpreted.kind === 'invalid') {
+          summary.errors++;
+          if (errorMessages.size < 10) {
+            errorMessages.add(`Unrecognized cell value for ${staffName} / ${mapping.displayOrder}: ${interpreted.raw}`);
+          }
+          continue;
+        }
 
-        if (interpreted.kind === 'date') {
-          const expiryDateIso = computeExpiryDateIso(interpreted.dateIso, mapping.expiryMonths, mapping.neverExpires);
-          const key = `${staffId}|${courseId}`;
-          if (seenTrainingKeys.has(key)) {
-            const existingIndex = upserts.findIndex((item) => `${item.staff_id}|${item.course_id}` === key);
-            if (existingIndex >= 0 && upserts[existingIndex].status !== 'completed') {
-              upserts[existingIndex] = {
+        summary.processedCells++;
+
+        const trainingKey = `${staffId}|${mapping.courseId}`;
+        const existingUpsertIndex = upserts.findIndex(
+          (item) => `${item.staff_id}|${item.course_id}` === trainingKey
+        );
+        if (interpreted.kind === 'status') {
+          if (existingUpsertIndex >= 0) {
+            if (interpreted.status === 'completed' && upserts[existingUpsertIndex].status !== 'completed') {
+              upserts[existingUpsertIndex] = {
                 staff_id: staffId,
-                course_id: courseId,
-                completion_date: interpreted.dateIso,
-                expiry_date: expiryDateIso,
+                course_id: mapping.courseId,
+                completion_date: null,
+                expiry_date: null,
                 status: 'completed',
                 completed_at_location_id: locationId,
               };
             }
             continue;
           }
-          seenTrainingKeys.add(key);
 
+          seenTrainingKeys.add(trainingKey);
           upserts.push({
             staff_id: staffId,
-            course_id: courseId,
-            completion_date: interpreted.dateIso,
-            expiry_date: expiryDateIso,
-            status: 'completed',
-            completed_at_location_id: locationId,
-          });
-          summary.processedCells += 1;
-          summary.upserts += 1;
-        } else if (interpreted.kind === 'status') {
-          const dateInStatus = raw.match(/\b(\d{1,2}[\/\.-]\d{1,2}[\/\.-](?:\d{2}|\d{4}))\b/);
-          if (dateInStatus) {
-            const embeddedDate = parseDdMmYyyy(dateInStatus[1]);
-            if (embeddedDate) {
-              const expiryDateIso = computeExpiryDateIso(embeddedDate, mapping.expiryMonths, mapping.neverExpires);
-              const key = `${staffId}|${courseId}`;
-              if (seenTrainingKeys.has(key)) {
-                const existingIndex = upserts.findIndex((item) => `${item.staff_id}|${item.course_id}` === key);
-                if (existingIndex >= 0 && upserts[existingIndex].status !== 'completed') {
-                  upserts[existingIndex] = {
-                    staff_id: staffId,
-                    course_id: courseId,
-                    completion_date: embeddedDate,
-                    expiry_date: expiryDateIso,
-                    status: 'completed',
-                    completed_at_location_id: locationId,
-                  };
-                }
-                continue;
-              }
-              seenTrainingKeys.add(key);
-
-              upserts.push({
-                staff_id: staffId,
-                course_id: courseId,
-                completion_date: embeddedDate,
-                expiry_date: expiryDateIso,
-                status: 'completed',
-                completed_at_location_id: locationId,
-              });
-              summary.processedCells += 1;
-              summary.upserts += 1;
-              continue;
-            }
-          }
-
-          const key = `${staffId}|${courseId}`;
-          if (seenTrainingKeys.has(key)) continue;
-          seenTrainingKeys.add(key);
-
-          upserts.push({
-            staff_id: staffId,
-            course_id: courseId,
+            course_id: mapping.courseId,
             completion_date: null,
             expiry_date: null,
             status: interpreted.status as TrainingUpsert['status'],
             completed_at_location_id: locationId,
           });
-          summary.processedCells += 1;
-          summary.upserts += 1;
+          continue;
         }
+
+        const expiryIso = computeExpiryDateIso(interpreted.dateIso, mapping.expiryMonths, mapping.neverExpires);
+        if (existingUpsertIndex >= 0) {
+          if (upserts[existingUpsertIndex].status !== 'completed') {
+            upserts[existingUpsertIndex] = {
+              staff_id: staffId,
+              course_id: mapping.courseId,
+              completion_date: interpreted.dateIso,
+              expiry_date: expiryIso,
+              status: 'completed',
+              completed_at_location_id: locationId,
+            };
+          }
+          continue;
+        }
+
+        seenTrainingKeys.add(trainingKey);
+        upserts.push({
+          staff_id: staffId,
+          course_id: mapping.courseId,
+          completion_date: interpreted.dateIso,
+          expiry_date: expiryIso,
+          status: 'completed',
+          completed_at_location_id: locationId,
+        });
       }
     }
 
-    if (upserts.length > 0) {
-      const chunkSize = 500;
-      for (let i = 0; i < upserts.length; i += chunkSize) {
-        const chunk = upserts.slice(i, i + chunkSize);
-        let { error: upsertError } = await authz.service
+    // Upsert in chunks.
+    const chunkSize = 500;
+    for (let i = 0; i < upserts.length; i += chunkSize) {
+      const chunk = upserts.slice(i, i + chunkSize);
+      let { error } = await authz.service
+        .from('staff_training_matrix')
+        .upsert(chunk, { onConflict: 'staff_id,course_id,completed_at_location_id' });
+
+      // Support deployments that still use the legacy unique key.
+      if (error?.code === '42P10') {
+        const fallback = await authz.service
           .from('staff_training_matrix')
-          .upsert(chunk, {
-            onConflict: 'staff_id,course_id,completed_at_location_id',
-          });
-        if (upsertError?.code === '42P10') {
-          const fallback = await authz.service
+          .upsert(chunk, { onConflict: 'staff_id,course_id' });
+        error = fallback.error;
+      }
+
+      if (error) {
+        summary.errors++;
+        if (errorMessages.size < 10) errorMessages.add(error.message);
+        console.error('Full matrix CSV import: upsert chunk failed:', error.message);
+      } else {
+        summary.upserts += chunk.length;
+      }
+    }
+
+    if (replaceMissing && relevantCourseIds.length > 0) {
+      const { data: existingRows, error: existingRowsError } = await authz.service
+        .from('staff_training_matrix')
+        .select('id, staff_id, course_id')
+        .eq('completed_at_location_id', locationId)
+        .in('course_id', relevantCourseIds);
+
+      if (existingRowsError) {
+        summary.errors++;
+        if (errorMessages.size < 10) errorMessages.add(existingRowsError.message);
+      } else {
+        const deleteIds = (existingRows || [])
+          .filter((row: TrainingMatrixRow) => {
+            if (!row?.id || !row?.staff_id || !row?.course_id) return false;
+            const key = `${row.staff_id}|${row.course_id}`;
+            return !seenTrainingKeys.has(key);
+          })
+          .map((row: TrainingMatrixRow) => String(row.id));
+
+        const deleteChunkSize = 500;
+        for (let i = 0; i < deleteIds.length; i += deleteChunkSize) {
+          const chunk = deleteIds.slice(i, i + deleteChunkSize);
+          const { error } = await authz.service
             .from('staff_training_matrix')
-            .upsert(chunk, { onConflict: 'staff_id,course_id' });
-          upsertError = fallback.error;
-        }
-        if (upsertError) {
-          summary.errors += chunk.length;
-          if (errorMessages.size < 10) errorMessages.add(upsertError.message);
-        } else {
-          summary.linkedStaffLocations += chunk.length;
+            .delete()
+            .in('id', chunk);
+
+          if (error) {
+            summary.errors++;
+            if (errorMessages.size < 10) errorMessages.add(error.message);
+            console.error('Full matrix CSV import: delete chunk failed:', error.message);
+          }
         }
       }
     }
 
-    return NextResponse.json(
-      {
-        ok: true,
-        success: summary.errors === 0,
-        summary,
-        errorMessages: Array.from(errorMessages),
-        unknownStaff: Array.from(unknownStaffSamples).slice(0, 25),
-        requiresCourseApproval: Array.from(requiresCourseApproval),
-        requiresStaffApproval: Array.from(requiresStaffApproval),
-      },
-      { status: 200 }
-    );
-  } catch (e) {
-    return NextResponse.json({ error: String(e) }, { status: 500 });
+    // Update or create staff location links with display order from CSV row positions
+    for (const [staffId, displayOrder] of staffDisplayOrderUpdates.entries()) {
+      const upsertRes = await authz.service
+        .from('staff_locations')
+        .upsert(
+          [{ location_id: locationId, staff_id: staffId, display_order: displayOrder }],
+          { onConflict: 'location_id,staff_id' }
+        );
+
+      if (upsertRes.error) {
+        console.warn('Could not upsert staff_locations display_order for staff:', staffId, upsertRes.error);
+      } else {
+        summary.linkedStaffLocations += 1;
+      }
+    }
+
+    return NextResponse.json({
+      success: summary.errors === 0,
+      summary,
+      errors: Array.from(errorMessages.values()),
+      unknownStaff: Array.from(unknownStaffSamples.values()),
+      unknownCourses: unknownCourseColumns.slice(0, 50),
+    });
+  } catch (error) {
+    const msg = error instanceof Error ? error.message : String(error);
+    return NextResponse.json({ error: msg }, { status: 500 });
   }
 }
