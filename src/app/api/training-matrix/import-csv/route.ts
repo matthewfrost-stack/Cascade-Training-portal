@@ -23,6 +23,7 @@ type DividerRow = { id?: string; name?: string };
 type CourseRef = {
   id?: string;
   name?: string;
+  careskills_name?: string | null;
   expiry_months?: number | null;
   never_expires?: boolean | null;
 };
@@ -36,7 +37,7 @@ type TrainingUpsert = {
   course_id: string;
   completion_date: string | null;
   expiry_date: string | null;
-  status: string;
+  status: 'completed' | 'allocated' | 'not_yet_due' | 'na';
   completed_at_location_id: string;
 };
 
@@ -53,6 +54,12 @@ function normalizeKey(value: string): string {
     .replace(/[^a-z0-9]+/g, ' ')
     .replace(/\s+/g, ' ')
     .trim();
+}
+
+function courseNameAliases(value: string): string[] {
+  const cleaned = cleanCell(value);
+  const withoutCareskillsSuffix = cleaned.replace(/\s*\(careskills\)\s*$/i, '').trim();
+  return Array.from(new Set([cleaned, withoutCareskillsSuffix].filter(Boolean).map(normalizeKey)));
 }
 
 function normalizeStaffName(value: string): string {
@@ -211,7 +218,8 @@ function interpretCell(value: string): InterpretedCell {
   }
 
   const lower = v.toLowerCase();
-  if (lower === 'allocated' || lower === 'booked' || lower === 'awaiting' || lower === 'appointment') return { kind: 'status', status: 'allocated' };
+  if (lower === 'allocated' || lower === 'booked' || lower === 'awaiting' || lower === 'appointment' || lower === 'enrolled' || lower === 'in progress') return { kind: 'status', status: 'allocated' };
+  if (lower === 'completed' || lower === 'complete' || lower === 'passed') return { kind: 'status', status: 'completed' };
   if (lower === 'not yet due' || lower === 'not yet due.') return { kind: 'status', status: 'not_yet_due' };
   if (lower === 'n/a' || lower === 'na' || lower === 'not applicable') return { kind: 'status', status: 'na' };
 
@@ -353,7 +361,7 @@ export async function POST(request: NextRequest) {
     // Courses configured for the selected location.
     const { data: locationCourses, error: courseErr } = await authz.service
       .from('location_training_courses')
-      .select('training_course_id, training_courses(id, name, expiry_months, never_expires)')
+      .select('training_course_id, training_courses(id, name, careskills_name, expiry_months, never_expires)')
       .eq('location_id', locationId);
 
     if (courseErr) return NextResponse.json({ error: courseErr.message }, { status: 400 });
@@ -362,27 +370,35 @@ export async function POST(request: NextRequest) {
     (locationCourses || []).forEach((lc: LocationCourseRow) => {
       const c = Array.isArray(lc.training_courses) ? lc.training_courses[0] : lc.training_courses;
       if (!c?.id || !c?.name) return;
-      courseMap.set(normalizeKey(String(c.name)), {
-        id: String(c.id),
-        expiryMonths: typeof c.expiry_months === 'number' ? c.expiry_months : null,
-        neverExpires: typeof c.never_expires === 'boolean' ? c.never_expires : null,
-      });
+      for (const alias of [c.name, c.careskills_name].filter((name): name is string => Boolean(name))) {
+        for (const key of courseNameAliases(String(alias))) {
+          courseMap.set(key, {
+            id: String(c.id),
+            expiryMonths: typeof c.expiry_months === 'number' ? c.expiry_months : null,
+            neverExpires: typeof c.never_expires === 'boolean' ? c.never_expires : null,
+          });
+        }
+      }
     });
 
     const { data: allTrainingCourses, error: allCoursesErr } = await authz.service
       .from('training_courses')
-      .select('id, name, expiry_months, never_expires, category');
+      .select('id, name, careskills_name, expiry_months, never_expires, category');
     if (allCoursesErr) return NextResponse.json({ error: allCoursesErr.message }, { status: 400 });
 
     const globalCourseMap = new Map<string, { id: string; expiryMonths: number | null; neverExpires: boolean | null; category: string | null }>();
     (allTrainingCourses || []).forEach((c: TrainingCourseRow) => {
       if (!c?.id || !c?.name) return;
-      globalCourseMap.set(normalizeKey(String(c.name)), {
-        id: String(c.id),
-        expiryMonths: typeof c.expiry_months === 'number' ? c.expiry_months : null,
-        neverExpires: typeof c.never_expires === 'boolean' ? c.never_expires : null,
-        category: typeof c.category === 'string' ? c.category : null,
-      });
+      for (const alias of [c.name, c.careskills_name].filter((name): name is string => Boolean(name))) {
+        for (const key of courseNameAliases(String(alias))) {
+          globalCourseMap.set(key, {
+            id: String(c.id),
+            expiryMonths: typeof c.expiry_months === 'number' ? c.expiry_months : null,
+            neverExpires: typeof c.never_expires === 'boolean' ? c.never_expires : null,
+            category: typeof c.category === 'string' ? c.category : null,
+          });
+        }
+      }
     });
 
     const unknownCourseColumns: string[] = [];
@@ -746,7 +762,20 @@ export async function POST(request: NextRequest) {
         if (interpreted.kind === 'date') {
           const expiryDateIso = computeExpiryDateIso(interpreted.dateIso, mapping.expiryMonths, mapping.neverExpires);
           const key = `${staffId}|${courseId}`;
-          if (seenTrainingKeys.has(key)) continue;
+          if (seenTrainingKeys.has(key)) {
+            const existingIndex = upserts.findIndex((item) => `${item.staff_id}|${item.course_id}` === key);
+            if (existingIndex >= 0 && upserts[existingIndex].status !== 'completed') {
+              upserts[existingIndex] = {
+                staff_id: staffId,
+                course_id: courseId,
+                completion_date: interpreted.dateIso,
+                expiry_date: expiryDateIso,
+                status: 'completed',
+                completed_at_location_id: locationId,
+              };
+            }
+            continue;
+          }
           seenTrainingKeys.add(key);
 
           upserts.push({
@@ -766,7 +795,20 @@ export async function POST(request: NextRequest) {
             if (embeddedDate) {
               const expiryDateIso = computeExpiryDateIso(embeddedDate, mapping.expiryMonths, mapping.neverExpires);
               const key = `${staffId}|${courseId}`;
-              if (seenTrainingKeys.has(key)) continue;
+              if (seenTrainingKeys.has(key)) {
+                const existingIndex = upserts.findIndex((item) => `${item.staff_id}|${item.course_id}` === key);
+                if (existingIndex >= 0 && upserts[existingIndex].status !== 'completed') {
+                  upserts[existingIndex] = {
+                    staff_id: staffId,
+                    course_id: courseId,
+                    completion_date: embeddedDate,
+                    expiry_date: expiryDateIso,
+                    status: 'completed',
+                    completed_at_location_id: locationId,
+                  };
+                }
+                continue;
+              }
               seenTrainingKeys.add(key);
 
               upserts.push({
@@ -783,22 +825,20 @@ export async function POST(request: NextRequest) {
             }
           }
 
-          if (interpreted.status === 'allocated') {
-            const key = `${staffId}|${courseId}`;
-            if (seenTrainingKeys.has(key)) continue;
-            seenTrainingKeys.add(key);
+          const key = `${staffId}|${courseId}`;
+          if (seenTrainingKeys.has(key)) continue;
+          seenTrainingKeys.add(key);
 
-            upserts.push({
-              staff_id: staffId,
-              course_id: courseId,
-              completion_date: null,
-              expiry_date: null,
-              status: 'allocated',
-              completed_at_location_id: locationId,
-            });
-            summary.processedCells += 1;
-            summary.upserts += 1;
-          }
+          upserts.push({
+            staff_id: staffId,
+            course_id: courseId,
+            completion_date: null,
+            expiry_date: null,
+            status: interpreted.status as TrainingUpsert['status'],
+            completed_at_location_id: locationId,
+          });
+          summary.processedCells += 1;
+          summary.upserts += 1;
         }
       }
     }
@@ -807,11 +847,17 @@ export async function POST(request: NextRequest) {
       const chunkSize = 500;
       for (let i = 0; i < upserts.length; i += chunkSize) {
         const chunk = upserts.slice(i, i + chunkSize);
-        const { error: upsertError } = await authz.service
+        let { error: upsertError } = await authz.service
           .from('staff_training_matrix')
           .upsert(chunk, {
-            onConflict: 'staff_id,course_id',
+            onConflict: 'staff_id,course_id,completed_at_location_id',
           });
+        if (upsertError?.code === '42P10') {
+          const fallback = await authz.service
+            .from('staff_training_matrix')
+            .upsert(chunk, { onConflict: 'staff_id,course_id' });
+          upsertError = fallback.error;
+        }
         if (upsertError) {
           summary.errors += chunk.length;
           if (errorMessages.size < 10) errorMessages.add(upsertError.message);
@@ -824,6 +870,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json(
       {
         ok: true,
+        success: summary.errors === 0,
         summary,
         errorMessages: Array.from(errorMessages),
         unknownStaff: Array.from(unknownStaffSamples).slice(0, 25),

@@ -27,7 +27,8 @@ type AtlasUpdate = {
   staff_name: string;
   course_id: string;
   course_name: string;
-  completion_date: string;
+  completion_date: string | null;
+  status: 'completed' | 'allocated' | 'not_yet_due' | 'na';
   completed_at_location_id: string;
 };
 type AtlasError = { row?: number; name?: string; error: string };
@@ -36,6 +37,7 @@ type ExistingTrainingRecord = {
   staff_id: string;
   course_id: string;
   completion_date: string | null;
+  status?: string | null;
   completed_at_location_id?: string | null;
 };
 
@@ -70,6 +72,51 @@ function cellValueToString(value: unknown): string {
   if (typeof value === 'boolean') return value ? 'TRUE' : 'FALSE';
 
   return String(value).trim();
+}
+
+function parseAtlasCell(value: string): { completionDate: string | null; status: AtlasUpdate['status'] } | null {
+  const raw = value.trim();
+  if (!raw) return null;
+
+  if (/^\d+(?:\.\d+)?$/.test(raw)) {
+    const excelDate = Number(raw);
+    const date = new Date(Date.UTC(1899, 11, 30) + excelDate * 86_400_000);
+    if (!Number.isNaN(date.getTime())) {
+      return { completionDate: date.toISOString().slice(0, 10), status: 'completed' };
+    }
+  }
+
+  const parts = raw.split('/');
+  if (parts.length === 3 && parts.every(Boolean)) {
+    const [day, month, year] = parts;
+    const date = new Date(Date.UTC(Number(year), Number(month) - 1, Number(day)));
+    if (
+      Number.isInteger(Number(day))
+      && Number.isInteger(Number(month))
+      && Number.isInteger(Number(year))
+      && date.getUTCFullYear() === Number(year)
+      && date.getUTCMonth() === Number(month) - 1
+      && date.getUTCDate() === Number(day)
+    ) {
+      return { completionDate: `${year}-${month.padStart(2, '0')}-${day.padStart(2, '0')}`, status: 'completed' };
+    }
+  }
+
+  const normalized = raw.toLowerCase().replace(/\s+/g, ' ');
+  if (normalized === 'allocated' || normalized === 'booked' || normalized === 'awaiting' || normalized === 'awaiting training date' || normalized === 'appointment' || normalized === 'enrolled' || normalized === 'in progress') {
+    return { completionDate: null, status: 'allocated' };
+  }
+  if (normalized === 'completed' || normalized === 'complete' || normalized === 'passed') {
+    return { completionDate: null, status: 'completed' };
+  }
+  if (normalized === 'not yet due' || normalized === 'not yet due.') {
+    return { completionDate: null, status: 'not_yet_due' };
+  }
+  if (normalized === 'n/a' || normalized === 'na' || normalized === 'not applicable') {
+    return { completionDate: null, status: 'na' };
+  }
+
+  return null;
 }
 
 export async function POST(request: NextRequest) {
@@ -403,31 +450,15 @@ export async function POST(request: NextRequest) {
         const courseId = courseInfo.id;
         const courseName = courseInfo.name;
 
-        // Parse date - handle both string dates and Excel date numbers
-        let completionDate = null;
-        if (dateValue) {
-          // Try to parse as DD/MM/YYYY
-          const parts = dateValue.split('/');
-          if (parts.length === 3) {
-            const day = parts[0];
-            const month = parts[1];
-            const year = parts[2];
-            completionDate = `${year}-${month.padStart(2, '0')}-${day.padStart(2, '0')}`;
-          } else if (!isNaN(Number(dateValue))) {
-            // Excel date number - convert to JS date
-            const excelDate = parseInt(dateValue);
-            const jsDate = new Date((excelDate - 25569) * 86400 * 1000);
-            completionDate = jsDate.toISOString().split('T')[0];
-          }
-        }
-
-        if (completionDate) {
+        const parsedCell = parseAtlasCell(dateValue);
+        if (parsedCell) {
           updates.push({
             staff_id: staffId,
             staff_name: staffName,
             course_id: courseId,
             course_name: courseName,
-            completion_date: completionDate,
+            completion_date: parsedCell.completionDate,
+            status: parsedCell.status,
             completed_at_location_id: staffLocationId
           });
         }
@@ -442,7 +473,13 @@ export async function POST(request: NextRequest) {
     // fail or cause one matrix location to be skipped.
     const uniqueUpdates: AtlasUpdate[] = Array.from(
       updates.reduce((map, update) => {
-        map.set(`${update.staff_id}|${update.course_id}`, update);
+        const key = `${update.staff_id}|${update.course_id}`;
+        const previous = map.get(key);
+        // Duplicate Atlas columns can contain both a real completion date and
+        // a status-only alias. Never let the latter hide a completed date.
+        if (!previous || (update.status === 'completed' && previous.status !== 'completed')) {
+          map.set(key, update);
+        }
         return map;
       }, new Map<string, AtlasUpdate>()).values()
     );
@@ -457,7 +494,7 @@ export async function POST(request: NextRequest) {
     
     // Query in small batches to avoid Supabase's 1000 row limit per query
     // Each staff can have up to 47 courses, so batch size of 20 = max 940 results per query
-    const existingMap = new Map<string, { id: string; completion_date: string | null }>();
+    const existingMap = new Map<string, { id: string; completion_date: string | null; status: string | null }>();
     const QUERY_BATCH_SIZE = 20;
     const PAGE_SIZE = 1000;
     
@@ -470,7 +507,7 @@ export async function POST(request: NextRequest) {
       while (hasMore) {
         const { data: existingRecords, error } = await supabase
           .from('staff_training_matrix')
-          .select('id, staff_id, course_id, completion_date, completed_at_location_id')
+          .select('id, staff_id, course_id, completion_date, status, completed_at_location_id')
           .in('staff_id', staffBatch)
           .in('course_id', uniqueCourseIds)
           .range(from, from + PAGE_SIZE - 1);
@@ -487,6 +524,7 @@ export async function POST(request: NextRequest) {
           existingMap.set(key, {
             id: record.id,
             completion_date: record.completion_date || null,
+            status: record.status || null,
           });
         });
 
@@ -507,17 +545,18 @@ export async function POST(request: NextRequest) {
 
     const toUpdateExisting: Array<{
       id: string;
-      completion_date: string;
+      completion_date: string | null;
       expiry_date: string | null;
+      status: AtlasUpdate['status'];
       change: ImportChangeRecord;
     }> = [];
     const toInsertNew: Array<{
       payload: {
         staff_id: string;
         course_id: string;
-        completion_date: string;
+        completion_date: string | null;
         expiry_date: string | null;
-        status: 'completed' | 'allocated';
+        status: AtlasUpdate['status'];
         completed_at_location_id?: string;
         created_at: string;
       };
@@ -527,7 +566,6 @@ export async function POST(request: NextRequest) {
     const processedLocationKeys = new Set<string>();
     for (const update of uniqueUpdates) {
       const newDate = update.completion_date || null;
-      if (!newDate) continue;
 
       const staffLocs = staffLocations.get(update.staff_id) || [];
       const targetLocationIds: string[] = Array.from(new Set(
@@ -560,7 +598,8 @@ export async function POST(request: NextRequest) {
         const existingKey = `${update.staff_id}|${update.course_id}|${locationKey}`;
         const existing = existingMap.get(existingKey);
         const oldDate = existing?.completion_date || null;
-        const hasActualChange = oldDate !== newDate;
+        const oldStatus = existing?.status || (oldDate ? 'completed' : null);
+        const hasActualChange = oldDate !== newDate || oldStatus !== update.status;
 
         if (!hasActualChange) continue;
 
@@ -568,8 +607,8 @@ export async function POST(request: NextRequest) {
           staff: update.staff_name,
           locations: locationNames,
           course: update.course_name,
-          oldDate: oldDate || 'None',
-          newDate: newDate
+          oldDate: oldDate || oldStatus || 'None',
+          newDate: newDate || update.status
         };
 
         if (existing) {
@@ -577,6 +616,7 @@ export async function POST(request: NextRequest) {
             id: existing.id,
             completion_date: update.completion_date,
             expiry_date: expiryDate,
+            status: update.status,
             change: {
               ...changeBase,
               action: 'updated'
@@ -589,7 +629,7 @@ export async function POST(request: NextRequest) {
               course_id: update.course_id,
               completion_date: update.completion_date,
               expiry_date: expiryDate,
-              status: update.completion_date ? 'completed' : 'allocated',
+              status: update.status,
               completed_at_location_id: locId,
               created_at: new Date().toISOString()
             },
@@ -625,7 +665,7 @@ export async function POST(request: NextRequest) {
             .update({
               completion_date: update.completion_date,
               expiry_date: update.expiry_date,
-              status: 'completed'
+              status: update.status,
             })
             .eq('id', update.id);
           

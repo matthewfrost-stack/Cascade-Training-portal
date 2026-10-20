@@ -54,11 +54,6 @@ export type AtlasSyncSummary = {
   skipped: Array<{ reason: string; staff?: string; course?: string }>;
 };
 
-type IHascoEnrolment = {
-  course?: { id?: string | number | null } | null;
-  course_id?: string | number | null;
-};
-
 type IHascoResult = {
   completed_at?: string | null;
   status?: string | number | null;
@@ -76,7 +71,6 @@ type IHascoUser = {
   first_name?: string | null;
   last_name?: string | null;
   status?: string | null;
-  enrolments?: IHascoEnrolment[] | null;
   results?: IHascoResult[] | null;
 };
 
@@ -140,6 +134,15 @@ function normalizeName(value: string): string {
     .trim()
     .toLowerCase()
     .replace(/\s+/g, ' ');
+}
+
+function courseNameAliases(value: string): string[] {
+  const cleaned = value
+    .normalize('NFKC')
+    .trim()
+    .replace(/\s+/g, ' ');
+  const withoutCareskillsSuffix = cleaned.replace(/\s*\(careskills\)\s*$/i, '').trim();
+  return Array.from(new Set([cleaned, withoutCareskillsSuffix].filter(Boolean).map(normalizeName)));
 }
 
 function normalizeEmail(value: string): string {
@@ -268,11 +271,6 @@ const GRAPHQL_QUERY = (page: number) => `{
       first_name
       last_name
       status
-      enrolments {
-        course {
-          id
-        }
-      }
       results {
         completed_at
         status
@@ -363,18 +361,13 @@ async function fetchAtlasCompletedRecords(): Promise<unknown[]> {
       const staffName = `${user.first_name || ''} ${user.last_name || ''}`.trim();
       if (!staffName) continue;
 
-      const enrolledCourseIds = new Set<string>();
-      const enrolments = Array.isArray(user.enrolments) ? user.enrolments : [];
-      for (const enrolment of enrolments) {
-        const courseId = enrolment.course?.id ?? enrolment.course_id;
-        if (courseId !== null && courseId !== undefined) enrolledCourseIds.add(String(courseId));
-      }
-
-      const hasEnrolmentArray = Array.isArray(user.enrolments);
       const results = Array.isArray(user.results) ? user.results : [];
       for (const result of results) {
         if (!result.completed_at || !result.course?.id) continue;
-        if (isArchived(result.course.is_archived) || (hasEnrolmentArray && !enrolledCourseIds.has(String(result.course.id)))) continue;
+        // A passed result remains authoritative even if Atlas later removes the
+        // user's current enrolment. Filtering by current enrolments caused
+        // historic completions to disappear from the sync.
+        if (isArchived(result.course.is_archived)) continue;
         if (!isPassed(result)) continue;
 
         records.push({
@@ -492,9 +485,10 @@ export async function runAtlasCompletedCourseSync(options: AtlasSyncOptions = {}
     if (!course.id || !course.name) continue;
     const aliases = [course.name, course.careskills_name].filter((name): name is string => Boolean(name));
     for (const alias of aliases) {
-      const key = normalizeName(alias);
-      const existing = coursesByName.get(key) || [];
-      if (!existing.some((item) => item.id === course.id)) coursesByName.set(key, [...existing, course]);
+      for (const key of courseNameAliases(alias)) {
+        const existing = coursesByName.get(key) || [];
+        if (!existing.some((item) => item.id === course.id)) coursesByName.set(key, [...existing, course]);
+      }
     }
   }
 
