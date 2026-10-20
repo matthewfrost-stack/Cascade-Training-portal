@@ -4,7 +4,7 @@ import { runAtlasCompletedCourseSync } from '@/lib/atlasSync';
 import { isAuthorizedCronHeader } from '@/lib/cronAuth';
 
 export const dynamic = 'force-dynamic';
-export const maxDuration = 60;
+export const maxDuration = 300;
 
 function isAuthorizedCron(request: NextRequest): boolean {
   return isAuthorizedCronHeader(request.headers.get('authorization'));

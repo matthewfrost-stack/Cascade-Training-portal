@@ -7,6 +7,7 @@ type SyncSummary = {
   fetched: number;
   completed: number;
   updated: number;
+  created: number;
   unchanged: number;
   skippedStaff: number;
   skippedCourses: number;
@@ -30,7 +31,7 @@ export default function AtlasSyncPanel({ isDark }: { isDark: boolean }) {
   const [error, setError] = useState<string | null>(null);
 
   const syncFromAtlas = async () => {
-    if (!window.confirm('Sync completed courses from Atlas now? Only existing matrix records will be updated.')) return;
+    if (!window.confirm('Sync completed courses from Atlas now? Existing records will be updated and missing assigned location rows will be created.')) return;
 
     setSyncing(true);
     setError(null);
@@ -56,7 +57,7 @@ export default function AtlasSyncPanel({ isDark }: { isDark: boolean }) {
         Sync completed courses from Atlas
       </h2>
       <p className={`mt-2 text-sm ${isDark ? 'text-gray-300' : 'text-gray-600'}`}>
-        This reads the latest passed courses from Atlas and updates matching existing records across every matrix location. Staff, courses, and matrix positions are never created or moved.
+        This reads the latest passed courses from Atlas, updates matching records across every matrix location, and creates missing rows where the staff member and course are assigned to the same location.
       </p>
 
       {error && (
@@ -72,10 +73,12 @@ export default function AtlasSyncPanel({ isDark }: { isDark: boolean }) {
             <div>Fetched: <strong>{summary.fetched}</strong></div>
             <div>Passed: <strong>{summary.completed}</strong></div>
             <div>Updated: <strong>{summary.updated}</strong></div>
+            <div>Created: <strong>{summary.created}</strong></div>
             <div>Unchanged: <strong>{summary.unchanged}</strong></div>
             <div>Staff not found: <strong>{summary.skippedStaff}</strong></div>
             <div>Courses not found: <strong>{summary.skippedCourses}</strong></div>
             <div>Ambiguous matches: <strong>{summary.ambiguousStaff + summary.ambiguousCourses}</strong></div>
+            <div>Skipped records: <strong>{summary.skippedRecords}</strong></div>
             <div>Errors: <strong>{summary.errors}</strong></div>
           </div>
           {summary.skipped.length > 0 && (
