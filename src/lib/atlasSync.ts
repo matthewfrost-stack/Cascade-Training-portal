@@ -569,11 +569,33 @@ export async function runAtlasCompletedCourseSync(options: AtlasSyncOptions = {}
       continue;
     }
 
-    const courseMatches = Array.from(new Map(
+    const candidateCourses = Array.from(new Map(
       courseNameAliases(record.courseName)
         .flatMap((alias) => coursesByName.get(alias) || [])
         .map((course) => [course.id, course] as const)
     ).values());
+    const staffLocationSet = staffMatches.length === 1
+      ? staffLocationIds.get(staffMatches[0].id) || new Set<string>()
+      : new Set<string>();
+    const linkedCourseMatches = candidateCourses.filter((course) => {
+      const locations = courseLocationIds.get(course.id) || new Set<string>();
+      return Array.from(locations).some((locationId) => staffLocationSet.has(locationId));
+    });
+    const exactCourseMatches = candidateCourses.filter((course) => {
+      const normalizedRecordName = normalizeName(record.courseName);
+      return normalizeName(course.name) === normalizedRecordName
+        || normalizeName(course.careskills_name || '') === normalizedRecordName;
+    });
+    const courseMatches = linkedCourseMatches.length === 1
+      ? linkedCourseMatches
+      : linkedCourseMatches.length > 1
+        ? (() => {
+            const exactLinkedMatches = exactCourseMatches.filter((course) => linkedCourseMatches.some((linked) => linked.id === course.id));
+            return exactLinkedMatches.length > 0 ? exactLinkedMatches : linkedCourseMatches;
+          })()
+        : exactCourseMatches.length > 0
+          ? exactCourseMatches
+          : candidateCourses;
     if (courseMatches.length === 0) {
       summary.skippedCourses += 1;
       addSkipped(summary, 'course_not_found', record.staffName, record.courseName);
