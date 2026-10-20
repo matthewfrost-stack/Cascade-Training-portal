@@ -23,6 +23,7 @@ type DividerRow = { id?: string; name?: string };
 type CourseRef = {
   id?: string;
   name?: string;
+  careskills_name?: string | null;
   expiry_months?: number | null;
   never_expires?: boolean | null;
 };
@@ -36,7 +37,7 @@ type TrainingUpsert = {
   course_id: string;
   completion_date: string | null;
   expiry_date: string | null;
-  status: string;
+  status: 'completed' | 'allocated' | 'not_yet_due' | 'na';
   completed_at_location_id: string;
 };
 
@@ -53,6 +54,12 @@ function normalizeKey(value: string): string {
     .replace(/[^a-z0-9]+/g, ' ')
     .replace(/\s+/g, ' ')
     .trim();
+}
+
+function courseNameAliases(value: string): string[] {
+  const cleaned = cleanCell(value);
+  const withoutCareskillsSuffix = cleaned.replace(/\s*\(careskills\)\s*$/i, '').trim();
+  return Array.from(new Set([cleaned, withoutCareskillsSuffix].filter(Boolean).map(normalizeKey)));
 }
 
 function normalizeStaffName(value: string): string {
@@ -204,8 +211,15 @@ function interpretCell(value: string): InterpretedCell {
   const v = cleanCell(value);
   if (!v) return { kind: 'empty' };
 
+  const dateMatch = v.match(/\b(\d{1,2}[\/\.-]\d{1,2}[\/\.-](?:\d{2}|\d{4}))\b/);
+  if (dateMatch) {
+    const dateIso = parseDdMmYyyy(dateMatch[1]);
+    if (dateIso) return { kind: 'date', dateIso };
+  }
+
   const lower = v.toLowerCase();
-  if (lower === 'allocated' || lower === 'booked' || lower === 'awaiting' || lower === 'appointment') return { kind: 'status', status: 'allocated' };
+  if (lower === 'allocated' || lower === 'booked' || lower === 'awaiting' || lower === 'appointment' || lower === 'enrolled' || lower === 'in progress') return { kind: 'status', status: 'allocated' };
+  if (lower === 'completed' || lower === 'complete' || lower === 'passed') return { kind: 'status', status: 'completed' };
   if (lower === 'not yet due' || lower === 'not yet due.') return { kind: 'status', status: 'not_yet_due' };
   if (lower === 'n/a' || lower === 'na' || lower === 'not applicable') return { kind: 'status', status: 'na' };
 
@@ -346,7 +360,7 @@ export async function POST(request: NextRequest) {
     // Courses configured for the selected location.
     const { data: locationCourses, error: courseErr } = await authz.service
       .from('location_training_courses')
-      .select('training_course_id, training_courses(id, name, expiry_months, never_expires)')
+      .select('training_course_id, training_courses(id, name, careskills_name, expiry_months, never_expires)')
       .eq('location_id', locationId);
 
     if (courseErr) return NextResponse.json({ error: courseErr.message }, { status: 400 });
@@ -355,27 +369,35 @@ export async function POST(request: NextRequest) {
     (locationCourses || []).forEach((lc: LocationCourseRow) => {
       const c = Array.isArray(lc.training_courses) ? lc.training_courses[0] : lc.training_courses;
       if (!c?.id || !c?.name) return;
-      courseMap.set(normalizeKey(String(c.name)), {
-        id: String(c.id),
-        expiryMonths: typeof c.expiry_months === 'number' ? c.expiry_months : null,
-        neverExpires: typeof c.never_expires === 'boolean' ? c.never_expires : null,
-      });
+      for (const alias of [c.name, c.careskills_name].filter((value): value is string => Boolean(value))) {
+        for (const normalizedAlias of courseNameAliases(String(alias))) {
+          courseMap.set(normalizedAlias, {
+            id: String(c.id),
+            expiryMonths: typeof c.expiry_months === 'number' ? c.expiry_months : null,
+            neverExpires: typeof c.never_expires === 'boolean' ? c.never_expires : null,
+          });
+        }
+      }
     });
 
     const { data: allTrainingCourses, error: allCoursesErr } = await authz.service
       .from('training_courses')
-      .select('id, name, expiry_months, never_expires, category');
+      .select('id, name, careskills_name, expiry_months, never_expires, category');
     if (allCoursesErr) return NextResponse.json({ error: allCoursesErr.message }, { status: 400 });
 
     const globalCourseMap = new Map<string, { id: string; expiryMonths: number | null; neverExpires: boolean | null; category: string | null }>();
     (allTrainingCourses || []).forEach((c: TrainingCourseRow) => {
       if (!c?.id || !c?.name) return;
-      globalCourseMap.set(normalizeKey(String(c.name)), {
-        id: String(c.id),
-        expiryMonths: typeof c.expiry_months === 'number' ? c.expiry_months : null,
-        neverExpires: typeof c.never_expires === 'boolean' ? c.never_expires : null,
-        category: typeof c.category === 'string' ? c.category : null,
-      });
+      for (const alias of [c.name, c.careskills_name].filter((value): value is string => Boolean(value))) {
+        for (const normalizedAlias of courseNameAliases(String(alias))) {
+          globalCourseMap.set(normalizedAlias, {
+            id: String(c.id),
+            expiryMonths: typeof c.expiry_months === 'number' ? c.expiry_months : null,
+            neverExpires: typeof c.never_expires === 'boolean' ? c.never_expires : null,
+            category: typeof c.category === 'string' ? c.category : null,
+          });
+        }
+      }
     });
 
     // Build the CSV header metadata map for course columns.
@@ -733,20 +755,51 @@ export async function POST(request: NextRequest) {
         summary.processedCells++;
 
         const trainingKey = `${staffId}|${mapping.courseId}`;
+        const existingUpsertIndex = upserts.findIndex(
+          (item) => `${item.staff_id}|${item.course_id}` === trainingKey
+        );
         if (interpreted.kind === 'status') {
+          if (existingUpsertIndex >= 0) {
+            if (interpreted.status === 'completed' && upserts[existingUpsertIndex].status !== 'completed') {
+              upserts[existingUpsertIndex] = {
+                staff_id: staffId,
+                course_id: mapping.courseId,
+                completion_date: null,
+                expiry_date: null,
+                status: 'completed',
+                completed_at_location_id: locationId,
+              };
+            }
+            continue;
+          }
+
           seenTrainingKeys.add(trainingKey);
           upserts.push({
             staff_id: staffId,
             course_id: mapping.courseId,
             completion_date: null,
             expiry_date: null,
-            status: interpreted.status,
+            status: interpreted.status as TrainingUpsert['status'],
             completed_at_location_id: locationId,
           });
           continue;
         }
 
         const expiryIso = computeExpiryDateIso(interpreted.dateIso, mapping.expiryMonths, mapping.neverExpires);
+        if (existingUpsertIndex >= 0) {
+          if (upserts[existingUpsertIndex].status !== 'completed') {
+            upserts[existingUpsertIndex] = {
+              staff_id: staffId,
+              course_id: mapping.courseId,
+              completion_date: interpreted.dateIso,
+              expiry_date: expiryIso,
+              status: 'completed',
+              completed_at_location_id: locationId,
+            };
+          }
+          continue;
+        }
+
         seenTrainingKeys.add(trainingKey);
         upserts.push({
           staff_id: staffId,
