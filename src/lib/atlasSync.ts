@@ -103,6 +103,7 @@ type IHascoResponse = {
 const MAX_API_PAGES = 100;
 const REQUEST_TIMEOUT_MS = 30_000;
 const ATLAS_PAGE_CONCURRENCY = 5;
+const MATRIX_WRITE_CONCURRENCY = 20;
 const SUPABASE_PAGE_SIZE = 1000;
 
 function asRecord(value: unknown): JsonRecord | null {
@@ -475,6 +476,20 @@ function addSkipped(summary: AtlasSyncSummary, reason: string, staff?: string, c
   if (summary.skipped.length < 50) summary.skipped.push({ reason, staff, course });
 }
 
+async function runWithConcurrency<T>(items: T[], concurrency: number, task: (item: T) => Promise<void>): Promise<void> {
+  if (items.length === 0) return;
+
+  let nextIndex = 0;
+  const workerCount = Math.min(concurrency, items.length);
+  await Promise.all(Array.from({ length: workerCount }, async () => {
+    while (nextIndex < items.length) {
+      const item = items[nextIndex];
+      nextIndex += 1;
+      await task(item);
+    }
+  }));
+}
+
 export async function runAtlasCompletedCourseSync(options: AtlasSyncOptions = {}): Promise<AtlasSyncSummary> {
   const rawRecords = await fetchAtlasCompletedRecords();
   const completedRecords = deduplicateRecords(normalizeCompletedCourses(rawRecords));
@@ -639,7 +654,17 @@ export async function runAtlasCompletedCourseSync(options: AtlasSyncOptions = {}
 
   type PendingWrite = {
     operation: 'update' | 'create';
-    payload: Record<string, string | null>;
+    payload: {
+      id?: string;
+      staff_id: string;
+      course_id: string;
+      completion_date: string;
+      expiry_date: string | null;
+      status: 'completed';
+      completed_at_location_id: string | null;
+      created_at?: string;
+      updated_at: string;
+    };
     staffName: string;
     courseName: string;
   };
@@ -721,30 +746,43 @@ export async function runAtlasCompletedCourseSync(options: AtlasSyncOptions = {}
     }
   }
 
-  const WRITE_CHUNK_SIZE = 250;
-  for (let i = 0; i < pendingWrites.length; i += WRITE_CHUNK_SIZE) {
-    const chunk = pendingWrites.slice(i, i + WRITE_CHUNK_SIZE);
-    let { error } = await service
-      .from('staff_training_matrix')
-      .upsert(chunk.map((write) => write.payload), { onConflict: 'staff_id,course_id,completed_at_location_id' });
+  await runWithConcurrency(pendingWrites, MATRIX_WRITE_CONCURRENCY, async (write) => {
+    let error: { message: string; code?: string } | null = null;
 
-    if (error?.code === '42P10') {
-      const fallback = await service
+    if (write.operation === 'update' && write.payload.id) {
+      const result = await service
         .from('staff_training_matrix')
-        .upsert(chunk.map((write) => write.payload), { onConflict: 'staff_id,course_id' });
-      error = fallback.error;
+        .update({
+          completion_date: write.payload.completion_date,
+          expiry_date: write.payload.expiry_date,
+          status: write.payload.status,
+          updated_at: write.payload.updated_at,
+        })
+        .eq('id', write.payload.id);
+      error = result.error;
+    } else {
+      const result = await service
+        .from('staff_training_matrix')
+        .upsert(write.payload, { onConflict: 'staff_id,course_id,completed_at_location_id' });
+      error = result.error;
+
+      if (error?.code === '42P10') {
+        const fallback = await service
+          .from('staff_training_matrix')
+          .upsert(write.payload, { onConflict: 'staff_id,course_id' });
+        error = fallback.error;
+      }
     }
 
     if (error) {
-      summary.errors += chunk.length;
-      addSkipped(summary, `update_failed: ${error.message}`, chunk[0]?.staffName, chunk[0]?.courseName);
+      summary.errors += 1;
+      addSkipped(summary, `update_failed: ${error.message}`, write.staffName, write.courseName);
+    } else if (write.operation === 'create') {
+      summary.created += 1;
     } else {
-      for (const write of chunk) {
-        if (write.operation === 'create') summary.created += 1;
-        else summary.updated += 1;
-      }
+      summary.updated += 1;
     }
-  }
+  });
 
   return summary;
 }
