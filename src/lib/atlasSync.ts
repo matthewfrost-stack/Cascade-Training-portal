@@ -156,14 +156,6 @@ function withoutCareskillsSuffix(value: string): string {
     .trim();
 }
 
-function canonicalCourseName(value: string): string {
-  return normalizeName(withoutCareskillsSuffix(value));
-}
-
-function hasCareskillsSuffix(value: string): boolean {
-  return /\s*\(careskills\)\s*$/i.test(value);
-}
-
 function courseNameAliases(value: string): string[] {
   const cleaned = value
     .normalize('NFKC')
@@ -612,17 +604,18 @@ export async function runAtlasCompletedCourseSync(options: AtlasSyncOptions = {}
       const locations = courseLocationIds.get(course.id) || new Set<string>();
       return Array.from(locations).some((locationId) => staffLocationSet.has(locationId));
     });
-    const normalizedRecordName = canonicalCourseName(record.courseName);
-    const unsuffixedCourseMatches = candidateCourses.filter((course) =>
-      canonicalCourseName(course.name) === normalizedRecordName && !hasCareskillsSuffix(course.name)
+    const normalizedRecordName = normalizeName(record.courseName);
+    const exactCourseMatches = candidateCourses.filter((course) =>
+      normalizeName(course.name) === normalizedRecordName
+      || normalizeName(course.careskills_name || '') === normalizedRecordName
     );
-    const linkedUnsuffixedMatches = unsuffixedCourseMatches.filter((course) =>
+    const linkedExactCourseMatches = exactCourseMatches.filter((course) =>
       linkedCourseMatches.some((linked) => linked.id === course.id)
     );
-    const courseMatches = linkedUnsuffixedMatches.length > 0
-      ? linkedUnsuffixedMatches
-      : unsuffixedCourseMatches.length > 0
-        ? unsuffixedCourseMatches
+    const courseMatches = linkedExactCourseMatches.length > 0
+      ? linkedExactCourseMatches
+      : exactCourseMatches.length > 0
+        ? exactCourseMatches
         : linkedCourseMatches.length > 0
           ? linkedCourseMatches
           : candidateCourses;
