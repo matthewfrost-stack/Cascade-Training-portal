@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import readXlsxFile from 'read-excel-file/node';
 import { requireRole } from '@/lib/apiAuth';
+import { ATLAS_COURSE_ALIASES } from '@/lib/atlasSync';
 
 export const dynamic = 'force-dynamic';
 
@@ -241,6 +242,19 @@ export async function POST(request: NextRequest) {
         courseMap.set(course.careskills_name.toLowerCase(), course.id);
       }
     });
+
+    // Register manual Atlas-to-matrix aliases so known mismatches resolve
+    // before falling through to non-deterministic fuzzy matching.
+    for (const [atlasName, dbNames] of Object.entries(ATLAS_COURSE_ALIASES)) {
+      if (courseMap.has(atlasName)) continue;
+      for (const dbName of dbNames) {
+        const id = courseMap.get(dbName.toLowerCase());
+        if (id) {
+          courseMap.set(atlasName, id);
+          break;
+        }
+      }
+    }
 
     // Get all staff from database (only active staff)
     const { data: dbStaff } = await supabase
