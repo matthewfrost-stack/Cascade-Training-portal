@@ -156,6 +156,19 @@ function withoutCareskillsSuffix(value: string): string {
     .trim();
 }
 
+/**
+ * Manual alias map for Atlas course names that don't exactly match the
+ * training-matrix course names. Keys are normalized (lowercase, trimmed,
+ * collapsed spaces). Values are the additional DB course names to try.
+ *
+ * These are applied ONLY when looking up an Atlas course name — never when
+ * building the DB course lookup map — to avoid cross-registration that would
+ * cause ambiguous matches.
+ */
+export const ATLAS_COURSE_ALIASES: Record<string, string[]> = {
+  'mental capacity': ['Mental Capacity & Dols', "Mental Capacity & DOL'S"],
+};
+
 function courseNameAliases(value: string): string[] {
   const cleaned = value
     .normalize('NFKC')
@@ -592,8 +605,14 @@ export async function runAtlasCompletedCourseSync(options: AtlasSyncOptions = {}
       continue;
     }
 
+    // Build lookup keys: standard aliases + manual Atlas-to-matrix aliases
+    const standardAliases = courseNameAliases(record.courseName);
+    const normalizedBaseName = normalizeName(withoutCareskillsSuffix(record.courseName));
+    const manualAliases = (ATLAS_COURSE_ALIASES[normalizedBaseName] || []).map(normalizeName);
+    const allLookupKeys = Array.from(new Set([...standardAliases, ...manualAliases]));
+
     const candidateCourses = Array.from(new Map(
-      courseNameAliases(record.courseName)
+      allLookupKeys
         .flatMap((alias) => coursesByName.get(alias) || [])
         .map((course) => [course.id, course] as const)
     ).values());
@@ -604,21 +623,36 @@ export async function runAtlasCompletedCourseSync(options: AtlasSyncOptions = {}
       const locations = courseLocationIds.get(course.id) || new Set<string>();
       return Array.from(locations).some((locationId) => staffLocationSet.has(locationId));
     });
+    // Treat both the original Atlas name and manual alias names as "exact"
+    // matches so alias-resolved courses aren't deprioritised.
     const normalizedRecordName = normalizeName(record.courseName);
+    const exactMatchNames = new Set([normalizedRecordName, ...manualAliases]);
     const exactCourseMatches = candidateCourses.filter((course) =>
-      normalizeName(course.name) === normalizedRecordName
-      || normalizeName(course.careskills_name || '') === normalizedRecordName
+      exactMatchNames.has(normalizeName(course.name))
+      || exactMatchNames.has(normalizeName(course.careskills_name || ''))
     );
     const linkedExactCourseMatches = exactCourseMatches.filter((course) =>
       linkedCourseMatches.some((linked) => linked.id === course.id)
     );
-    const courseMatches = linkedExactCourseMatches.length > 0
+    let courseMatches = linkedExactCourseMatches.length > 0
       ? linkedExactCourseMatches
       : exactCourseMatches.length > 0
         ? exactCourseMatches
         : linkedCourseMatches.length > 0
           ? linkedCourseMatches
           : candidateCourses;
+
+    // Tiebreaker: when multiple courses match (e.g. a Careskills migration
+    // course AND the real training-matrix course), prefer the one that already
+    // has matrix rows for this staff member.
+    if (courseMatches.length > 1) {
+      const staffId = staffMatches[0].id;
+      const withMatrixRows = courseMatches.filter((course) =>
+        (matrixByKey.get(`${staffId}|${course.id}`) || []).length > 0
+      );
+      if (withMatrixRows.length === 1) courseMatches = withMatrixRows;
+    }
+
     if (courseMatches.length === 0) {
       summary.skippedCourses += 1;
       addSkipped(summary, 'course_not_found', record.staffName, record.courseName);
