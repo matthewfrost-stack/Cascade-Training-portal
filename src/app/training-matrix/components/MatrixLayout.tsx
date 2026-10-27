@@ -574,7 +574,7 @@ export function MatrixLayout() {
             ) : (
               /* Matrix table */
               <div className={`rounded-2xl border overflow-hidden shadow-lg ${isDark ? 'border-gray-800' : 'border-gray-200'}`}>
-                <div ref={tableScrollContainerRef} className="overflow-x-auto overflow-y-auto max-h-[calc(100vh-380px)]">
+                <div ref={tableScrollContainerRef} className="overflow-x-auto overflow-y-auto max-h-[calc(100vh-380px)] matrix-scroll">
                   <table className={`w-full text-sm border-collapse ${isDark ? 'bg-gray-900' : 'bg-white'}`}>
                     <thead className="sticky top-0 z-20">
                       {/* Row 1: Category headers */}
