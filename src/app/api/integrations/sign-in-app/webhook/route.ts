@@ -308,48 +308,57 @@ export async function POST(request: NextRequest) {
     : [];
   const candidates = siteMatchedEvents.length > 0 ? siteMatchedEvents : bookedEvents;
 
-  if (candidates.length !== 1) {
+  if (candidates.length === 0) {
     await markWebhookEvent(service, idempotencyKey, {
       processed_at: new Date().toISOString(),
-      processing_error: candidates.length === 0 ? 'No booked course matched the sign-in' : 'More than one booked course matched the sign-in',
-    });
-    return NextResponse.json({ ok: true, matched: false, reason: candidates.length === 0 ? 'booking_not_found' : 'ambiguous_booking' });
-  }
-
-  const matchedEvent = candidates[0];
-  const booking = (bookings || []).find((row) => row.event_id === matchedEvent.id);
-  const startMinutes = getClockMinutes(matchedEvent.start_time);
-  const minutesLate = startMinutes === null ? 0 : Math.max(0, localSignIn.minutes - startMinutes);
-  const bookingId = booking?.id;
-
-  if (!bookingId) {
-    await markWebhookEvent(service, idempotencyKey, {
-      processed_at: new Date().toISOString(),
-      processing_error: 'Matched event did not contain the booking',
+      processing_error: 'No booked course matched the sign-in',
     });
     return NextResponse.json({ ok: true, matched: false, reason: 'booking_not_found' });
   }
 
-  const { error: updateError } = await service
-    .from('bookings')
-    .update({
-      attended_at: eventAt,
-      minutes_late: minutesLate,
-      late_reason: minutesLate > 0 ? 'Sign In App' : null,
-      lateness_minutes: minutesLate,
-      lateness_reason: minutesLate > 0 ? 'Sign In App' : null,
-      absence_reason: null,
-      attendance_source: 'sign_in_app',
-      attendance_marked_at: eventAt,
-      attendance_marked_by: null,
-    })
-    .eq('id', bookingId);
+  // Mark attendance on every booking for this day — if someone has signed
+  // into the building they are present for all their courses that day.
+  const updatedBookingIds: string[] = [];
+  const errors: string[] = [];
 
-  if (updateError) {
-    await markWebhookEvent(service, idempotencyKey, { processing_error: updateError.message });
+  for (const matchedEvent of candidates) {
+    const booking = (bookings || []).find((row) => row.event_id === matchedEvent.id);
+    if (!booking?.id) continue;
+
+    const startMinutes = getClockMinutes(matchedEvent.start_time);
+    const minutesLate = startMinutes === null ? 0 : Math.max(0, localSignIn.minutes - startMinutes);
+
+    const { error: updateError } = await service
+      .from('bookings')
+      .update({
+        attended_at: eventAt,
+        minutes_late: minutesLate,
+        late_reason: minutesLate > 0 ? 'Sign In App' : null,
+        lateness_minutes: minutesLate,
+        lateness_reason: minutesLate > 0 ? 'Sign In App' : null,
+        absence_reason: null,
+        attendance_source: 'sign_in_app',
+        attendance_marked_at: eventAt,
+        attendance_marked_by: null,
+      })
+      .eq('id', booking.id);
+
+    if (updateError) {
+      errors.push(`${booking.id}: ${updateError.message}`);
+    } else {
+      updatedBookingIds.push(booking.id);
+    }
+  }
+
+  if (updatedBookingIds.length === 0) {
+    const errorMsg = errors.length > 0 ? errors.join('; ') : 'Matched events did not contain any bookings';
+    await markWebhookEvent(service, idempotencyKey, { processing_error: errorMsg });
     return NextResponse.json({ error: 'Could not update attendance' }, { status: 500 });
   }
 
-  await markWebhookEvent(service, idempotencyKey, { processed_at: new Date().toISOString(), processing_error: null });
-  return NextResponse.json({ ok: true, matched: true, bookingId, minutesLate });
+  await markWebhookEvent(service, idempotencyKey, {
+    processed_at: new Date().toISOString(),
+    processing_error: errors.length > 0 ? `Partial: ${errors.join('; ')}` : null,
+  });
+  return NextResponse.json({ ok: true, matched: true, bookingIds: updatedBookingIds, count: updatedBookingIds.length });
 }
