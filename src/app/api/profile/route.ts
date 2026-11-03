@@ -170,20 +170,14 @@ export async function PATCH(request: Request) {
 
     const service = createServiceClient();
 
-    const authUpdate = await service.auth.admin.updateUserById(user.id, {
-      email,
-      user_metadata: {
-        full_name: fullName,
-      },
-    });
+    // Fetch the current profile so we can roll back if auth update fails.
+    const { data: previousProfile } = await service
+      .from("profiles")
+      .select("full_name, email, phone_number, avatar_path")
+      .eq("id", user.id)
+      .maybeSingle();
 
-    if (authUpdate.error) {
-      return NextResponse.json(
-        { error: authUpdate.error.message },
-        { status: 400 },
-      );
-    }
-
+    // Update profiles table first — this is easy to revert if auth fails.
     const updatePayload = {
       full_name: fullName,
       email,
@@ -211,6 +205,29 @@ export async function PATCH(request: Request) {
       return NextResponse.json(
         { error: "Profile update failed to return data." },
         { status: 500 },
+      );
+    }
+
+    // Now update Supabase Auth. If this fails, revert the profile change
+    // so the two stay in sync.
+    const authUpdate = await service.auth.admin.updateUserById(user.id, {
+      email,
+      user_metadata: {
+        full_name: fullName,
+      },
+    });
+
+    if (authUpdate.error) {
+      // Roll back the profile update to keep auth and profiles in sync.
+      if (previousProfile) {
+        await service
+          .from("profiles")
+          .update(previousProfile)
+          .eq("id", user.id);
+      }
+      return NextResponse.json(
+        { error: authUpdate.error.message },
+        { status: 400 },
       );
     }
 

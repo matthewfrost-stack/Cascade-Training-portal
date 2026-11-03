@@ -304,7 +304,7 @@ async function handleRequest(req: Request) {
           ? await sendFeedbackEmails(event, typedBookings, automationSettings, emailOptions, baseUrl)
           : await sendReminderEmails(event, typedBookings, automationSettings, emailOptions);
 
-        if (result.attempted > 0 && result.succeeded === result.attempted) {
+        if (result.succeeded > 0) {
           const trackingField = kind === 'feedback'
             ? 'feedback_sent_at'
             : kind === 'reminder_7_days' ? 'reminder_7_days_sent_at' : 'reminder_1_day_sent_at';
@@ -314,6 +314,12 @@ async function handleRequest(req: Request) {
             .eq('id', event.id);
           if (updateError) throw updateError;
           totalProcessed++;
+          if (result.succeeded < result.attempted) {
+            console.warn(
+              `Feedback automation: ${result.succeeded}/${result.attempted} ${kind} emails sent for event ${event.id}. ` +
+              `Marking as sent to prevent duplicates — failed recipients will not be retried.`
+            );
+          }
         }
         totalSent += result.succeeded;
       }

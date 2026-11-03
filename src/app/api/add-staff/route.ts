@@ -291,7 +291,11 @@ export async function POST(request: NextRequest) {
         if (!staffLocError) {
           matrixDefaults = await initializeNewStaffMatrix(supabaseAdmin, profileId, normalizedLocationId);
           if (matrixDefaults.error) {
-            console.error('Could not initialize new staff training matrix defaults:', matrixDefaults.error);
+            console.warn('Matrix init failed, retrying once:', matrixDefaults.error.message);
+            matrixDefaults = await initializeNewStaffMatrix(supabaseAdmin, profileId, normalizedLocationId);
+            if (matrixDefaults.error) {
+              console.error('Could not initialize new staff training matrix defaults after retry:', matrixDefaults.error);
+            }
           }
         }
 

@@ -337,10 +337,13 @@ export default function AddStaffModal({ onClose, onRefresh }: { onClose: () => v
         }
 
         const roleLabel = formData.role_tier.charAt(0).toUpperCase() + formData.role_tier.slice(1);
+        const matrixWarning = result.results[0].matrix_defaults_warning
+          ? `\n\n⚠️ ${result.results[0].matrix_defaults_warning} You may need to add their training courses manually in the matrix.`
+          : '';
         if (formData.password) {
-          alert(`✅ ${roleLabel} created!\n\nPassword set.\n\nThey can now log in with their email and this password.`);
+          alert(`✅ ${roleLabel} created!\n\nPassword set.\n\nThey can now log in with their email and this password.${matrixWarning}`);
         } else {
-          alert(`✅ ${roleLabel} created!\n\nA password setup email has been sent to ${formData.email}.\n\nThey must set a password before they can log in.`);
+          alert(`✅ ${roleLabel} created!\n\nA password setup email has been sent to ${formData.email}.\n\nThey must set a password before they can log in.${matrixWarning}`);
         }
       }
       
