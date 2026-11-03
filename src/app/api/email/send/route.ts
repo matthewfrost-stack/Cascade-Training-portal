@@ -83,10 +83,9 @@ export async function POST(request: NextRequest) {
     });
   } catch (error) {
     console.error('Email send error:', error);
-    const message = error instanceof Error ? error.message : 'Failed to send email';
 
     return NextResponse.json(
-      { error: message },
+      { error: 'Failed to send email. Please check the recipient address and try again.' },
       { status: 500 }
     );
   }
