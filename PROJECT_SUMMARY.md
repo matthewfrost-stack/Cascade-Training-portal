@@ -14,7 +14,10 @@
 - Set per-session booking limits and roster messages from the booking roster.
 - Display training venues directly on booking calendar event cards.
 - Maintain reusable booking checklist templates, including removing obsolete items.
-- Sync training records from external systems (Atlas CSV import).
+- Sync training records from external systems (Atlas CSV import, Atlas auto-sync cron, iHasco sync).
+- Record attendance automatically via Sign In App webhook integration.
+- Record attendance manually via trainer kiosk register.
+- Track NVQ and Diploma qualification leads with timeline events.
 - Manage staff accounts, locations, and course definitions.
 
 The application is branded as "Cascade Portal" and is accessed via a tile-based home screen after login.
@@ -25,7 +28,7 @@ The application is branded as "Cascade Portal" and is accessed via a tile-based 
 
 | Layer | Technology |
 |---|---|
-| **Framework** | Next.js 15+ (App Router) |
+| **Framework** | Next.js 16+ (App Router) |
 | **Language** | TypeScript |
 | **Styling** | Tailwind CSS (dark/light theme toggle) |
 | **Database / Auth** | Supabase (PostgreSQL + Row-Level Security) |
@@ -200,29 +203,54 @@ Admin and scheduler-facing control centre with admin-only management tools:
 
 All routes are Next.js Route Handlers (server-side). Authentication is checked server-side using `src/lib/apiAuth.ts`.
 
-| Route | Purpose |
-|---|---|
-| `/api/add-staff` | Create a new staff member (and Supabase auth user) |
-| `/api/delete-staff` | Delete a staff member |
-| `/api/profile` | Get/update the current user's profile |
-| `/api/courses/expiring` | Get all certifications expiring within N days |
-| `/api/courses/expired` | Get expired certifications |
-| `/api/courses/locations` | Get course/location data |
-| `/api/update-course` | Update a training record (completion date, expiry, override) |
-| `/api/bulk-update-training` | Batch update multiple training records |
-| `/api/training-matrix` | Fetch the full matrix data for the Training Matrix view |
-| `/api/book-staff` | Add a staff member to a booking |
-| `/api/roster/export` | Export scoped training-matrix roster data |
-| `/api/admin/checklist-template` | Admin-only checklist template removal |
-| `/api/send-booking-confirmation` | Send a confirmation email for a booking |
-| `/api/send-booking-cancellation` | Send a cancellation email |
-| `/api/send-course-notification` | Send a general course notification email |
-| `/api/email-logs` | Retrieve email send history |
-| `/api/atlas/import` | Parse and import an Atlas CSV export |
-| `/api/automations` | Configure/trigger automation jobs |
-| `/api/version` | Returns current build timestamp (used by UpdateNotification) |
-| `/api/archive` | Archive old or inactive records |
-| `/api/cleanup-orphaned-profiles` | Remove profile rows with no matching auth user |
+| Route | Auth | Purpose |
+|---|---|---|
+| `/api/add-staff` | admin | Create a new staff member (auth user + profile + matrix init with retry) |
+| `/api/delete-staff` | admin | Delete a staff member |
+| `/api/force-delete-profile` | admin | Force-remove a profile and auth user |
+| `/api/profile` | session | Get/update the current user's profile (rollback-safe email sync) |
+| `/api/admin/reset-user-password` | admin | Admin sets a user's password directly |
+| `/api/auth/sign-out` | none | Revoke token and clear auth cookies |
+| `/api/auth/change-password` | session | User changes own password |
+| `/api/courses/expiring` | all roles | Get certifications expiring within N days |
+| `/api/courses/expired` | all roles | Get expired certifications |
+| `/api/courses/by-location` | all roles | Get courses for a location |
+| `/api/courses/locations` | all roles | Get course/location data |
+| `/api/courses/allocated-training` | all roles | Get allocated training records |
+| `/api/update-course` | admin | Update a training record (completion date, expiry, override) |
+| `/api/bulk-update-training` | admin+ | Batch update multiple training records |
+| `/api/training-matrix` | all roles | Fetch the full matrix data (location-scoped) |
+| `/api/training-matrix/records` | all roles | Fetch individual training records (location-scoped) |
+| `/api/training-matrix/bootstrap` | all roles | Bootstrap matrix data for a location |
+| `/api/training-matrix/import-csv` | admin | Import training matrix from CSV |
+| `/api/training-matrix/staff-group` | admin+ | Manage staff groups in the matrix |
+| `/api/book-staff` | admin/scheduler/manager | Add staff to a booking (manager location-scoped) |
+| `/api/booking-calendar` | all roles | Fetch booking calendar events |
+| `/api/booking-calendar/summary` | all roles | Fetch calendar summary view |
+| `/api/attendance/kiosk` | admin/scheduler | Mark attendance via trainer kiosk register |
+| `/api/roster/export` | admin/scheduler | Export scoped roster data as CSV |
+| `/api/admin/checklist-template` | admin | Manage reusable checklist templates |
+| `/api/send-booking-confirmation` | admin/scheduler | Send a confirmation email for a booking |
+| `/api/send-booking-cancellation` | admin/scheduler | Send a cancellation email |
+| `/api/send-course-notification` | admin/scheduler | Send a general course notification email |
+| `/api/email/send` | admin/scheduler | Send an arbitrary email (generic error response, no SMTP leak) |
+| `/api/email-logs` | admin/scheduler | Retrieve email send history |
+| `/api/atlas/import` | admin | Parse and import an Atlas CSV export |
+| `/api/atlas/sync` | cron/admin | Auto-sync training records from Atlas |
+| `/api/integrations/sign-in-app/webhook` | HMAC | Receive Sign In App webhooks, mark all daily bookings as attended |
+| `/api/automations/feedback-emails` | cron/admin | Send feedback/reminder emails (duplicate-safe) |
+| `/api/automations/roster-no-shows` | cron/admin | Send no-show notifications to admins |
+| `/api/qualifications` | admin/manager/scheduler | List and create NVQ/Diploma qualification leads (location-scoped) |
+| `/api/qualifications/[id]` | admin/manager/scheduler | Update or delete a qualification lead (location-scoped) |
+| `/api/qualifications/[id]/timeline` | admin/manager/scheduler | Add timeline events to a qualification lead |
+| `/api/staff/by-location` | all roles | Get staff for a location (staff see only themselves) |
+| `/api/locations/user-locations` | all roles | Get locations the user has access to |
+| `/api/remove-staff-from-location` | admin/scheduler | Remove a staff member from a location |
+| `/api/archive` | admin | Archive old or inactive records |
+| `/api/archive/delete-booking` | admin/scheduler | Delete an archived booking |
+| `/api/archive/remove-location-course` | admin/scheduler | Remove a course from a location |
+| `/api/cleanup-orphaned-profiles` | admin | Remove profile rows with no matching auth user |
+| `/api/version` | none | Returns current build timestamp (used by UpdateNotification) |
 
 ---
 
@@ -250,7 +278,16 @@ Supabase DB
 
 External data can be imported via:
 - **Atlas CSV** – `/api/atlas/import` parses the CSV and upserts records.
+- **Atlas Auto-Sync** – `/api/atlas/sync` runs on a cron schedule to pull the latest completions.
+- **iHasco Sync** – syncs iHasco training completions into the matrix.
 - **Location CSV** – via `MatrixSyncModal`, uploads per-location training exports.
+
+### Attendance Flow
+
+Attendance can be recorded three ways:
+1. **Sign In App** (automatic) – Staff sign in at a physical device. The webhook (`/api/integrations/sign-in-app/webhook`) matches the visitor to a profile and marks all their bookings for that day as attended.
+2. **Kiosk Register** (trainer) – Trainers use `/apps/booking-calendar/kiosk?eventId=...` to manually mark attendance per event.
+3. **Manual** – Via the booking roster in the calendar.
 
 ---
 
@@ -288,13 +325,17 @@ Always-on workspace constraints that apply to every agent invocation.
 
 ## 11. Current Development Status
 
-The latest completed UI work covers:
+### Recent fixes (2026-11-03)
 
-1. Roster Settings for admin/scheduler users: date-specific booking limit plus top-of-roster message.
-2. Calendar event cards showing the training venue.
-3. Checklist Template item removal with confirmation.
+1. **Sign In App webhook** – Fixed ambiguous booking handling. When a staff member has multiple bookings on the same day, the webhook now marks all of them as attended instead of rejecting the sign-in.
+2. **Feedback email duplication** – The cron automation now marks the event as sent when at least one email succeeds, preventing re-sending to all staff on the next run.
+3. **Staff matrix initialization** – Added automatic retry on failure and surfaced warnings to admins so they know when to manually add training courses.
+4. **Profile email desync** – Profile table is now updated before Supabase Auth with rollback on auth failure, keeping the two in sync.
+5. **SMTP error leak** – Email send errors now return a generic message instead of raw nodemailer output that could expose server details.
 
-These changes use existing database fields and permissions; no new migration is required for them.
+### Auth audit (2026-11-03)
+
+All 51 API routes audited. 47 use `requireRole()`, 2 use webhook/cron auth, 2 are intentionally public (`/api/version`, `/api/auth/sign-out`). Location scoping is applied on all routes that access location-specific data. No unprotected routes found.
 
 ## 12. Common Development Tasks
 
@@ -336,4 +377,4 @@ Edit `src/lib/permissions.ts` — all permission gates read from here.
 
 ---
 
-*Last updated: 2026-08-19*
+*Last updated: 2026-11-03*
