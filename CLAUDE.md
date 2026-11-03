@@ -30,7 +30,7 @@ npx playwright test tests/e2e/smoke.spec.ts -g "test name"  # Run a single e2e t
 
 - `src/app/` - App Router pages and API routes
 - `src/app/components/` - Shared React components (~44 files)
-- `src/app/api/` - Server-side API route handlers (~36 endpoints)
+- `src/app/api/` - Server-side API route handlers (~51 endpoints)
 - `src/lib/` - Shared utilities and hooks
 - `tests/e2e/` - Playwright test specs
 - `scripts/verify-routes.mjs` - Route verification script
@@ -58,6 +58,10 @@ Four roles stored in `profiles.role_tier`: `staff`, `manager`, `scheduler`, `adm
 ### Schema switching (dev vs production)
 
 `src/lib/apiAuth.ts` reads `NEXT_PUBLIC_VERCEL_ENV` to select the Supabase schema: `dev` for preview/development, `public` for production. All tables use Row-Level Security policies.
+
+### Sign In App integration
+
+`/api/integrations/sign-in-app/webhook` receives HMAC-signed webhooks when staff sign in at a physical device. It matches the visitor to a profile (by visitor ID, email, or name), then marks **all** their bookings for that day as attended. Attendance can also be recorded via the trainer kiosk register (`/api/attendance/kiosk`) or manually through the booking roster.
 
 ### Theme system
 
