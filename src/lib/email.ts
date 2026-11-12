@@ -129,7 +129,7 @@ function formatDate(date: string) {
   }
 }
 
-function formatTime(time?: string | null) {
+export function formatTime(time?: string | null) {
   if (!time) return '';
 
   const [hours = '', minutes = ''] = time.split(':');
@@ -143,7 +143,7 @@ function formatTime(time?: string | null) {
   return `${twelveHour}:${minutes} ${suffix}`;
 }
 
-function escapeHtml(value: string) {
+export function escapeHtml(value: string) {
   return value
     .replace(/&/g, '&amp;')
     .replace(/</g, '&lt;')

@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import { requireRole } from '@/lib/apiAuth';
-import { sendEmail, getEmailSendOptionsFromHeaders } from '@/lib/email';
+import { sendEmail, getEmailSendOptionsFromHeaders, escapeHtml } from '@/lib/email';
 import {
   applyTemplate,
   formatEventDate,
@@ -41,15 +41,6 @@ type Booking = {
 };
 
 type AutomationKind = 'reminder_7_days' | 'reminder_1_day' | 'feedback';
-
-function escapeHtml(value: string) {
-  return value
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;')
-    .replace(/'/g, '&#39;');
-}
 
 function makeEmailHtml(body: string) {
   return `

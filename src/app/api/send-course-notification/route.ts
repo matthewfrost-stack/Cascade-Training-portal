@@ -1,15 +1,14 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getEmailSendOptionsFromHeaders, sendBulkEmail } from '@/lib/email';
+import { getEmailSendOptionsFromHeaders, sendBulkEmail, escapeHtml, formatTime } from '@/lib/email';
 import { createServiceClient, requireRole } from '@/lib/apiAuth';
 
-function escapeHtml(value: string) {
-  return value
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;')
-    .replace(/'/g, '&#39;');
-}
+type TrainingEventWithCourse = {
+  event_date: string;
+  start_time: string | null;
+  end_time: string | null;
+  location: string | null;
+  courses: { name?: string | null } | null;
+};
 
 export async function POST(request: NextRequest) {
   try {
@@ -29,7 +28,7 @@ export async function POST(request: NextRequest) {
       .from('training_events')
       .select('event_date, start_time, end_time, location, courses(name)')
       .eq('id', eventId)
-      .single();
+      .single<TrainingEventWithCourse>();
 
     if (!event) {
       return NextResponse.json({ error: 'Event not found' }, { status: 404 });
@@ -48,12 +47,11 @@ export async function POST(request: NextRequest) {
       }
 
       const emails = staffList.map(s => s.email);
-      const courseRelation = event.courses as { name?: string } | null;
-      const courseName = courseRelation?.name || 'Unknown Course';
+      const courseName = event.courses?.name || 'Unknown Course';
       const safeCourseName = escapeHtml(courseName);
       const safeDate = escapeHtml(new Date(event.event_date).toLocaleDateString());
-      const safeStartTime = escapeHtml(String(event.start_time || ''));
-      const safeEndTime = escapeHtml(String(event.end_time || ''));
+      const safeStartTime = escapeHtml(formatTime(event.start_time) || String(event.start_time || ''));
+      const safeEndTime = escapeHtml(formatTime(event.end_time) || String(event.end_time || ''));
       const safeLocation = escapeHtml(String(event.location || ''));
       const htmlContent = `
         <div style="font-family: sans-serif; padding: 20px; border: 1px solid #dbeafe; border-radius: 10px; background-color: #f0f9ff;">

@@ -1,4 +1,4 @@
-import { sendPasswordResetEmail } from '@/lib/email';
+import { sendPasswordResetEmail, getEmailSendOptionsFromHeaders } from '@/lib/email';
 import { NextRequest } from 'next/server';
 import { createServiceClient, requireRole } from '@/lib/apiAuth';
 
@@ -74,6 +74,10 @@ export async function POST(request: NextRequest) {
 
     const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
     const supabaseAdmin = createServiceClient();
+    const emailOptions = getEmailSendOptionsFromHeaders(
+      request.headers.get('x-email-test-mode'),
+      request.headers.get('x-test-email-address')
+    );
     const body = await request.json();
     const staffMembers: StaffMember[] = Array.isArray(body) ? body : [body];
 
@@ -314,7 +318,8 @@ export async function POST(request: NextRequest) {
               await sendPasswordResetEmail(
                 emailToCheck,
                 staff.full_name,
-                linkData.properties.action_link
+                linkData.properties.action_link,
+                emailOptions
               );
             } else {
               console.warn('Could not generate password setup link:', linkError?.message);
