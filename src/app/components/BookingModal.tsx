@@ -65,6 +65,7 @@ export default function BookingModal({ event, onClose, onRefresh, onOpenChecklis
   const isStaff = userRole === 'staff';
   const [userLocation, setUserLocation] = useState<string | null>(null);
   const [expandedLocations, setExpandedLocations] = useState<Set<string>>(new Set());
+  const [expandedRosterLocations, setExpandedRosterLocations] = useState<Set<string>>(new Set());
   const courseDefaultCapacity = Number(event?.courses?.max_attendees) || 10;
   const initialCapacityOverride = event?.course_event_overrides?.[0]?.max_attendees;
   const [rosterSettings, setRosterSettings] = useState({
@@ -305,7 +306,10 @@ export default function BookingModal({ event, onClose, onRefresh, onOpenChecklis
       const eventData = Array.isArray(payload?.events)
         ? payload.events.find((calendarEvent: RosterRow) => calendarEvent.id === event.id)
         : null;
-      setRoster(Array.isArray(eventData?.bookings) ? eventData.bookings : []);
+      const bookings: RosterRow[] = Array.isArray(eventData?.bookings) ? eventData.bookings : [];
+      setRoster(bookings);
+      const locations = new Set(bookings.map((b) => b.profiles?.location || 'Unassigned'));
+      setExpandedRosterLocations(locations);
     } catch (error) {
       console.error('Error fetching booking roster:', error);
       setRoster([]);
@@ -359,6 +363,16 @@ export default function BookingModal({ event, onClose, onRefresh, onOpenChecklis
     setExpandedLocations(newExpanded);
   };
 
+  const toggleRosterLocationExpanded = (locationName: string) => {
+    const newExpanded = new Set(expandedRosterLocations);
+    if (newExpanded.has(locationName)) {
+      newExpanded.delete(locationName);
+    } else {
+      newExpanded.add(locationName);
+    }
+    setExpandedRosterLocations(newExpanded);
+  };
+
   const getStaffByLocation = () => {
     const grouped: Record<string, StaffOption[]> = {};
     const filteredStaff = staff.filter(s => s.full_name?.toLowerCase().includes(searchQuery.toLowerCase()));
@@ -378,6 +392,25 @@ export default function BookingModal({ event, onClose, onRefresh, onOpenChecklis
     });
 
     return sorted;
+  };
+
+  const getRosterByLocation = () => {
+    const grouped: Record<string, RosterRow[]> = {};
+
+    [...roster]
+      .sort((a, b) => {
+        const locationA = a.profiles?.location || 'Unassigned';
+        const locationB = b.profiles?.location || 'Unassigned';
+        if (locationA !== locationB) return locationA.localeCompare(locationB);
+        return (a.profiles?.full_name || '').localeCompare(b.profiles?.full_name || '');
+      })
+      .forEach((row) => {
+        const location = row.profiles?.location || 'Unassigned';
+        if (!grouped[location]) grouped[location] = [];
+        grouped[location].push(row);
+      });
+
+    return grouped;
   };
 
   const updateBooking = async (id: string, updates: Record<string, unknown>) => {
@@ -715,7 +748,7 @@ export default function BookingModal({ event, onClose, onRefresh, onOpenChecklis
                         borderColor: isDark ? '#334155' : '#e2e8f0',
                         color: isDark ? '#f1f5f9' : '#1e293b'
                       }}
-                      className="w-full p-3 border rounded-lg font-bold text-sm flex items-center justify-between hover:opacity-80 transition-all"
+                      className="sticky top-0 z-10 w-full p-3 border rounded-lg font-bold text-sm flex items-center justify-between hover:opacity-80 transition-all"
                     >
                       <div className="flex items-center gap-2">
                         <span>{expandedLocations.has(locationName) ? '▼' : '▶'}</span>
@@ -800,88 +833,101 @@ export default function BookingModal({ event, onClose, onRefresh, onOpenChecklis
                 </UniformButton>
                 </div>
               </div>
-              {[...roster]
-                .sort((a, b) => {
-                  // Sort by location first, then by name
-                  const locationA = a.profiles?.location || 'Unassigned';
-                  const locationB = b.profiles?.location || 'Unassigned';
-                  
-                  if (locationA !== locationB) {
-                    return locationA.localeCompare(locationB);
-                  }
-                  
-                  // If same location, sort by name
-                  return (a.profiles?.full_name || '').localeCompare(b.profiles?.full_name || '');
-                })
-                .map((row) => (
-                <div key={row.id} className="p-4 bg-slate-50 dark:bg-slate-800/50 rounded-[24px] border dark:border-slate-700">
-                  <div className="flex justify-between items-start mb-4">
-                    <div>
-                      <p className={`text-sm font-black ${row.attended_at ? 'text-emerald-500' : 'text-black dark:text-white'}`}>{row.profiles?.full_name}</p>
-                      <p className="text-[9px] font-bold opacity-50 uppercase">📍 {row.profiles?.location}</p>
+              {Object.entries(getRosterByLocation()).map(([locationName, rows]) => (
+                <div key={locationName}>
+                  <button
+                    onClick={() => toggleRosterLocationExpanded(locationName)}
+                    style={{
+                      backgroundColor: isDark ? '#1e293b' : '#f1f5f9',
+                      borderColor: isDark ? '#334155' : '#e2e8f0',
+                      color: isDark ? '#f1f5f9' : '#1e293b'
+                    }}
+                    className="sticky top-0 z-10 w-full p-3 border rounded-lg font-bold text-sm flex items-center justify-between hover:opacity-80 transition-all"
+                  >
+                    <div className="flex items-center gap-2">
+                      <span>{expandedRosterLocations.has(locationName) ? '▼' : '▶'}</span>
+                      <span>{locationName}</span>
+                      <span style={{ backgroundColor: '#60a5fa' }} className="text-white text-[10px] font-bold px-2 py-0.5 rounded">
+                        {rows.length}
+                      </span>
                     </div>
-                    <div className="flex gap-2">
-                      {canEditRoster && (
-                        <>
-                          <button
-                            onClick={() => updateBooking(row.id, {
-                              attended_at: row.attended_at ? null : new Date().toISOString(),
-                              absence_reason: null,
-                              minutes_late: null,
-                              late_reason: null
-                            })}
-                            className={`px-4 py-2 rounded-xl text-[10px] font-black uppercase transition-all ${row.attended_at ? 'bg-emerald-500 text-white' : 'bg-slate-200 dark:bg-slate-700 text-black dark:text-white'}`}
-                          >
-                            {row.attended_at ? 'Present' : 'Mark Present'}
-                          </button>
-                          <button onClick={() => handleRemoveStaff(row.id)} className="p-2 bg-red-600 text-white rounded-lg text-[10px] transition-all hover:bg-red-700 hover:scale-110 active:scale-95 shadow-md hover:shadow-lg duration-200">🗑️</button>
-                        </>
-                      )}
-                    </div>
-                  </div>
+                  </button>
 
-                  {/* Lateness Section - Only visible if Present */}
-                  {canEditRoster && row.attended_at ? (
-                    <div className="grid grid-cols-2 gap-3 mt-2 animate-in slide-in-from-top-2 duration-200">
-                      <div className="flex flex-col gap-1">
-                        <label className="text-[9px] font-black uppercase opacity-50 ml-1">Mins Late</label>
-                        <input 
-                          type="number"
-                          placeholder="0"
-                          className="w-full bg-white dark:bg-slate-700 p-2 rounded-lg text-xs font-bold outline-none border dark:border-slate-600 text-black dark:text-white"
-                          min={0}
-                          max={1440}
-                          step={1}
-                          value={row.minutes_late ?? ''}
-                          onChange={(e) => updateMinutesLateDraft(row.id, e.target.value)}
-                          onBlur={(e) => commitMinutesLate(row.id, e.currentTarget.value)}
-                        />
-                      </div>
-                      <div className="flex flex-col gap-1">
-                        <label className="text-[9px] font-black uppercase opacity-50 ml-1">Late Reason</label>
-                        <select 
-                          className="w-full bg-white dark:bg-slate-700 p-2 rounded-lg text-xs font-bold outline-none border dark:border-slate-600 text-black dark:text-white"
-                          value={row.late_reason || ''}
-                          onChange={(e) => updateBooking(row.id, { late_reason: e.target.value })}
-                        >
-                          <option value="">Reason...</option>
-                          {LATE_REASONS.map(r => <option key={r} value={r}>{r}</option>)}
-                        </select>
-                      </div>
+                  {expandedRosterLocations.has(locationName) && (
+                    <div className="mt-2 space-y-2">
+                      {rows.map((row) => (
+                        <div key={row.id} className="p-4 bg-slate-50 dark:bg-slate-800/50 rounded-[24px] border dark:border-slate-700">
+                          <div className="flex justify-between items-start mb-4">
+                            <div>
+                              <p className={`text-sm font-black ${row.attended_at ? 'text-emerald-500' : 'text-black dark:text-white'}`}>{row.profiles?.full_name}</p>
+                              <p className="text-[9px] font-bold opacity-50 uppercase">📍 {row.profiles?.location}</p>
+                            </div>
+                            <div className="flex gap-2">
+                              {canEditRoster && (
+                                <>
+                                  <button
+                                    onClick={() => updateBooking(row.id, {
+                                      attended_at: row.attended_at ? null : new Date().toISOString(),
+                                      absence_reason: null,
+                                      minutes_late: null,
+                                      late_reason: null
+                                    })}
+                                    className={`px-4 py-2 rounded-xl text-[10px] font-black uppercase transition-all ${row.attended_at ? 'bg-emerald-500 text-white' : 'bg-slate-200 dark:bg-slate-700 text-black dark:text-white'}`}
+                                  >
+                                    {row.attended_at ? 'Present' : 'Mark Present'}
+                                  </button>
+                                  <button onClick={() => handleRemoveStaff(row.id)} className="p-2 bg-red-600 text-white rounded-lg text-[10px] transition-all hover:bg-red-700 hover:scale-110 active:scale-95 shadow-md hover:shadow-lg duration-200">🗑️</button>
+                                </>
+                              )}
+                            </div>
+                          </div>
+
+                          {/* Lateness Section - Only visible if Present */}
+                          {canEditRoster && row.attended_at ? (
+                            <div className="grid grid-cols-2 gap-3 mt-2 animate-in slide-in-from-top-2 duration-200">
+                              <div className="flex flex-col gap-1">
+                                <label className="text-[9px] font-black uppercase opacity-50 ml-1">Mins Late</label>
+                                <input
+                                  type="number"
+                                  placeholder="0"
+                                  className="w-full bg-white dark:bg-slate-700 p-2 rounded-lg text-xs font-bold outline-none border dark:border-slate-600 text-black dark:text-white"
+                                  min={0}
+                                  max={1440}
+                                  step={1}
+                                  value={row.minutes_late ?? ''}
+                                  onChange={(e) => updateMinutesLateDraft(row.id, e.target.value)}
+                                  onBlur={(e) => commitMinutesLate(row.id, e.currentTarget.value)}
+                                />
+                              </div>
+                              <div className="flex flex-col gap-1">
+                                <label className="text-[9px] font-black uppercase opacity-50 ml-1">Late Reason</label>
+                                <select
+                                  className="w-full bg-white dark:bg-slate-700 p-2 rounded-lg text-xs font-bold outline-none border dark:border-slate-600 text-black dark:text-white"
+                                  value={row.late_reason || ''}
+                                  onChange={(e) => updateBooking(row.id, { late_reason: e.target.value })}
+                                >
+                                  <option value="">Reason...</option>
+                                  {LATE_REASONS.map(r => <option key={r} value={r}>{r}</option>)}
+                                </select>
+                              </div>
+                            </div>
+                          ) : canEditRoster ? (
+                            /* Absence Reason - Only visible if Not Present */
+                            <div className="mt-2">
+                              <select
+                                className="w-full bg-red-50 dark:bg-red-900/20 p-2 rounded-lg text-xs font-bold outline-none border border-red-200 dark:border-red-900/50 text-red-600"
+                                value={row.absence_reason || ''}
+                                onChange={(e) => updateBooking(row.id, { absence_reason: e.target.value })}
+                              >
+                                <option value="">Select Absence Reason...</option>
+                                {ABSENCE_REASONS.map(r => <option key={r} value={r}>{r}</option>)}
+                              </select>
+                            </div>
+                          ) : null}
+                        </div>
+                      ))}
                     </div>
-                  ) : canEditRoster ? (
-                    /* Absence Reason - Only visible if Not Present */
-                    <div className="mt-2">
-                      <select 
-                        className="w-full bg-red-50 dark:bg-red-900/20 p-2 rounded-lg text-xs font-bold outline-none border border-red-200 dark:border-red-900/50 text-red-600"
-                        value={row.absence_reason || ''}
-                        onChange={(e) => updateBooking(row.id, { absence_reason: e.target.value })}
-                      >
-                        <option value="">Select Absence Reason...</option>
-                        {ABSENCE_REASONS.map(r => <option key={r} value={r}>{r}</option>)}
-                      </select>
-                    </div>
-                  ) : null}
+                  )}
                 </div>
               ))}
               <div className="flex gap-3 mt-6">

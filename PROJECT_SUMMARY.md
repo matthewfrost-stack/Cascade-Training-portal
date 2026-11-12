@@ -161,6 +161,7 @@ A calendar interface for creating and managing training events.
 - Booking limits reuse `course_event_overrides`; roster messages reuse `training_events.notes`.
 - Email notifications on booking confirmation or cancellation.
 - Attendance, absence, lateness, staff removal, and CSV export.
+- Both the Add Staff and Roster tabs group staff by location with collapsible sticky headers that stay visible while scrolling.
 
 ---
 
@@ -185,7 +186,7 @@ Admin and scheduler-facing control centre with admin-only management tools:
 | `CourseExpiryChecker.tsx` | Per-location expiry view |
 | `RecordHoverPopoverModal.tsx` | Reusable hover popover + click-to-expand modal for record lists |
 | `AddStaffModal.tsx` | Multi-step modal for creating a new staff member |
-| `BookingModal.tsx` | Booking form, roster, attendance, export, and roster settings entry point |
+| `BookingModal.tsx` | Booking form, roster, attendance, export, roster settings; both tabs have collapsible sticky location headers |
 | `RosterSettingsModal.tsx` | Edit per-session booking limits and roster messages |
 | `ChecklistTemplateModal.tsx` | Manage reusable checklist items, including removal |
 | `AdminToolsPanel.tsx` | Admin sub-panel container |
@@ -336,7 +337,8 @@ Always-on workspace constraints that apply to every agent invocation.
 
 ### Recent changes (2026-11-12)
 
-1. **Session timeout warning modal** – `SessionTimeout.tsx` now shows a countdown warning modal 60 seconds before auto-logout. Users can click "Stay Logged In" to reset the inactivity timer or "Log Out Now" to sign out immediately. Previously the logout happened silently.
+1. **Sticky collapsible location headers in BookingModal** – Both the Add Staff tab and the Roster tab now group staff by location under collapsible headers that stick to the top of the scroll area (`sticky top-0 z-10`). The Roster tab previously showed a flat sorted list; it now uses the same grouped pattern as the Add Staff tab. Each tab has independent expand/collapse state.
+2. **Session timeout warning modal** – `SessionTimeout.tsx` now shows a countdown warning modal 60 seconds before auto-logout. Users can click "Stay Logged In" to reset the inactivity timer or "Log Out Now" to sign out immediately. Previously the logout happened silently.
 
 ### Previous fixes (2026-11-12)
 
