@@ -33,7 +33,7 @@ The application is branded as "Cascade Portal" and is accessed via a tile-based 
 | **Styling** | Tailwind CSS (dark/light theme toggle) |
 | **Database / Auth** | Supabase (PostgreSQL + Row-Level Security) |
 | **Deployment** | Vercel (auto-deploys from `main` branch) |
-| **Email** | Custom email utility via `src/lib/email.ts` |
+| **Email** | Custom email utility via `src/lib/email.ts` (exports `escapeHtml`, `formatTime`, send helpers) |
 
 ---
 
@@ -212,6 +212,7 @@ All routes are Next.js Route Handlers (server-side). Authentication is checked s
 | `/api/admin/reset-user-password` | admin | Admin sets a user's password directly |
 | `/api/auth/sign-out` | none | Revoke token and clear auth cookies |
 | `/api/auth/change-password` | session | User changes own password |
+| `/api/auth/complete-password-change` | session | Clear the `password_needs_change` flag after forced password change |
 | `/api/courses/expiring` | all roles | Get certifications expiring within N days |
 | `/api/courses/expired` | all roles | Get expired certifications |
 | `/api/courses/by-location` | all roles | Get courses for a location |
@@ -235,7 +236,7 @@ All routes are Next.js Route Handlers (server-side). Authentication is checked s
 | `/api/send-course-notification` | admin/scheduler | Send a general course notification email |
 | `/api/email/send` | admin/scheduler | Send an arbitrary email (generic error response, no SMTP leak) |
 | `/api/email-logs` | admin/scheduler | Retrieve email send history |
-| `/api/atlas/import` | admin | Parse and import an Atlas CSV export |
+| `/api/atlas/import` | admin | Parse and import an Atlas Excel export (schema-aware) |
 | `/api/atlas/sync` | cron/admin | Auto-sync training records from Atlas |
 | `/api/integrations/sign-in-app/webhook` | HMAC | Receive Sign In App webhooks, mark all daily bookings as attended |
 | `/api/automations/feedback-emails` | cron/admin | Send feedback/reminder emails (duplicate-safe) |
@@ -250,6 +251,11 @@ All routes are Next.js Route Handlers (server-side). Authentication is checked s
 | `/api/archive/delete-booking` | admin/scheduler | Delete an archived booking |
 | `/api/archive/remove-location-course` | admin/scheduler | Remove a course from a location |
 | `/api/cleanup-orphaned-profiles` | admin | Remove profile rows with no matching auth user |
+| `/api/send-password-reset` | admin | Send a password reset email to a staff member |
+| `/api/schedule-feedback-emails` | admin | Schedule and trigger feedback email sends |
+| `/api/test-email` | admin/scheduler | Send a test email to verify SMTP configuration |
+| `/api/debug-email-config` | admin | Inspect email configuration (masked values) |
+| `/api/debug-profiles` | admin | Inspect profile data for debugging |
 | `/api/version` | none | Returns current build timestamp (used by UpdateNotification) |
 
 ---
@@ -325,7 +331,22 @@ Always-on workspace constraints that apply to every agent invocation.
 
 ## 11. Current Development Status
 
-### Recent fixes (2026-11-03)
+### Recent fixes (2026-11-12)
+
+1. **Email system refactor** – Full audit and fix of all email-sending routes:
+   - `schedule-feedback-emails`: Fixed `profiles(email, name)` → `profiles(email, full_name)` so staff names appear correctly instead of always falling back to "Staff Member". Added `escapeHtml` to template values before HTML insertion.
+   - `send-course-notification`: Removed duplicate `escapeHtml` function, now imports from `email.ts`. Times now display in 12-hour format (e.g. "2:30 PM") via `formatTime()`. Added proper `TrainingEventWithCourse` type.
+   - `add-staff`: `sendPasswordResetEmail()` now receives `emailOptions` so test mode headers are respected for staff invite emails.
+   - `send-booking-cancellation`: Added step-by-step logging matching the confirmation route pattern.
+   - `BookingModal`: Event cancellation emails now send in parallel via `Promise.allSettled()` instead of a serial loop.
+   - `email.ts`: Exported `escapeHtml()` and `formatTime()` for reuse across routes.
+   - `automations/feedback-emails`: Deduplicated local `escapeHtml`, now imports from `email.ts`.
+
+### Previous fixes (2026-11-05)
+
+1. **Atlas Excel import schema bug** – The import route created its own raw Supabase client defaulting to the `public` schema, causing dev/preview deployments to read/write the wrong schema. Switched to the schema-aware `authz.service` client used by every other route. Also removed ~30 verbose `console.log` statements left from development and deleted the unused `AtlasImportModal` component.
+
+### Previous fixes (2026-11-03)
 
 1. **Sign In App webhook** – Fixed ambiguous booking handling. When a staff member has multiple bookings on the same day, the webhook now marks all of them as attended instead of rejecting the sign-in.
 2. **Feedback email duplication** – The cron automation now marks the event as sent when at least one email succeeds, preventing re-sending to all staff on the next run.
@@ -377,4 +398,4 @@ Edit `src/lib/permissions.ts` — all permission gates read from here.
 
 ---
 
-*Last updated: 2026-11-03*
+*Last updated: 2026-11-12*
