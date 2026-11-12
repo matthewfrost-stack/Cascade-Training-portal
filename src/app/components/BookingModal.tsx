@@ -558,22 +558,24 @@ export default function BookingModal({ event, onClose, onRefresh, onOpenChecklis
     if (!confirm(`Cancel this event? All ${roster.length} participants will be notified and removed.`)) return;
     
     try {
-      // Send cancellation emails to all participants
-      for (const booking of roster) {
-        try {
-          await fetch('/api/send-booking-cancellation', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json', ...getEmailTestHeaders() },
-            body: JSON.stringify({ 
-              staffId: booking.profile_id, 
-              eventId: event.id,
-              reason: 'This event has been cancelled'
-            })
-          });
-        } catch (err) {
-          console.error('Failed to send cancellation email:', err);
-        }
-      }
+      // Send cancellation emails to all participants in parallel
+      await Promise.allSettled(
+        roster.map(async (booking) => {
+          try {
+            await fetch('/api/send-booking-cancellation', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json', ...getEmailTestHeaders() },
+              body: JSON.stringify({
+                staffId: booking.profile_id,
+                eventId: event.id,
+                reason: 'This event has been cancelled'
+              })
+            });
+          } catch (err) {
+            console.error('Failed to send cancellation email:', err);
+          }
+        })
+      );
       
       // Delete all bookings for this event
       const { error: deleteBookingsError } = await supabase

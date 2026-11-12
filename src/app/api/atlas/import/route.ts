@@ -1,5 +1,4 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { createClient } from '@supabase/supabase-js';
 import readXlsxFile from 'read-excel-file/node';
 import { requireRole } from '@/lib/apiAuth';
 import { ATLAS_COURSE_ALIASES } from '@/lib/atlasSync';
@@ -135,10 +134,7 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const supabase = createClient(
-      process.env.NEXT_PUBLIC_SUPABASE_URL || '',
-      process.env.SUPABASE_SECRET_KEY || process.env.SUPABASE_SERVICE_ROLE_KEY || ''
-    );
+    const supabase = authz.service;
 
     // Parse Excel file with proper structure understanding
     // Row 1: Keys/Legend
@@ -149,8 +145,6 @@ export async function POST(request: NextRequest) {
       const buffer = await file.arrayBuffer();
       const rows = await readXlsxFile(Buffer.from(buffer));
       const allData: string[][] = rows.map((row) => row.map((cell) => cellValueToString(cell)));
-      
-      console.log(`Excel file has ${allData.length} rows`);
       
       if (allData.length < 3) {
         return NextResponse.json({
@@ -173,9 +167,6 @@ export async function POST(request: NextRequest) {
       const headerRow = allData[resolvedHeaderRowIndex] || []; // Row with course names
       const dataRows = allData.slice(resolvedHeaderRowIndex + 1); // Rows after header contain staff data
       
-      console.log(`Header row index: ${resolvedHeaderRowIndex}`);
-      console.log(`Header row (headers): ${JSON.stringify(headerRow)}`);
-      
       // Create records array from raw data
       records = dataRows.map((row): AtlasRecord | null => {
         if (!row || row.length === 0) return null;
@@ -196,10 +187,6 @@ export async function POST(request: NextRequest) {
         return record;
       }).filter((r): r is AtlasRecord => r !== null && Boolean(r.staffName));
       
-      console.log(`Extracted ${records.length} staff records from data rows`);
-      if (records.length > 0) {
-        console.log(`First record: ${JSON.stringify(records[0])}`);
-      }
     } catch (parseError) {
       console.error('Excel parse error:', parseError);
       return NextResponse.json({
@@ -310,20 +297,6 @@ export async function POST(request: NextRequest) {
     // Each record has: { staffName: "...", "Course A": "date", "Course B": "date", ... }
     // So we just need to iterate through each record and match courses to the database
 
-    console.log(`=== ATLAS IMPORT DEBUG ===`);
-    console.log(`Loaded ${records.length} staff records from Excel`);
-    console.log(`Training courses in database: ${courseMap.size}, Staff in database: ${staffMap.size}`);
-    
-    // Show actual course names from database
-    console.log(`Database training courses: ${Array.from(courseMap.keys()).slice(0, 10).join(', ')}${courseMap.size > 10 ? '...' : ''}`);
-    console.log(`Database staff sample: ${Array.from(staffMap.keys()).slice(0, 5).join(', ')}`);
-    
-    // Show sample data
-    if (records.length > 0) {
-      console.log(`First record keys: ${Object.keys(records[0]).join(', ')}`);
-      console.log(`Sample first record:`, records[0]);
-    }
-    
     // Collect all course names from the records (all keys except staffName)
     const coursesInRecords = new Set<string>();
     for (const record of records) {
@@ -333,8 +306,6 @@ export async function POST(request: NextRequest) {
         }
       }
     }
-    
-    console.log(`Found ${coursesInRecords.size} unique courses in Excel records: ${Array.from(coursesInRecords).slice(0, 10).join(', ')}${coursesInRecords.size > 10 ? '...' : ''}`);
     
     const normalizeCourseName = (name: string) => {
       return name
@@ -381,28 +352,11 @@ export async function POST(request: NextRequest) {
       
       if (courseId) {
         recordCourseToDB.set(excelCourse, { id: courseId, name: matchedName });
-        console.log(`  ✓ "${excelCourse}" -> ID: ${courseId}`);
       } else {
         unmatchedCourses.push(excelCourse);
-        console.log(`  ✗ "${excelCourse}" -> NOT FOUND`);
       }
     }
     
-    console.log(`Matched ${recordCourseToDB.size} courses out of ${coursesInRecords.size}`);
-    if (unmatchedCourses.length > 0) {
-      console.log(`Unmatched courses (first 5): ${unmatchedCourses.slice(0, 5).join(', ')}`);
-    }
-    
-    // Show sample staff names and their match status
-    console.log(`\nSample staff names from Excel:`);
-    const excelStaffNames = records.slice(0, 5).map(r => r.staffName);
-    const dbSampleNames = Array.from(staffMap.keys()).slice(0, 5);
-    console.log(`Database sample: ${dbSampleNames.join(' | ')}`);
-    for (const staffName of excelStaffNames) {
-      const found = staffMap.has(staffName.toLowerCase());
-      console.log(`  "${staffName}" -> ${found ? '✓ FOUND' : '✗ NOT FOUND'}`);
-    }
-
     // Parse data rows with new record structure
     const updates: AtlasUpdate[] = [];
     const errors: AtlasError[] = [];
@@ -411,15 +365,11 @@ export async function POST(request: NextRequest) {
     const ignoredStaffReasons = new Map<string, IgnoredStaffReason>();
     const ignoredStaffNames = getConfiguredIgnoredNames();
 
-    console.log(`Processing ${records.length} records`);
-    console.log(`Found ${recordCourseToDB.size} courses to match`);
-    
     for (let i = 0; i < records.length; i++) {
       const row = records[i];
       const staffName = row.staffName?.trim();
 
       if (!staffName) {
-        console.log(`Row ${i}: Skipping empty staff name`);
         continue; // Skip empty rows
       }
 
@@ -432,7 +382,6 @@ export async function POST(request: NextRequest) {
       const staffId = staffMap.get(staffName.toLowerCase());
 
       if (!staffId) {
-        console.log(`Skipping staff not in database: "${staffName}"`);
         ignoredMissingStaff.add(staffName);
         ignoredStaffReasons.set(staffName, 'not_in_database');
         continue;
@@ -441,7 +390,6 @@ export async function POST(request: NextRequest) {
       // Get the staff member's location
       const staffLocList = staffLocations.get(staffId) || [];
       if (staffLocList.length === 0) {
-        console.log(`No location found for staff: "${staffName}"`);
         errors.push({
           row: i + 1,
           name: staffName,
@@ -479,8 +427,6 @@ export async function POST(request: NextRequest) {
       }
     }
     
-    console.log(`Created ${updates.length} update records from Excel data`);
-
     // Atlas exports can contain repeated course columns (aliases, renamed
     // headers, or duplicate sections). Keep the populated value for each
     // staff/course pair once so a duplicate cannot make an entire upsert batch
@@ -497,14 +443,10 @@ export async function POST(request: NextRequest) {
         return map;
       }, new Map<string, AtlasUpdate>()).values()
     );
-    console.log(`Using ${uniqueUpdates.length} unique populated staff/course values`);
-
     // Now process updates - check what's actually changed
     // Get unique staff IDs from the updates
     const uniqueStaffIds = [...new Set(uniqueUpdates.map(u => u.staff_id))];
     const uniqueCourseIds = [...new Set(uniqueUpdates.map(u => u.course_id))];
-    
-    console.log(`Querying existing records for ${uniqueStaffIds.length} staff and ${uniqueCourseIds.length} courses...`);
     
     // Query in small batches to avoid Supabase's 1000 row limit per query
     // Each staff can have up to 47 courses, so batch size of 20 = max 940 results per query
@@ -549,13 +491,7 @@ export async function POST(request: NextRequest) {
         }
       }
       
-      // Log progress for large batches
-      if (i > 0 && i % 100 === 0) {
-        console.log(`  Queried ${i} of ${uniqueStaffIds.length} staff...`);
-      }
     }
-    
-    console.log(`Found ${existingMap.size} existing records to check against`);
 
     const toUpdateExisting: Array<{
       id: string;
@@ -662,8 +598,6 @@ export async function POST(request: NextRequest) {
     const updatedRecords: ImportChangeRecord[] = [];
     const createdRecords: ImportChangeRecord[] = [];
 
-    console.log(`Applying ${toUpdateExisting.length} updates and ${toInsertNew.length} inserts...`);
-
     // Batch updates (update existing records)
     const UPDATE_BATCH_SIZE = 100;
     for (let i = 0; i < toUpdateExisting.length; i += UPDATE_BATCH_SIZE) {
@@ -672,8 +606,6 @@ export async function POST(request: NextRequest) {
       // Update each record in the batch and track successes
       const results = await Promise.all(
         batch.map(async (update) => {
-          console.log(`Updating record ${update.id}: ${update.change.staff} / ${update.change.course} from ${update.change.oldDate} to ${update.change.newDate}`);
-          
           const result = await supabase
             .from('staff_training_matrix')
             .update({
@@ -682,13 +614,11 @@ export async function POST(request: NextRequest) {
               status: update.status,
             })
             .eq('id', update.id);
-          
+
           if (result.error) {
-            console.error(`  ✗ Error updating record ${update.id}:`, result.error);
-          } else {
-            console.log(`  ✓ Successfully updated record ${update.id}`);
+            console.error(`Error updating record ${update.id}:`, result.error.message);
           }
-          
+
           return { update, success: !result.error };
         })
       );
@@ -701,9 +631,6 @@ export async function POST(request: NextRequest) {
         }
       });
       
-      if ((i + UPDATE_BATCH_SIZE) % 500 === 0) {
-        console.log(`  Updated ${Math.min(i + UPDATE_BATCH_SIZE, toUpdateExisting.length)} of ${toUpdateExisting.length}...`);
-      }
     }
 
     // Batch inserts (create new records) - use upsert to handle duplicates gracefully
@@ -711,9 +638,6 @@ export async function POST(request: NextRequest) {
     for (let i = 0; i < toInsertNew.length; i += INSERT_BATCH_SIZE) {
       const batch = toInsertNew.slice(i, i + INSERT_BATCH_SIZE);
       const payload = batch.map(item => item.payload);
-      
-      console.log(`Inserting batch of ${payload.length} records...`);
-      console.log(`  Sample: ${payload[0] ? `${payload[0].staff_id} / ${payload[0].course_id} -> ${payload[0].completion_date}` : 'none'}`);
       
       let { error } = await supabase
         .from('staff_training_matrix')
@@ -729,22 +653,13 @@ export async function POST(request: NextRequest) {
 
       if (!error) {
         createdCount += payload.length;
-        console.log(`  ✓ Inserted ${payload.length} records successfully`);
         batch.forEach(item => {
           createdRecords.push(item.change);
         });
       } else {
-        console.error(`  ✗ Insert batch error: ${error.message} (code: ${error.code})`);
-        console.error(`    Batch details:`, payload.slice(0, 2));
-      }
-      
-      if ((i + INSERT_BATCH_SIZE) % 500 === 0) {
-        console.log(`  Inserted ${Math.min(i + INSERT_BATCH_SIZE, toInsertNew.length)} of ${toInsertNew.length}...`);
+        console.error(`Insert batch error: ${error.message} (code: ${error.code})`);
       }
     }
-
-    console.log(`✓ Atlas import complete: ${updatedCount} updated, ${createdCount} created, ${errors.length} errors`);
-    console.log(`  Showing ${updatedRecords.length + createdRecords.length} successful changes in report`);
 
     return NextResponse.json({
       success: true,

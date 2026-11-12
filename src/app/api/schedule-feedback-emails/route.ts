@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { sendEmail, getEmailSendOptionsFromHeaders } from '@/lib/email';
+import { sendEmail, getEmailSendOptionsFromHeaders, escapeHtml } from '@/lib/email';
 import { requireRole } from '@/lib/apiAuth';
 
 export async function GET(req: Request) {
@@ -52,7 +52,7 @@ async function handleRequest(req: Request) {
     for (const event of eventsToNotify) {
       const { data: bookings } = await service
         .from('bookings')
-        .select('*, profiles(email, name)')
+        .select('*, profiles(email, full_name)')
         .eq('event_id', event.id)
         .not('attended_at', 'is', null);
 
@@ -64,22 +64,26 @@ async function handleRequest(req: Request) {
 
       for (const booking of bookings) {
         const staffEmail = booking.profiles?.email;
-        const staffName = booking.profiles?.name || 'Staff Member';
+        const staffName = booking.profiles?.full_name || 'Staff Member';
         if (!staffEmail) continue;
 
         const feedbackLink = `${baseUrl}/feedback?event=${event.id}&course=${encodeURIComponent(courseName)}&date=${eventDate}`;
 
+        const safeStaffName = escapeHtml(staffName);
+        const safeCourseName = escapeHtml(courseName);
+        const safeFeedbackLink = escapeHtml(feedbackLink);
+
         const subject = (settings?.email_subject || 'Feedback for {{course_name}}').replace(/{{course_name}}/g, courseName);
         const body = (settings?.email_body || 'Hi {{staff_name}},\n\n...')
-          .replace(/{{staff_name}}/g, staffName)
-          .replace(/{{course_name}}/g, courseName)
-          .replace(/{{feedback_link}}/g, feedbackLink);
+          .replace(/{{staff_name}}/g, safeStaffName)
+          .replace(/{{course_name}}/g, safeCourseName)
+          .replace(/{{feedback_link}}/g, safeFeedbackLink);
 
         const html = `
           <div style="font-family: sans-serif; padding: 20px; border: 1px solid #dbeafe; border-radius: 10px; background-color: #f8fafc;">
             ${body.replace(/\n/g, '<br>')}
             <div style="margin: 25px 0;">
-              <a href="${feedbackLink}" style="background-color: #ec4899; color: white; padding: 12px 30px; border-radius: 8px; text-decoration: none; font-weight: bold; display: inline-block;">
+              <a href="${safeFeedbackLink}" style="background-color: #ec4899; color: white; padding: 12px 30px; border-radius: 8px; text-decoration: none; font-weight: bold; display: inline-block;">
                 Submit Feedback
               </a>
             </div>
