@@ -2,6 +2,11 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getEmailSendOptionsFromHeaders, sendBookingCancellationEmail } from '@/lib/email';
 import { createServiceClient, requireRole } from '@/lib/apiAuth';
 
+type TrainingEventWithCourse = {
+  event_date: string;
+  courses: { name?: string | null } | null;
+};
+
 export async function POST(request: NextRequest) {
   try {
     const authz = await requireRole(['admin', 'scheduler']);
@@ -27,7 +32,7 @@ export async function POST(request: NextRequest) {
       .from('training_events')
       .select('event_date, courses(name)')
       .eq('id', eventId)
-      .single();
+      .single<TrainingEventWithCourse>();
 
     if (!event) {
       return NextResponse.json({ error: 'Event not found' }, { status: 404 });
@@ -41,7 +46,7 @@ export async function POST(request: NextRequest) {
     const success = await sendBookingCancellationEmail(
       staff.email,
       staff.full_name || 'Staff Member',
-      event.courses?.[0]?.name || 'Unknown Course',
+      event.courses?.name || 'Unknown Course',
       event.event_date,
       reason,
       emailOptions
