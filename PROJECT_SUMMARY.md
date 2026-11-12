@@ -195,6 +195,7 @@ Admin and scheduler-facing control centre with admin-only management tools:
 | `CourseManagerModal.tsx` | CRUD for course definitions |
 | `DuplicateRemovalModal.tsx` | Detect and merge duplicate staff records |
 | `SlideOutNav.tsx` | Mobile-friendly slide-out navigation |
+| `SessionTimeout.tsx` | Inactivity auto-logout with 60-second countdown warning modal |
 | `ThemeToggle.tsx` | Dark/light mode switcher |
 
 ---
@@ -266,6 +267,8 @@ All routes are Next.js Route Handlers (server-side). Authentication is checked s
 
 User profile data (including `role_tier`) is fetched client-side using the `useCurrentUserProfile` hook, which caches the profile for the session.
 
+Session timeout: after 5 minutes of inactivity a warning modal appears with a 60-second countdown. Users can extend the session or log out immediately. If the countdown reaches zero, the user is signed out and redirected to `/login`. The timeout is shared across tabs via `localStorage`.
+
 Password change enforcement: if `profile.password_needs_change === true`, the user is redirected to `/auth/change-password-required` on every page load until they set a new password.
 
 ---
@@ -331,7 +334,11 @@ Always-on workspace constraints that apply to every agent invocation.
 
 ## 11. Current Development Status
 
-### Recent fixes (2026-11-12)
+### Recent changes (2026-11-12)
+
+1. **Session timeout warning modal** – `SessionTimeout.tsx` now shows a countdown warning modal 60 seconds before auto-logout. Users can click "Stay Logged In" to reset the inactivity timer or "Log Out Now" to sign out immediately. Previously the logout happened silently.
+
+### Previous fixes (2026-11-12)
 
 1. **Email system refactor** – Full audit and fix of all email-sending routes:
    - `schedule-feedback-emails`: Fixed `profiles(email, name)` → `profiles(email, full_name)` so staff names appear correctly instead of always falling back to "Staff Member". Added `escapeHtml` to template values before HTML insertion.
