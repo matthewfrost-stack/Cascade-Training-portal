@@ -33,6 +33,6 @@ export async function GET(request: Request) {
         }
     }
 
-    // return the user to an error page with instructions
-    return NextResponse.redirect(`${origin}/auth/auth-code-error`);
+    // Expired/used link, or an old-style emailed link: offer a fresh one.
+    return NextResponse.redirect(`${origin}/auth/forgot-password?expired=1`);
 }

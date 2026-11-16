@@ -81,3 +81,47 @@ test.describe('unauthenticated API protection', () => {
   });
 });
 
+test.describe('password reset journey', () => {
+  test('login page links to forgotten password', async ({ page }) => {
+    await page.goto('/login');
+    await page.getByRole('link', { name: 'Forgotten your password?' }).click();
+    await page.waitForURL('**/auth/forgot-password');
+    await expect(page.getByRole('heading', { name: 'Forgotten your password?' })).toBeVisible();
+  });
+
+  test('forgot-password gives the same reply for any valid address', async ({ page }) => {
+    await page.goto('/auth/forgot-password');
+    await page.getByLabel('Email address').fill('nobody@example.invalid');
+    await page.getByRole('button', { name: 'Email me a reset link' }).click();
+    await expect(page.getByText('If nobody@example.invalid belongs to a Cascade Portal account')).toBeVisible();
+  });
+
+  test('forgot-password API rejects an invalid address', async ({ request }) => {
+    const res = await request.post('/api/auth/forgot-password', { data: { email: 'not-an-email' } });
+    expect(res.status()).toBe(400);
+  });
+
+  test('confirm page without a token offers a new link', async ({ page }) => {
+    await page.goto('/auth/confirm');
+    await expect(page.getByRole('heading', { name: 'This link has expired' })).toBeVisible();
+    await expect(page.getByRole('link', { name: 'Request a new password email' })).toBeVisible();
+  });
+
+  test('confirm page waits for a click before using the token', async ({ page }) => {
+    await page.goto('/auth/confirm?token_hash=not-a-real-token&type=recovery');
+    await expect(page.getByRole('button', { name: 'Set my password' })).toBeVisible();
+    await page.getByRole('button', { name: 'Set my password' }).click();
+    await expect(page.getByRole('heading', { name: 'This link has expired' })).toBeVisible();
+  });
+
+  test('set-password without a session explains what to do', async ({ page }) => {
+    await page.goto('/auth/set-password');
+    await expect(page.getByText('This page needs a valid password link.')).toBeVisible();
+  });
+
+  test('old-style emailed links land on the forgot-password page', async ({ page }) => {
+    await page.goto('/auth/callback');
+    await page.waitForURL('**/auth/forgot-password?expired=1');
+    await expect(page.getByText('That password link has expired')).toBeVisible();
+  });
+});

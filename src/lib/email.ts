@@ -223,32 +223,81 @@ async function sendRawEmail(recipients: string[], subject: string, html: string,
   }
 }
 
-export async function sendPasswordResetEmail(staffEmail: string, staffName: string, resetLink: string, options?: EmailSendOptions) {
-  const safeStaffName = escapeHtml(staffName || 'Staff Member');
+export type PasswordEmailKind = 'reset' | 'welcome';
+
+export const PASSWORD_RESET_SUBJECT = 'Reset your Cascade Portal password';
+export const PASSWORD_WELCOME_SUBJECT = 'Set up your Cascade Portal account';
+
+/**
+ * Formal "set your password" email. `kind` picks the wording: 'reset' for an
+ * existing account, 'welcome' for a newly created one. Table-based layout
+ * with inline styles so it renders consistently in Outlook as well as Gmail.
+ */
+export async function sendPasswordResetEmail(
+  staffEmail: string,
+  staffName: string,
+  resetLink: string,
+  options?: EmailSendOptions,
+  kind: PasswordEmailKind = 'reset'
+) {
+  const safeStaffName = escapeHtml((staffName || '').trim() || 'colleague');
   const safeResetLink = escapeHtml(resetLink);
-  const subject = 'Reset Your Password - Training Portal';
+  const isWelcome = kind === 'welcome';
+  const subject = isWelcome ? PASSWORD_WELCOME_SUBJECT : PASSWORD_RESET_SUBJECT;
+  const heading = isWelcome ? 'Set up your account' : 'Reset your password';
+  const intro = isWelcome
+    ? 'An account has been created for you on the Cascade Portal, where you can view your training record and book onto courses. Please choose a password to complete your account set-up.'
+    : 'We have received a request to reset the password for your Cascade Portal account. To choose a new password, please use the button below.';
+  const buttonText = isWelcome ? 'Set up my password' : 'Reset my password';
+  const notRequested = isWelcome
+    ? 'If you were not expecting this email, please contact the Training Team.'
+    : 'If you did not request a password reset, you can safely ignore this email. Your current password will remain unchanged.';
+
   const html = `
-    <div style="font-family: sans-serif; padding: 20px; border: 1px solid #dbeafe; border-radius: 10px; background-color: #f0f9ff;">
-      <h2 style="color: #0284c7;">Reset Your Password</h2>
-      <p>Hi <strong>${safeStaffName}</strong>,</p>
-      <p>You can use this link to change your password whenever you'd like:</p>
-      
-      <div style="margin: 25px 0; text-align: center;">
-        <a href="${safeResetLink}" style="background-color: #0284c7; color: white; padding: 12px 30px; border-radius: 8px; text-decoration: none; font-weight: bold; display: inline-block;">
-          Reset Your Password
-        </a>
-      </div>
-
-      <p style="font-size: 13px; color: #666;">Or copy and paste this link in your browser:</p>
-      <p style="font-size: 12px; word-break: break-all; background-color: #f3f4f6; padding: 10px; border-radius: 5px; color: #374151;">
-        ${safeResetLink}
-      </p>
-
-      <hr style="border: none; border-top: 1px solid #e5e7eb; margin: 20px 0;">
-      
-      <p style="color: #666; font-size: 13px;">This link will expire in 24 hours.</p>
-      <p style="color: #666; font-size: 13px;">If you have any questions, contact the training team.</p>
-    </div>
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background-color:#f3f4f6;padding:24px 0;font-family:Arial,Helvetica,sans-serif;">
+  <tr>
+    <td align="center">
+      <table role="presentation" width="560" cellpadding="0" cellspacing="0" style="max-width:560px;width:100%;background-color:#ffffff;border:1px solid #e5e7eb;border-radius:8px;">
+        <tr>
+          <td style="background-color:#1e3a5f;padding:20px 32px;border-radius:8px 8px 0 0;">
+            <p style="margin:0;color:#ffffff;font-size:18px;font-weight:bold;">Cascade Portal</p>
+            <p style="margin:4px 0 0 0;color:#cbd5e1;font-size:13px;">Training Team</p>
+          </td>
+        </tr>
+        <tr>
+          <td style="padding:32px;color:#1f2937;font-size:15px;line-height:1.6;">
+            <h1 style="margin:0 0 16px 0;font-size:20px;color:#111827;">${heading}</h1>
+            <p style="margin:0 0 16px 0;">Dear ${safeStaffName},</p>
+            <p style="margin:0 0 16px 0;">${intro}</p>
+            <table role="presentation" cellpadding="0" cellspacing="0" style="margin:24px 0;">
+              <tr>
+                <td style="background-color:#1d4ed8;border-radius:6px;">
+                  <a href="${safeResetLink}" style="display:inline-block;padding:12px 28px;color:#ffffff;font-weight:bold;text-decoration:none;font-size:15px;">${buttonText}</a>
+                </td>
+              </tr>
+            </table>
+            <p style="margin:0 0 8px 0;font-weight:bold;">What happens next</p>
+            <ol style="margin:0 0 16px 20px;padding:0;">
+              <li>Select the button above. A Cascade Portal page will open.</li>
+              <li>Select <strong>Set my password</strong> on that page.</li>
+              <li>Enter your new password twice. You will then be signed in.</li>
+            </ol>
+            <p style="margin:0 0 16px 0;">For your security, this link can only be used once and expires after a short time. If it has expired, select <strong>Forgotten your password?</strong> on the Cascade Portal sign-in page to receive a new one.</p>
+            <p style="margin:0 0 16px 0;">${notRequested}</p>
+            <p style="margin:24px 0 0 0;">Kind regards,<br>Training Team</p>
+          </td>
+        </tr>
+        <tr>
+          <td style="padding:16px 32px 24px 32px;border-top:1px solid #e5e7eb;color:#6b7280;font-size:12px;line-height:1.5;">
+            <p style="margin:0 0 6px 0;">If the button does not work, copy this address into your web browser:</p>
+            <p style="margin:0 0 12px 0;word-break:break-all;color:#374151;">${safeResetLink}</p>
+            <p style="margin:0;">This is an automated message from the Cascade Portal. Please do not share this email or its link with anyone.</p>
+          </td>
+        </tr>
+      </table>
+    </td>
+  </tr>
+</table>
   `;
 
   return await sendEmail(staffEmail, subject, html, options);

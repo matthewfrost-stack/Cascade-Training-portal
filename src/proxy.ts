@@ -59,7 +59,9 @@ export async function proxy(request: NextRequest) {
   }
 
   const isLoginPage = pathname === '/login'
-  const isChangePasswordPage = pathname === '/auth/change-password-required'
+  // Pages where someone can choose a new password; never redirect away from them.
+  const isChangePasswordPage =
+    pathname === '/auth/change-password-required' || pathname === '/auth/set-password'
 
   // 1. If NOT logged in and NOT on login page and NOT on auth callback -> FORCE to /login
   if (!user && !isLoginPage && !pathname.startsWith('/auth')) {
