@@ -10,7 +10,6 @@ type SyncResult = {
   success?: boolean;
   summary?: Record<string, number>;
   requiresStaffApproval?: boolean;
-  requiresCourseApproval?: boolean;
   unknownStaff?: string[];
   unknownCourses?: string[];
   errors?: string[];
@@ -25,8 +24,6 @@ export default function MatrixSyncModal({ onClose }: { onClose: () => void }) {
   const [importing, setImporting] = useState(false);
   const [result, setResult] = useState<SyncResult | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [allowNewStaff, setAllowNewStaff] = useState(false);
-  const [allowNewCourses, setAllowNewCourses] = useState(false);
 
   useEffect(() => {
     const checkTheme = () => setIsDark(document.documentElement.classList.contains('dark'));
@@ -79,10 +76,10 @@ export default function MatrixSyncModal({ onClose }: { onClose: () => void }) {
   const canRunFull = useMemo(() => mode === 'full', [mode]);
 
   const handleImport = async () => {
-    await runImport(allowNewStaff, allowNewCourses);
+    await runImport(false);
   };
 
-  const runImport = async (nextAllowNewStaff: boolean, nextAllowNewCourses: boolean) => {
+  const runImport = async (allowNewStaff: boolean) => {
     if (!file) return;
     if (!locationId) return;
 
@@ -95,8 +92,7 @@ export default function MatrixSyncModal({ onClose }: { onClose: () => void }) {
       form.set('locationId', locationId);
       form.set('file', file);
       form.set('replaceMissing', 'true');
-      form.set('allowNewStaff', String(nextAllowNewStaff));
-      form.set('allowNewCourses', String(nextAllowNewCourses));
+      form.set('allowNewStaff', String(allowNewStaff));
 
       const res = await fetch('/api/training-matrix/import-csv', { method: 'POST', body: form });
       const body = await res.json().catch(() => ({}));
@@ -170,7 +166,7 @@ export default function MatrixSyncModal({ onClose }: { onClose: () => void }) {
       {mode === 'full' && (
         <div>
           <p className={`mb-4 text-sm ${isDark ? 'text-gray-300' : 'text-gray-600'}`}>
-            Select a location and upload the latest matrix CSV for that site. By default this only updates known records and skips anything new until you approve it.
+            Select a location and upload the latest matrix CSV for that site. The sync now updates matched records and also creates missing staff, courses, and location links where possible.
           </p>
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
@@ -204,30 +200,6 @@ export default function MatrixSyncModal({ onClose }: { onClose: () => void }) {
             </div>
           </div>
 
-          <div className={`mb-4 rounded-lg border p-3 text-sm ${isDark ? 'border-gray-700 bg-gray-900/50' : 'border-gray-200 bg-gray-50'}`}>
-            <div className="font-semibold mb-2">Import protection</div>
-            <div className="flex flex-col gap-2">
-              <label className="flex items-center gap-2">
-                <input
-                  type="checkbox"
-                  checked={allowNewStaff}
-                  onChange={(e) => setAllowNewStaff(e.target.checked)}
-                  className="h-4 w-4"
-                />
-                <span>Add new staff names when approved</span>
-              </label>
-              <label className="flex items-center gap-2">
-                <input
-                  type="checkbox"
-                  checked={allowNewCourses}
-                  onChange={(e) => setAllowNewCourses(e.target.checked)}
-                  className="h-4 w-4"
-                />
-                <span>Add unknown course columns when approved</span>
-              </label>
-            </div>
-          </div>
-
           {error && (
             <div className={`rounded-lg border p-3 text-sm mb-4 ${isDark ? 'border-red-900/40 bg-red-950/30 text-red-200' : 'border-red-200 bg-red-50 text-red-700'}`}>
               {error}
@@ -253,7 +225,7 @@ export default function MatrixSyncModal({ onClose }: { onClose: () => void }) {
                     <UniformButton
                       variant="primary"
                       className="no-ui-motion shadow-md"
-                      onClick={() => runImport(true, allowNewCourses)}
+                      onClick={() => runImport(true)}
                       disabled={importing}
                     >
                       Approve & Add New Staff
@@ -267,35 +239,6 @@ export default function MatrixSyncModal({ onClose }: { onClose: () => void }) {
                       disabled={importing}
                     >
                       Leave Pending
-                    </UniformButton>
-                  </div>
-                </div>
-              )}
-              {result.requiresCourseApproval && Array.isArray(result.unknownCourses) && result.unknownCourses.length > 0 && (
-                <div className={`mt-3 rounded-lg border p-3 ${isDark ? 'border-amber-900/40 bg-amber-950/20 text-amber-100' : 'border-amber-200 bg-amber-50 text-amber-800'}`}>
-                  <div className="font-semibold">Course approval required</div>
-                  <div className="mt-1 text-sm">
-                    These course columns exist in the CSV but are not currently approved for this location:
-                  </div>
-                  <div className="mt-2 text-xs opacity-90">{result.unknownCourses.slice(0, 10).join(' · ')}</div>
-                  <div className="mt-3 flex flex-wrap gap-2">
-                    <UniformButton
-                      variant="primary"
-                      className="no-ui-motion shadow-md"
-                      onClick={() => runImport(allowNewStaff, true)}
-                      disabled={importing}
-                    >
-                      Approve & Add New Courses
-                    </UniformButton>
-                    <UniformButton
-                      variant="secondary"
-                      className="no-ui-motion border shadow-sm"
-                      onClick={() => {
-                        setResult(null);
-                      }}
-                      disabled={importing}
-                    >
-                      Ignore Courses
                     </UniformButton>
                   </div>
                 </div>
