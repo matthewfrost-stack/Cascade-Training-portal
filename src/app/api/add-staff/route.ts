@@ -47,7 +47,7 @@ async function initializeNewStaffMatrix(
           : 'na',
       };
     })
-    .filter(Boolean);
+    .filter((row): row is NonNullable<typeof row> => row !== null);
 
   if (defaults.length === 0) return { applied: 0, error: null };
 
