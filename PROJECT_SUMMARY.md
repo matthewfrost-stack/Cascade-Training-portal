@@ -264,7 +264,9 @@ All routes are Next.js Route Handlers (server-side). Authentication is checked s
 
 ## 8. Authentication & Middleware
 
-`src/middleware.ts` intercepts all requests. Unauthenticated users are redirected to `/login`. The middleware reads the Supabase session cookie server-side.
+`src/proxy.ts` (Next.js 16's replacement for `middleware.ts`) intercepts page requests. Unauthenticated users are redirected to `/login`. The proxy reads the Supabase session cookie server-side.
+
+**The proxy skips `/api/*`** (see its `matcher`), so every API route must authenticate itself — `requireRole()` for App Router routes, a session check for the one Pages Router route (`src/pages/api/matrix-headers.ts`), `isAuthorizedCronHeader()` for cron, HMAC for the Sign In App webhook.
 
 User profile data (including `role_tier`) is fetched client-side using the `useCurrentUserProfile` hook, which caches the profile for the session.
 
@@ -335,6 +337,17 @@ Always-on workspace constraints that apply to every agent invocation.
 
 ## 11. Current Development Status
 
+### Security hardening (2026-11-16)
+
+1. **Database RLS lockdown** – Removed always-true policies that let the public (anon) key read and edit `courses` and `location_courses`, and read `training_courses`, `location_training_courses` and `staff_training_locations`, without logging in. `course_feedback` inserts now need a login; `sheet_sync_configs` is admin-only; `handle_new_user()` is no longer callable directly. Applied to both `public` and `dev`. Migrations: `supabase/migrations/20261116120000_*` and `20261116130000_*`. Rollback: `migrations/rollback-20261116-tighten-open-rls.sql`.
+2. **RLS health check** – `migrations/verify-rls-lockdown.sql`. Expected result: only the `current_user_role_tier` / `current_user_location_ids` helper functions.
+3. **API auth** – `/api/matrix-headers` now requires a session (it was missed by the 2026-11-03 audit because it lives in the Pages Router). Cron secrets are compared in constant time.
+4. **Headers** – Added HSTS, Cross-Origin-Opener-Policy and a report-only Content-Security-Policy in `next.config.ts`. Switch it to enforcing once no violations appear in the console.
+5. **Dependencies** – nodemailer 10.6 (address-parser advisories), Next.js 16.4.6, supabase-js 2.119.
+6. **Build** – `npm run build` now uses Turbopack (~2× faster). `npm run build:webpack` is kept as a fallback.
+7. **Feedback email links** – Fallback base URL changed from the retired `training-portal.vercel.app` to `cascade-training.vercel.app`. Set `NEXT_PUBLIC_APP_URL` in Vercel as well.
+8. **Docs** – Old one-off reports moved to `docs/archive/`.
+
 ### Recent changes (2026-11-12)
 
 1. **Sticky collapsible location headers in BookingModal** – Both the Add Staff tab and the Roster tab now group staff by location under collapsible headers that stick to the top of the scroll area (`sticky top-0 z-10`). The Roster tab previously showed a flat sorted list; it now uses the same grouped pattern as the Add Staff tab. Each tab has independent expand/collapse state.
@@ -400,11 +413,12 @@ Edit `src/lib/permissions.ts` — all permission gates read from here.
 |---|---|
 | `.agentignore` | Blocks AI agents from scanning `node_modules/`, `.next/`, `dist/`, secrets, logs, and media files |
 | `PROJECT_SUMMARY.md` | This file – must be kept current after every feature addition |
-| `middleware.ts` | Supabase session guard applied to all routes |
-| `next.config.ts` | Next.js build configuration |
-| `tailwind.config.ts` | Tailwind theme and content paths |
+| `src/proxy.ts` | Supabase session guard for pages (skips `/api/*`) |
+| `next.config.ts` | Next.js config and security headers |
+| `postcss.config.mjs` | Tailwind CSS v4 (configured via CSS, no `tailwind.config.ts`) |
+| `docs/archive/` | Historical one-off reports, kept for reference |
 | `tsconfig.json` | TypeScript compiler options |
 
 ---
 
-*Last updated: 2026-11-12*
+*Last updated: 2026-11-16*

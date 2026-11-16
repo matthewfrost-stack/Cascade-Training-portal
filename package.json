@@ -4,7 +4,8 @@
   "private": true,
   "scripts": {
     "dev": "NEXT_DISABLE_DEVTOOLS=1 next dev",
-    "build": "next build --webpack",
+    "build": "next build",
+    "build:webpack": "next build --webpack",
     "start": "next start",
     "lint": "eslint .",
     "test": "npm run test:routes && npm run test:e2e",
