@@ -256,7 +256,7 @@ async function handleRequest(req: Request) {
       req.headers.get('x-email-test-mode'),
       req.headers.get('x-test-email-address')
     );
-    const baseUrl = process.env.NEXT_PUBLIC_APP_URL || 'https://training-portal.vercel.app';
+    const baseUrl = process.env.NEXT_PUBLIC_APP_URL || 'https://cascade-training.vercel.app';
     let totalSent = 0;
     let totalProcessed = 0;
 

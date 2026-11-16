@@ -60,7 +60,7 @@ async function handleRequest(req: Request) {
 
       const courseName = event.courses?.name || 'Training Course';
       const eventDate = event.event_date;
-      const baseUrl = process.env.NEXT_PUBLIC_APP_URL || 'https://training-portal.vercel.app';
+      const baseUrl = process.env.NEXT_PUBLIC_APP_URL || 'https://cascade-training.vercel.app';
 
       for (const booking of bookings) {
         const staffEmail = booking.profiles?.email;

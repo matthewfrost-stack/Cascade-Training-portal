@@ -2,6 +2,8 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+@AGENTS.md
+
 ## Project Overview
 
 Cascade Portal is an internal Next.js 16 (App Router) training-compliance application backed by Supabase/PostgreSQL. It tracks staff training certifications, expiry dates, booking/scheduling, attendance, and administration across multiple locations.
@@ -10,7 +12,8 @@ Cascade Portal is an internal Next.js 16 (App Router) training-compliance applic
 
 ```bash
 npm run dev                  # Start dev server (port 3000)
-npm run build                # Production build (uses --webpack flag)
+npm run build                # Production build (Turbopack)
+npm run build:webpack        # Fallback production build with webpack
 npm run lint                 # ESLint (Next.js + TypeScript rules)
 npx tsc --noEmit             # Type-check without building (run before declaring any task done)
 npm run test                 # Run all tests (routes + e2e)
@@ -29,8 +32,10 @@ npx playwright test tests/e2e/smoke.spec.ts -g "test name"  # Run a single e2e t
 ### Key directories
 
 - `src/app/` - App Router pages and API routes
-- `src/app/components/` - Shared React components (~44 files)
-- `src/app/api/` - Server-side API route handlers (~51 endpoints)
+- `src/app/components/` - Shared React components (~40 files)
+- `src/app/api/` - Server-side API route handlers (~52 endpoints)
+- `src/pages/api/matrix-headers.ts` - The only Pages Router API route
+- `docs/archive/` - Historical one-off reports (not current guidance)
 - `src/lib/` - Shared utilities and hooks
 - `tests/e2e/` - Playwright test specs
 - `scripts/verify-routes.mjs` - Route verification script
@@ -47,6 +52,8 @@ if ('error' in authz) return authz.error;  // Returns 401 or 403
 const { userId, role, service } = authz;
 ```
 
+**`src/proxy.ts` does not run on `/api/*`**, so a route without its own auth check is public. Cron routes use `isAuthorizedCronHeader()` from `src/lib/cronAuth.ts`; the Sign In App webhook verifies an HMAC signature.
+
 Location scoping is applied via `getScopedLocationIds()` — admins see all locations, other roles see only their assigned ones.
 
 Client-side auth state comes from the `useCurrentUserProfile()` hook (`src/lib/useCurrentUserProfile.ts`), which handles session refresh, cross-tab sync, and graceful fallbacks.
@@ -57,7 +64,9 @@ Four roles stored in `profiles.role_tier`: `staff`, `manager`, `scheduler`, `adm
 
 ### Schema switching (dev vs production)
 
-`src/lib/apiAuth.ts` reads `NEXT_PUBLIC_VERCEL_ENV` to select the Supabase schema: `dev` for preview/development, `public` for production. All tables use Row-Level Security policies.
+`src/lib/apiAuth.ts` reads `NEXT_PUBLIC_VERCEL_ENV` to select the Supabase schema: `dev` for preview/development, `public` for production. Both schemas live in the same Supabase project. All tables use Row-Level Security policies.
+
+**RLS rules:** the publishable (anon) key ships to every browser, so RLS is the only barrier for client-side queries. Never add a policy with `USING (true)` / `WITH CHECK (true)` for `public`/`anon` roles: permissive policies are OR'd, so one always-true policy overrides every stricter one. Scope new policies `TO authenticated` and check `current_user_role_tier()`. Apply schema changes to both `public` and `dev`, then run `migrations/verify-rls-lockdown.sql`; the only expected rows are the `current_user_role_tier` / `current_user_location_ids` helpers.
 
 ### Sign In App integration
 
