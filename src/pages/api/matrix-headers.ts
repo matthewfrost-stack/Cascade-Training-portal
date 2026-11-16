@@ -1,4 +1,5 @@
 import { NextApiRequest, NextApiResponse } from 'next';
+import { createServerClient } from '@supabase/ssr';
 import fs from 'fs';
 import path from 'path';
 
@@ -128,7 +129,37 @@ function readHeaderRowsFromCsv(csvFile: string): { headers: string[]; atlasCours
   return parseHeaderRows(csvContent);
 }
 
-export default function handler(req: NextApiRequest, res: NextApiResponse) {
+// /api routes are excluded from the proxy's login redirect, so every handler
+// must check the session itself. Any signed-in role may read course headers.
+async function isSignedIn(req: NextApiRequest): Promise<boolean> {
+  const bearerToken = req.headers.authorization?.replace(/^Bearer\s+/i, '').trim();
+  const supabase = createServerClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL || '',
+    process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || '',
+    {
+      cookies: {
+        getAll() {
+          return Object.entries(req.cookies).map(([name, value]) => ({ name, value: value ?? '' }));
+        },
+        setAll() {
+          // Read-only check; the proxy handles cookie refresh on page loads.
+        },
+      },
+    }
+  );
+  try {
+    const { data } = bearerToken ? await supabase.auth.getUser(bearerToken) : await supabase.auth.getUser();
+    return Boolean(data.user);
+  } catch {
+    return false;
+  }
+}
+
+export default async function handler(req: NextApiRequest, res: NextApiResponse) {
+  if (!(await isSignedIn(req))) {
+    return res.status(401).json({ error: 'Unauthorized' });
+  }
+
   const { location } = req.query;
 
   // If no location is provided, return an atlas-course union across all location CSVs.
