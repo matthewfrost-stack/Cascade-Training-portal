@@ -1,6 +1,7 @@
 import { sendPasswordResetEmail, getEmailSendOptionsFromHeaders } from '@/lib/email';
 import { NextRequest } from 'next/server';
 import { createServiceClient, requireRole } from '@/lib/apiAuth';
+import { createPasswordSetupLink } from '@/lib/passwordLinks';
 
 export const dynamic = 'force-dynamic';
 
@@ -306,23 +307,18 @@ export async function POST(request: NextRequest) {
         // If we created a temp password, send a password setup link so they can set their own.
         if (needsPasswordChange && staff.send_invite !== false) {
           try {
-            const { data: linkData, error: linkError } = await supabaseAdmin.auth.admin.generateLink({
-              type: 'magiclink',
-              email: emailToCheck,
-              options: {
-                redirectTo: `${process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'}/auth/callback`,
-              },
-            });
+            const linkResult = await createPasswordSetupLink(supabaseAdmin, emailToCheck);
 
-            if (!linkError && linkData?.properties?.action_link) {
+            if (linkResult.error === undefined) {
               await sendPasswordResetEmail(
                 emailToCheck,
                 staff.full_name,
-                linkData.properties.action_link,
-                emailOptions
+                linkResult.link,
+                emailOptions,
+                'welcome'
               );
             } else {
-              console.warn('Could not generate password setup link:', linkError?.message);
+              console.warn('Could not generate password setup link:', linkResult.error);
             }
           } catch (linkErr) {
             console.warn('Could not send password setup email:', linkErr);

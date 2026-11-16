@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
+import Link from 'next/link';
 import { login } from './actions';
 import UniformButton from '@/app/components/UniformButton';
 
@@ -78,6 +79,11 @@ export default function SignInPage() {
               required
               className="w-full p-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none transition text-black"
             />
+            <div className="mt-2 text-right">
+              <Link href="/auth/forgot-password" className="text-sm font-semibold text-blue-700 hover:underline">
+                Forgotten your password?
+              </Link>
+            </div>
           </div>
 
           <UniformButton

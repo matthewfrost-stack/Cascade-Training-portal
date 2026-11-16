@@ -215,6 +215,7 @@ All routes are Next.js Route Handlers (server-side). Authentication is checked s
 | `/api/auth/sign-out` | none | Revoke token and clear auth cookies |
 | `/api/auth/change-password` | session | User changes own password |
 | `/api/auth/complete-password-change` | session | Clear the `password_needs_change` flag after forced password change |
+| `/api/auth/forgot-password` | **public** | Self-service reset: always replies the same, sends the email after the response (`after()`); max 3 per address per hour (from `email_logs`) plus a soft per-IP limit |
 | `/api/courses/expiring` | all roles | Get certifications expiring within N days |
 | `/api/courses/expired` | all roles | Get expired certifications |
 | `/api/courses/by-location` | all roles | Get courses for a location |
@@ -273,6 +274,8 @@ User profile data (including `role_tier`) is fetched client-side using the `useC
 Session timeout: after 5 minutes of inactivity a warning modal appears with a 60-second countdown. Users can extend the session or log out immediately. If the countdown reaches zero, the user is signed out and redirected to `/login`. The timeout is shared across tabs via `localStorage`.
 
 Password change enforcement: if `profile.password_needs_change === true`, the user is redirected to `/auth/change-password-required` on every page load until they set a new password.
+
+**Password emails** (`src/lib/passwordLinks.ts`, `sendPasswordResetEmail()` in `src/lib/email.ts`): admin resets, new-staff welcome emails and the login page's "Forgotten your password?" all send a one-time Supabase *recovery* link to `/auth/confirm?token_hash=…`. That page only uses the token when the person presses **Set my password** (so Outlook Safe Links can't use it up), then sends them to `/auth/set-password`. Both password pages use `src/app/auth/SetPasswordForm.tsx`. The link's base URL comes from env vars (`VERCEL_BRANCH_URL` on previews, then `NEXT_PUBLIC_APP_URL`, then `VERCEL_PROJECT_PRODUCTION_URL`), never the request Host header. Old-style links that reach `/auth/callback` without a code are sent to `/auth/forgot-password?expired=1`.
 
 ---
 
@@ -336,6 +339,11 @@ Always-on workspace constraints that apply to every agent invocation.
 ---
 
 ## 11. Current Development Status
+
+### Password reset journey (2026-11-16)
+- Previously the emailed "Reset Your Password" link was an implicit-flow magic link that the PKCE browser client and `/auth/callback` couldn't handle, so it ended on a 404 and never showed a password form.
+- New: formal email template ("Reset your Cascade Portal password" / "Set up your Cascade Portal account"), `/auth/confirm`, `/auth/set-password`, `/auth/forgot-password`, `/api/auth/forgot-password`, and a "Forgotten your password?" link on `/login`. Sender is unchanged (Training Team, training inbox).
+- 7 new Playwright tests in `tests/e2e/smoke.spec.ts`.
 
 ### Security hardening (2026-11-16)
 
