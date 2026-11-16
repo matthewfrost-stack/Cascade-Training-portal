@@ -342,7 +342,9 @@ Always-on workspace constraints that apply to every agent invocation.
 1. **Database RLS lockdown** – Removed always-true policies that let the public (anon) key read and edit `courses` and `location_courses`, and read `training_courses`, `location_training_courses` and `staff_training_locations`, without logging in. `course_feedback` inserts now need a login; `sheet_sync_configs` is admin-only; `handle_new_user()` is no longer callable directly. Applied to both `public` and `dev`. Migrations: `supabase/migrations/20261116120000_*` and `20261116130000_*`. Rollback: `migrations/rollback-20261116-tighten-open-rls.sql`.
 2. **RLS health check** – `migrations/verify-rls-lockdown.sql`. Expected result: only the `current_user_role_tier` / `current_user_location_ids` helper functions.
 3. **API auth** – `/api/matrix-headers` now requires a session (it was missed by the 2026-11-03 audit because it lives in the Pages Router). Cron secrets are compared in constant time.
-4. **Headers** – Added HSTS, Cross-Origin-Opener-Policy and a report-only Content-Security-Policy in `next.config.ts`. Switch it to enforcing once no violations appear in the console.
+4. **Headers** – Added HSTS, Cross-Origin-Opener-Policy and an enforced Content-Security-Policy (`buildContentSecurityPolicy()` in `next.config.ts`). The app loads no third-party resources; add an origin there if a new feature needs one.
+9. **Performance** – React Compiler enabled (`reactCompiler: true`) for automatic memoisation; dependencies updated in range (React 19.3, Tailwind 4.3).
+10. **Tests** – `tests/e2e/smoke.spec.ts` now checks security headers, CSP violations on `/login`, `/api/matrix-headers` auth and cron secret rejection (17 tests).
 5. **Dependencies** – nodemailer 10.6 (address-parser advisories), Next.js 16.4.6, supabase-js 2.119.
 6. **Build** – `npm run build` now uses Turbopack (~2× faster). `npm run build:webpack` is kept as a fallback.
 7. **Feedback email links** – Fallback base URL changed from the retired `training-portal.vercel.app` to `cascade-training.vercel.app`. Set `NEXT_PUBLIC_APP_URL` in Vercel as well.
