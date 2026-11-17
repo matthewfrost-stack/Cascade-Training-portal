@@ -6,6 +6,7 @@ import { supabase } from '@/lib/supabase';
 import BackButton from '@/app/components/BackButton';
 import { debugLog, debugWarn } from '@/lib/debug';
 import type { User } from '@supabase/supabase-js';
+import { bookingHours, formatHours } from '@/lib/trainingHours';
 
 interface AnalyticsBooking {
   id: string;
@@ -21,6 +22,8 @@ interface AnalyticsBooking {
 interface AnalyticsEvent {
   id: string;
   event_date: string;
+  start_time?: string | null;
+  end_time?: string | null;
   course_id: string;
   courses?: { id: string; name: string } | { id: string; name: string }[] | null;
 }
@@ -42,6 +45,8 @@ interface AnalyticsStats {
   attended: number;
   late: number;
   absences: number;
+  hoursDelivered: number;
+  hoursLost: number;
 }
 
 interface DetailRecord {
@@ -54,6 +59,16 @@ interface DetailRecord {
 }
 
 type GroupedDetails = Record<string, Record<string, DetailRecord[]>>;
+
+// Sign In App and the kiosk register record lateness automatically and put
+// their own name in as the "reason". No reason was actually given, so group
+// them with "Not specified" rather than showing them as separate reasons.
+const AUTO_LATE_LABELS = new Set(['sign in app', 'kiosk register']);
+function lateReasonLabel(reason?: string | null): string {
+  const trimmed = (reason || '').trim();
+  if (!trimmed || AUTO_LATE_LABELS.has(trimmed.toLowerCase())) return 'Not specified';
+  return trimmed;
+}
 
 function getCourseName(event?: AnalyticsEvent): string | undefined {
   const course = event?.courses;
@@ -233,7 +248,7 @@ export default function AnalyticsDashboard() {
           const chunk = eventIds.slice(i, i + chunkSize);
           const { data: eventsData, error: eventsError } = await supabase
             .from('training_events')
-            .select('id, event_date, course_id, courses(id, name)')
+            .select('id, event_date, start_time, end_time, course_id, courses(id, name)')
             .in('id', chunk);
 
           if (eventsError) {
@@ -307,7 +322,7 @@ export default function AnalyticsDashboard() {
           }
 
           if (!stats[key]) {
-            stats[key] = { key, booked: 0, attended: 0, late: 0, absences: 0 };
+            stats[key] = { key, booked: 0, attended: 0, late: 0, absences: 0, hoursDelivered: 0, hoursLost: 0 };
           }
           
           stats[key].booked++;
@@ -319,6 +334,9 @@ export default function AnalyticsDashboard() {
           if (item?.minutes_late && item.minutes_late > 0) {
             stats[key].late++;
           }
+          const hours = bookingHours(item.training_events, item);
+          stats[key].hoursDelivered += hours.delivered;
+          stats[key].hoursLost += hours.lostAbsence + hours.lostLate;
         } catch (itemError) {
           console.error('Error processing item:', item, itemError);
         }
@@ -343,10 +361,33 @@ export default function AnalyticsDashboard() {
   const totalLate = data.filter((d) => d?.minutes_late && d.minutes_late > 0).length;
   const attendanceRate = totalBooked > 0 ? Math.round((totalAttended / totalBooked) * 100) : 0;
 
+  // Training hours, worked out from each session's start and end times.
+  const hoursByBooking = new Map(data.map((item) => [item.id, bookingHours(item.training_events, item)]));
+  let hoursDelivered = 0;
+  let hoursLostAbsence = 0;
+  let hoursLostLate = 0;
+  hoursByBooking.forEach((h) => {
+    hoursDelivered += h.delivered;
+    hoursLostAbsence += h.lostAbsence;
+    hoursLostLate += h.lostLate;
+  });
+  const hoursLost = hoursLostAbsence + hoursLostLate;
+  const sessionsWithoutTimes = new Set(
+    data.filter((item) => !hoursByBooking.get(item.id)?.known).map((item) => item.event_id)
+  ).size;
+  const hoursLostFor = (type: 'lateness' | 'absence', reason: string) =>
+    data.reduce((sum, item) => {
+      const h = hoursByBooking.get(item.id);
+      if (!h) return sum;
+      if (type === 'absence' && !item.attended_at && (item.absence_reason || 'Not specified') === reason) return sum + h.lostAbsence;
+      if (type === 'lateness' && item.minutes_late && item.minutes_late > 0 && lateReasonLabel(item.late_reason) === reason) return sum + h.lostLate;
+      return sum;
+    }, 0);
+
   // Calculate lateness reasons breakdown
   const latenessReasons = data.reduce<Record<string, number>>((acc, item) => {
     if (item?.minutes_late && item.minutes_late > 0) {
-      const reason = item?.late_reason || 'Not specified';
+      const reason = lateReasonLabel(item?.late_reason);
       acc[reason] = (acc[reason] || 0) + 1;
     }
     return acc;
@@ -373,7 +414,7 @@ export default function AnalyticsDashboard() {
   const getDetailedData = (type: 'lateness' | 'absence', reason: string) => {
     if (type === 'lateness') {
       return data
-        .filter((item) => item?.minutes_late && item.minutes_late > 0 && (item?.late_reason || 'Not specified') === reason)
+        .filter((item) => item?.minutes_late && item.minutes_late > 0 && lateReasonLabel(item?.late_reason) === reason)
         .map((item) => ({
           name: item?.profiles?.full_name || 'Unknown',
           location: item?.profiles?.location || 'Unassigned Location',
@@ -496,7 +537,7 @@ export default function AnalyticsDashboard() {
         </div>
 
         {/* KPI BOXES */}
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-10">
+        <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-4 md:gap-6 mb-4">
           <div style={{ backgroundColor: isDark ? '#1e293b' : '#ffffff', borderColor: isDark ? '#334155' : '#e2e8f0' }} className="border-t-4 border-t-blue-600 p-6 rounded-xl text-center shadow-md">
             <p style={{ color: '#60a5fa' }} className="text-[10px] font-black uppercase tracking-widest">Total Bookings</p>
             <h2 style={{ color: isDark ? '#f1f5f9' : '#1e293b' }} className="text-4xl font-black mt-2">{totalBooked}</h2>
@@ -513,7 +554,22 @@ export default function AnalyticsDashboard() {
             <p style={{ color: '#ef4444' }} className="text-[10px] font-black uppercase tracking-widest">Absences</p>
             <h2 style={{ color: '#ef4444' }} className="text-4xl font-black mt-2">{totalAbsences}</h2>
           </div>
+          <div style={{ backgroundColor: isDark ? '#1e293b' : '#ffffff', borderColor: isDark ? '#334155' : '#e2e8f0' }} className="border-t-4 border-t-sky-500 p-6 rounded-xl text-center shadow-md" title="Hours of face-to-face training attended (session time minus any minutes late)">
+            <p style={{ color: '#0ea5e9' }} className="text-[10px] font-black uppercase tracking-widest">Hours Delivered</p>
+            <h2 style={{ color: '#0ea5e9' }} className="text-4xl font-black mt-2">{formatHours(hoursDelivered)}</h2>
+          </div>
+          <div style={{ backgroundColor: isDark ? '#1e293b' : '#ffffff', borderColor: isDark ? '#334155' : '#e2e8f0' }} className="border-t-4 border-t-rose-600 p-6 rounded-xl text-center shadow-md" title="Hours booked but not received: whole sessions for absences plus minutes missed by late arrivals">
+            <p style={{ color: '#e11d48' }} className="text-[10px] font-black uppercase tracking-widest">Hours Lost</p>
+            <h2 style={{ color: '#e11d48' }} className="text-4xl font-black mt-2">{formatHours(hoursLost)}</h2>
+            <p style={{ color: isDark ? '#94a3b8' : '#64748b' }} className="text-[11px] font-bold mt-1">{formatHours(hoursLostAbsence)} absences · {formatHours(hoursLostLate)} late</p>
+          </div>
         </div>
+        <p style={{ color: isDark ? '#94a3b8' : '#64748b' }} className="text-xs mb-10 px-1">
+          Hours are worked out from each booked session&rsquo;s start and end times.
+          {sessionsWithoutTimes > 0 && (
+            <span style={{ color: '#d97706' }}> {sessionsWithoutTimes} session{sessionsWithoutTimes === 1 ? ' has' : 's have'} no start/end time, so {sessionsWithoutTimes === 1 ? "it isn't" : "they aren't"} counted in the hours.</span>
+          )}
+        </p>
 
         {/* CHARTS SECTION */}
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 mb-10">
@@ -540,7 +596,7 @@ export default function AnalyticsDashboard() {
                     >
                       <div className="flex justify-between items-center mb-1">
                         <p style={{ color: isDark ? '#cbd5e1' : '#1e293b' }} className="text-sm font-bold truncate flex-1">{item.reason}</p>
-                        <p style={{ color: '#f59e0b' }} className="text-sm font-black ml-2 whitespace-nowrap">{item.count}</p>
+                        <p style={{ color: '#f59e0b' }} className="text-sm font-black ml-2 whitespace-nowrap">{item.count}<span className="font-bold opacity-75"> · {formatHours(hoursLostFor('lateness', item.reason))} lost</span></p>
                       </div>
                       <div style={{ backgroundColor: isDark ? '#1e293b' : '#ffffff' }} className="w-full h-6 rounded-lg overflow-hidden border border-gray-500 border-opacity-20">
                         <div 
@@ -578,7 +634,7 @@ export default function AnalyticsDashboard() {
                     >
                       <div className="flex justify-between items-center mb-1">
                         <p style={{ color: isDark ? '#cbd5e1' : '#1e293b' }} className="text-sm font-bold truncate flex-1">{item.reason}</p>
-                        <p style={{ color: '#ef4444' }} className="text-sm font-black ml-2 whitespace-nowrap">{item.count}</p>
+                        <p style={{ color: '#ef4444' }} className="text-sm font-black ml-2 whitespace-nowrap">{item.count}<span className="font-bold opacity-75"> · {formatHours(hoursLostFor('absence', item.reason))} lost</span></p>
                       </div>
                       <div style={{ backgroundColor: isDark ? '#1e293b' : '#ffffff' }} className="w-full h-6 rounded-lg overflow-hidden border border-gray-500 border-opacity-20">
                         <div 
@@ -595,8 +651,8 @@ export default function AnalyticsDashboard() {
         </div>
 
         {/* DATA TABLE */}
-        <div style={{ backgroundColor: isDark ? '#1e293b' : '#ffffff', borderColor: isDark ? '#334155' : '#e2e8f0' }} className="rounded-2xl border overflow-hidden shadow-xl">
-          <table className="w-full text-left">
+        <div style={{ backgroundColor: isDark ? '#1e293b' : '#ffffff', borderColor: isDark ? '#334155' : '#e2e8f0' }} className="rounded-2xl border overflow-x-auto shadow-xl">
+          <table className="w-full text-left min-w-[760px]">
             <thead style={{ backgroundColor: isDark ? '#0f172a' : '#f1f5f9', borderColor: isDark ? '#334155' : '#e2e8f0', color: isDark ? '#94a3b8' : '#64748b' }} className="text-[11px] font-bold uppercase border-b">
               <tr>
                 <th className="p-4">Grouping</th>
@@ -604,13 +660,15 @@ export default function AnalyticsDashboard() {
                 <th className="p-4 text-center">Attended</th>
                 <th className="p-4 text-center">Late</th>
                 <th className="p-4 text-center">Absences</th>
+                <th className="p-4 text-center">Hours Delivered</th>
+                <th className="p-4 text-center">Hours Lost</th>
                 <th className="p-4 text-right">Rate %</th>
               </tr>
             </thead>
             <tbody style={{ borderColor: isDark ? '#334155' : '#e2e8f0' }} className="divide-y">
               {dashboardStats.length === 0 ? (
                 <tr>
-                  <td colSpan={6} style={{ color: isDark ? '#94a3b8' : '#64748b' }} className="p-8 text-center">
+                  <td colSpan={8} style={{ color: isDark ? '#94a3b8' : '#64748b' }} className="p-8 text-center">
                     No data available for the selected period
                   </td>
                 </tr>
@@ -640,6 +698,8 @@ export default function AnalyticsDashboard() {
                         <span style={{ color: '#ef4444' }}>0</span>
                       )}
                     </td>
+                    <td style={{ color: '#0ea5e9' }} className="p-4 text-center font-bold">{formatHours(row.hoursDelivered)}</td>
+                    <td style={{ color: '#e11d48' }} className="p-4 text-center font-bold">{formatHours(row.hoursLost)}</td>
                     <td style={{ color: isDark ? '#cbd5e1' : '#1e293b' }} className="p-4 text-right font-bold">{row.booked > 0 ? Math.round((row.attended / row.booked) * 100) : 0}%</td>
                   </tr>
                 ))

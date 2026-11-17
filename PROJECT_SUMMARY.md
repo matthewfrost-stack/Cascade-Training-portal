@@ -169,7 +169,7 @@ A calendar interface for creating and managing training events.
 `src/app/admin/page.tsx`
 
 Admin and scheduler-facing control centre with admin-only management tools:
-- **Location Manager** – create and manage training locations, including each home's managers' email (Google Group) for the monthly training-due email.
+- **Location Manager** – create and manage training locations, including each home's managers' email (Google Group) for the monthly training-due email and who regulates it (CQC or Ofsted).
 - **Manager Emails** – see each home's expired / expiring / allocated counts, send yourself a preview, or send this month's emails on demand (`ManagerDigestModal`).
 - **Course Catalogue** – define courses and set default capacity. Date-specific limits are managed from the booking roster.
 - **Checklist Template** – add, edit, reorder, activate/deactivate, configure invoice inputs, and remove checklist items.
@@ -342,6 +342,11 @@ Always-on workspace constraints that apply to every agent invocation.
 ---
 
 ## 11. Current Development Status
+
+### Compliance report groundwork – Phase 1 (2026-11-17)
+- `locations.regulator` ('CQC' / 'Ofsted', optional) set in Admin → Manage Venues.
+- Training hours are worked out from booked sessions, not stored: session hours = end time − start time (no lunch deduction). Attended = session − minutes late; lost = whole session for absences + minutes late. Shown on the Intelligence Hub. Helper: `src/lib/trainingHours.ts`.
+- Migration: `supabase/migrations/20261117120000_add_location_regulator.sql` (public + dev). Next: Phase 2 matrix history, Phase 3 compliance report.
 
 ### Monthly manager training email (2026-11-17)
 - **Status: the automatic monthly send is PAUSED** until the portal goes fully live (schedule commented out in `.github/workflows/monthly-manager-digest.yml`). Previews still work. To switch on, uncomment the `schedule` lines.
