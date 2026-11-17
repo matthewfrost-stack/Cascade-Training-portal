@@ -4,7 +4,8 @@ import { useState, useEffect } from 'react';
 import { supabase } from '@/lib/supabase';
 import Icon from './Icon';
 
-interface ManagedLocation { id: string; name: string; accessible_office_regions?: string[] | null; manager_email?: string | null }
+type Regulator = '' | 'CQC' | 'Ofsted';
+interface ManagedLocation { id: string; name: string; accessible_office_regions?: string[] | null; manager_email?: string | null; regulator?: Regulator | null }
 
 const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
@@ -23,10 +24,12 @@ export default function LocationManagerModal({ onClose }: { onClose: () => void 
   const [newLocationName, setNewLocationName] = useState('');
   const [newLocationAccessible, setNewLocationAccessible] = useState<string[]>(['Hull']);
   const [newLocationManagerEmail, setNewLocationManagerEmail] = useState('');
+  const [newLocationRegulator, setNewLocationRegulator] = useState<Regulator>('');
   const [editingLocationId, setEditingLocationId] = useState<string | null>(null);
   const [editingLocationName, setEditingLocationName] = useState('');
   const [editingLocationAccessible, setEditingLocationAccessible] = useState<string[]>(['Hull']);
   const [editingLocationManagerEmail, setEditingLocationManagerEmail] = useState('');
+  const [editingLocationRegulator, setEditingLocationRegulator] = useState<Regulator>('');
   const [newVenueName, setNewVenueName] = useState('');
   const [newVenueOffice, setNewVenueOffice] = useState('Hull');
   const [editingVenueId, setEditingVenueId] = useState<string | null>(null);
@@ -80,11 +83,13 @@ export default function LocationManagerModal({ onClose }: { onClose: () => void 
         name: newLocationName, 
         accessible_office_regions: newLocationAccessible,
         ...(managerEmail.value ? { manager_email: managerEmail.value } : {}),
+        ...(newLocationRegulator ? { regulator: newLocationRegulator } : {}),
       }]);
       if (error) throw error;
       setNewLocationName('');
       setNewLocationAccessible(['Hull']);
       setNewLocationManagerEmail('');
+      setNewLocationRegulator('');
       fetchData();
     } catch (error: unknown) {
       alert(error instanceof Error ? error.message : 'Unable to add location');
@@ -126,6 +131,7 @@ export default function LocationManagerModal({ onClose }: { onClose: () => void 
     setEditingLocationName(loc.name);
     setEditingLocationAccessible(loc.accessible_office_regions || ['Hull']);
     setEditingLocationManagerEmail(loc.manager_email || '');
+    setEditingLocationRegulator(loc.regulator || '');
   };
 
   const handleSaveLocation = async (e: React.FormEvent) => {
@@ -139,10 +145,11 @@ export default function LocationManagerModal({ onClose }: { onClose: () => void 
         name: editingLocationName,
         accessible_office_regions: editingLocationAccessible,
         manager_email: managerEmail.value,
+        regulator: editingLocationRegulator || null,
       }).eq('id', editingLocationId);
       if (error) {
-        if (error.code === 'PGRST204' || /manager_email/.test(error.message || '')) {
-          throw new Error('The managers\' email field needs a database update first. Ask an admin to run the latest Supabase migration.');
+        if (error.code === 'PGRST204' || /manager_email|regulator/.test(error.message || '')) {
+          throw new Error('These fields need a database update first. Run the latest Supabase migration.');
         }
         throw error;
       }
@@ -150,6 +157,7 @@ export default function LocationManagerModal({ onClose }: { onClose: () => void 
       setEditingLocationName('');
       setEditingLocationAccessible(['Hull']);
       setEditingLocationManagerEmail('');
+      setEditingLocationRegulator('');
       await fetchData();
     } catch (error: unknown) {
       alert(error instanceof Error ? error.message : 'Failed to save location');
@@ -198,7 +206,7 @@ export default function LocationManagerModal({ onClose }: { onClose: () => void 
 
   return (
     <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-md flex items-center justify-center p-4 z-50">
-      <div style={{ backgroundColor: isDark ? '#1e293b' : '#ffffff', borderColor: isDark ? '#334155' : '#cbd5e1' }} className="rounded-3xl p-8 w-full max-w-2xl shadow-2xl border transition-colors duration-300">
+      <div style={{ backgroundColor: isDark ? '#1e293b' : '#ffffff', borderColor: isDark ? '#334155' : '#cbd5e1' }} className="rounded-3xl p-8 w-full max-w-2xl max-h-[90vh] overflow-y-auto shadow-2xl border transition-colors duration-300">
         <div className="flex justify-between items-center mb-6">
           <h2 style={{ color: isDark ? '#f1f5f9' : '#1e293b' }} className="text-2xl font-black uppercase tracking-tight">Manage Locations & Venues</h2>
           <button onClick={onClose} style={{ color: isDark ? '#94a3b8' : '#64748b' }} className="hover:text-red-500 text-2xl transition-colors" aria-label="Close">
@@ -258,6 +266,20 @@ export default function LocationManagerModal({ onClose }: { onClose: () => void 
                       onChange={(e) => setEditingLocationManagerEmail(e.target.value)}
                     />
                     <p style={{ color: isDark ? '#94a3b8' : '#64748b' }} className="text-[11px] mt-1">Receives the monthly &ldquo;training due&rdquo; email. Leave blank to send it to the training inbox.</p>
+                  </div>
+
+                  <div>
+                    <label style={{ color: isDark ? '#94a3b8' : '#64748b' }} className="text-[9px] font-black uppercase block mb-2">Regulated by</label>
+                    <select
+                      value={editingLocationRegulator}
+                      onChange={(e) => setEditingLocationRegulator(e.target.value as Regulator)}
+                      style={{ backgroundColor: isDark ? '#0f172a' : '#f1f5f9', color: isDark ? '#f1f5f9' : '#1e293b', borderColor: isDark ? '#334155' : '#cbd5e1' }}
+                      className="w-full p-3 border rounded-xl outline-none focus:ring-2 focus:ring-blue-500"
+                    >
+                      <option value="">Not set</option>
+                      <option value="CQC">CQC (adult care)</option>
+                      <option value="Ofsted">Ofsted (children&rsquo;s home)</option>
+                    </select>
                   </div>
 
                   <div>
@@ -344,6 +366,20 @@ export default function LocationManagerModal({ onClose }: { onClose: () => void 
                   </div>
 
                   <div>
+                    <label style={{ color: isDark ? '#94a3b8' : '#64748b' }} className="text-[9px] font-black uppercase block mb-2">Regulated by</label>
+                    <select
+                      value={newLocationRegulator}
+                      onChange={(e) => setNewLocationRegulator(e.target.value as Regulator)}
+                      style={{ backgroundColor: isDark ? '#0f172a' : '#f1f5f9', color: isDark ? '#f1f5f9' : '#1e293b', borderColor: isDark ? '#334155' : '#cbd5e1' }}
+                      className="w-full p-3 border rounded-xl outline-none focus:ring-2 focus:ring-blue-500"
+                    >
+                      <option value="">Not set</option>
+                      <option value="CQC">CQC (adult care)</option>
+                      <option value="Ofsted">Ofsted (children&rsquo;s home)</option>
+                    </select>
+                  </div>
+
+                  <div>
                     <label style={{ color: isDark ? '#94a3b8' : '#64748b' }} className="text-[9px] font-black uppercase block mb-2">Can Access</label>
                     <div className="flex gap-4">
                       <label className="flex items-center gap-2">
@@ -401,6 +437,7 @@ export default function LocationManagerModal({ onClose }: { onClose: () => void 
                       <p style={{ color: isDark ? '#f1f5f9' : '#1e293b' }} className="font-bold">{loc.name}</p>
                       <p style={{ color: isDark ? '#94a3b8' : '#64748b' }} className="text-[9px] font-bold mt-1">Can Access: {loc.accessible_office_regions?.join(', ') || 'Hull'}</p>
                       <p style={{ color: loc.manager_email ? (isDark ? '#94a3b8' : '#64748b') : '#d97706' }} className="text-[9px] font-bold mt-0.5">{loc.manager_email ? `📧 ${loc.manager_email}` : '📧 No managers\' email set'}</p>
+                      <p style={{ color: loc.regulator ? (isDark ? '#94a3b8' : '#64748b') : '#d97706' }} className="text-[9px] font-bold mt-0.5">{loc.regulator ? `🏛️ Regulated by ${loc.regulator}` : '🏛️ Regulator not set'}</p>
                     </div>
                     <div className="flex gap-2">
                       <button 
