@@ -138,3 +138,16 @@ button:not(.no-ui-motion):not(.static):not(.fixed):not(.absolute):not(.relative)
     padding-bottom: 1rem;
   }
 }
+
+/* Printing / Save as PDF: A4 with sensible margins, colours kept. */
+@media print {
+  @page {
+    size: A4;
+    margin: 12mm 10mm;
+  }
+  html, body {
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+    background: #ffffff !important;
+  }
+}

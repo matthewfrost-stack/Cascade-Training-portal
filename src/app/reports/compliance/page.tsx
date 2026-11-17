@@ -92,11 +92,11 @@ function useIsDark() {
 function PctBar({ pct }: { pct: number | null }) {
   const b = band(pct);
   return (
-    <div className="flex items-center gap-2 min-w-[120px]" title={`${pctText(pct)} – ${b.label}`}>
-      <div className="flex-1 h-2 rounded-full bg-slate-200 dark:bg-slate-700 overflow-hidden print:border print:border-slate-300">
+    <div className="flex items-center gap-2 min-w-[120px] print:min-w-[64px] print:gap-1" title={`${pctText(pct)} – ${b.label}`}>
+      <div className="flex-1 h-2 print:h-1.5 rounded-full bg-slate-200 dark:bg-slate-700 overflow-hidden print:border print:border-slate-300">
         <div className={`h-full rounded-full ${b.bar}`} style={{ width: `${pct ?? 0}%` }} />
       </div>
-      <span className={`text-sm font-black tabular-nums w-14 text-right ${b.text}`}>{pctText(pct)}</span>
+      <span className={`text-sm font-black tabular-nums w-14 text-right print:text-[9.5px] print:w-9 ${b.text}`}>{pctText(pct)}</span>
     </div>
   );
 }
@@ -104,10 +104,10 @@ function PctBar({ pct }: { pct: number | null }) {
 function Change({ now, before }: { now: number | null; before: HomeSummary['previous'] }) {
   if (!before || now === null || before.compliancePct === null) return null;
   const diff = Math.round((now - before.compliancePct) * 10) / 10;
-  if (diff === 0) return <span className="text-[11px] text-slate-500">no change since {monthLabel(before.period)}</span>;
+  if (diff === 0) return <span className="text-[11px] print:text-[7.5px] text-slate-500">no change since {monthLabel(before.period)}</span>;
   const up = diff > 0;
   return (
-    <span className={`text-[11px] font-bold ${up ? 'text-emerald-600 dark:text-emerald-400' : 'text-red-600 dark:text-red-400'}`}>
+    <span className={`text-[11px] print:text-[7.5px] font-bold ${up ? 'text-emerald-600 dark:text-emerald-400' : 'text-red-600 dark:text-red-400'}`}>
       {up ? '▲' : '▼'} {Math.abs(diff)} pts since {monthLabel(before.period)}
     </span>
   );
@@ -115,10 +115,10 @@ function Change({ now, before }: { now: number | null; before: HomeSummary['prev
 
 function Tile({ label, value, sub, tone }: { label: string; value: string; sub?: React.ReactNode; tone?: string }) {
   return (
-    <div className="rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 p-4 print:break-inside-avoid">
-      <p className="text-[10px] font-black uppercase tracking-widest text-slate-500 dark:text-slate-400">{label}</p>
-      <p className={`text-3xl font-black mt-1 tabular-nums ${tone || 'text-slate-900 dark:text-slate-100'}`}>{value}</p>
-      {sub && <div className="mt-1 text-xs text-slate-500 dark:text-slate-400">{sub}</div>}
+    <div className="rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 p-4 print:p-2 print:rounded-md print:break-inside-avoid">
+      <p className="text-[10px] print:text-[7.5px] font-black uppercase tracking-widest text-slate-500 dark:text-slate-400">{label}</p>
+      <p className={`text-3xl print:text-lg font-black mt-1 print:mt-0 tabular-nums ${tone || 'text-slate-900 dark:text-slate-100'}`}>{value}</p>
+      {sub && <div className="mt-1 print:mt-0 text-xs print:text-[8.5px] text-slate-500 dark:text-slate-400">{sub}</div>}
     </div>
   );
 }
@@ -126,7 +126,7 @@ function Tile({ label, value, sub, tone }: { label: string; value: string; sub?:
 function RegulatorBadge({ regulator }: { regulator: HomeSummary['regulator'] }) {
   if (!regulator) return <span className="text-[10px] font-bold text-amber-600">Not set</span>;
   return (
-    <span className={`text-[10px] font-black px-2 py-0.5 rounded-full ${regulator === 'CQC' ? 'bg-blue-500/15 text-blue-700 dark:text-blue-300' : 'bg-purple-500/15 text-purple-700 dark:text-purple-300'}`}>
+    <span className={`text-[10px] print:text-[7px] font-black px-2 py-0.5 print:px-1 print:py-0 rounded-full ${regulator === 'CQC' ? 'bg-blue-500/15 text-blue-700 dark:text-blue-300' : 'bg-purple-500/15 text-purple-700 dark:text-purple-300'}`}>
       {regulator}
     </span>
   );
@@ -139,7 +139,7 @@ function TrendChart({ points }: { points: HomeDetail['trend'] }) {
   }
   return (
     <div>
-      <div className="flex items-end gap-2 h-36 border-b border-slate-300 dark:border-slate-600 pl-1" role="img" aria-label="Compliance by month">
+      <div className="flex items-end gap-2 h-36 print:h-20 border-b border-slate-300 dark:border-slate-600 pl-1" role="img" aria-label="Compliance by month">
         {points.map((p) => {
           const b = band(p.compliancePct);
           return (
@@ -156,6 +156,54 @@ function TrendChart({ points }: { points: HomeDetail['trend'] }) {
         ))}
       </div>
     </div>
+  );
+}
+
+/** Compact "who needs what" table for the PDF: one row per person, one column per state. */
+function PrintPeople({ people }: { people: HomeDetail['people'] }) {
+  const short = (iso?: string | null) =>
+    iso ? new Date(`${iso.slice(0, 10)}T00:00:00Z`).toLocaleDateString('en-GB', { day: '2-digit', month: '2-digit', year: '2-digit', timeZone: 'UTC' }) : '';
+  const withActions = people.filter((p) => p.actions.length > 0);
+  const upToDate = people.filter((p) => p.actions.length === 0).map((p) => p.name);
+  const cols: PersonAction['state'][] = ['expired', 'missing', 'expiring', 'allocated'];
+  const list = (p: HomeDetail['people'][number], state: PersonAction['state']) =>
+    p.actions
+      .filter((a) => a.state === state)
+      .map((a) => {
+        const date = a.state === 'expired' ? (a.noExpiryDate ? 'no expiry date' : short(a.expiry)) : a.state === 'expiring' ? short(a.expiry) : '';
+        return (
+          <div key={a.course} className="leading-tight">
+            {a.course}
+            {date && <span className="text-slate-500"> ({date})</span>}
+            {a.bookedOn && <span className="font-bold text-emerald-700"> · booked {short(a.bookedOn)}</span>}
+          </div>
+        );
+      });
+  return (
+    <section className="hidden print:block">
+      <h3 className="text-[10px] font-black uppercase mb-1">By person – what&rsquo;s needed</h3>
+      <table className="w-full text-left border-collapse text-[8.5px]">
+        <thead>
+          <tr className="border-y border-slate-400 bg-slate-100">
+            <th className="px-1 py-1 w-[18%] font-bold uppercase text-[7.5px]">Name</th>
+            <th className="px-1 py-1 w-[7%] font-bold uppercase text-[7.5px] text-right">Comp.</th>
+            {cols.map((c) => <th key={c} className="px-1 py-1 w-[18.75%] font-bold uppercase text-[7.5px]">{ACTION_LABEL[c]}</th>)}
+          </tr>
+        </thead>
+        <tbody>
+          {withActions.map((p) => (
+            <tr key={p.name} className="border-b border-slate-200 align-top break-inside-avoid">
+              <td className="px-1 py-1 font-bold">{p.name}</td>
+              <td className={`px-1 py-1 text-right font-bold tabular-nums ${band(p.compliancePct).text}`}>{pctText(p.compliancePct)}</td>
+              {cols.map((c) => { const items = list(p, c); return <td key={c} className="px-1 py-1">{items.length ? items : <span className="text-slate-300">–</span>}</td>; })}
+            </tr>
+          ))}
+        </tbody>
+      </table>
+      {upToDate.length > 0 && (
+        <p className="text-[8.5px] mt-1"><strong>Fully up to date ({upToDate.length}):</strong> {upToDate.join(', ')}</p>
+      )}
+    </section>
   );
 }
 
@@ -326,11 +374,11 @@ export default function ComplianceReportPage() {
   const generated = homeId ? detail?.generated : overview?.generated;
 
   const select = 'bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-600 text-slate-900 dark:text-slate-100 rounded-lg p-2 text-sm outline-none focus:ring-2 focus:ring-blue-500';
-  const card = 'rounded-2xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 shadow-sm print:shadow-none print:break-inside-avoid';
-  const th = 'p-3 text-[11px] font-bold uppercase text-slate-500 dark:text-slate-400';
+  const card = 'rounded-2xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 shadow-sm print:shadow-none print:rounded-md print:overflow-visible';
+  const th = 'p-3 text-[11px] font-bold uppercase text-slate-500 dark:text-slate-400 print:px-1.5 print:py-1 print:text-[8px]';
 
   return (
-    <main className={`min-h-screen p-4 md:p-8 bg-slate-100 dark:bg-slate-900 text-slate-900 dark:text-slate-100 print:bg-white print:p-0`} data-theme={isDark ? 'dark' : 'light'}>
+    <main className={`min-h-screen print:min-h-0 p-4 md:p-8 bg-slate-100 dark:bg-slate-900 text-slate-900 dark:text-slate-100 print:bg-white print:p-0`} data-theme={isDark ? 'dark' : 'light'}>
       <div className="max-w-7xl mx-auto">
         {/* Header (screen) */}
         <div className="flex flex-wrap justify-between items-center gap-4 mb-6 print:hidden">
@@ -345,9 +393,9 @@ export default function ComplianceReportPage() {
         </div>
 
         {/* Header (print / PDF) */}
-        <div className="hidden print:block mb-4 border-b border-slate-300 pb-3">
-          <h1 className="text-2xl font-black">Training compliance report{d ? ` – ${d.locationName}` : ' – all homes'}</h1>
-          <p className="text-sm">
+        <div className="hidden print:block mb-3 border-b-2 border-slate-800 pb-2">
+          <h1 className="text-lg font-black leading-tight">Training compliance report{d ? ` – ${d.locationName}` : ' – all homes'}</h1>
+          <p className="text-[9px] text-slate-600">
             {d && <>Regulated by {d.regulator || 'not set'} · </>}
             Training hours: {PERIOD_LABELS[periodKey].toLowerCase()} · Generated {generated ? new Date(generated.at).toLocaleString('en-GB') : ''} by {generated?.by}
           </p>
@@ -378,7 +426,7 @@ export default function ComplianceReportPage() {
               <UniformButton variant="secondary" size="sm" onClick={() => window.print()}>🖨️ Download PDF</UniformButton>
             </div>
 
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
+            <div className="grid grid-cols-2 md:grid-cols-4 print:grid-cols-4 gap-4 print:gap-2 mb-6 print:mb-3">
               <Tile label="Overall compliance" value={pctText(totals.pct)} tone={band(totals.pct).text} sub={`${band(totals.pct).label} · ${homes.length} home${homes.length === 1 ? '' : 's'}`} />
               <Tile label="Expired" value={String(totals.expired)} sub={`${totals.missing} never completed`} />
               <Tile label="Hours delivered" value={formatHours(totals.delivered)} sub={PERIOD_LABELS[periodKey]} />
@@ -386,7 +434,7 @@ export default function ComplianceReportPage() {
             </div>
 
             <div className={`${card} overflow-x-auto`}>
-              <table className="w-full text-left min-w-[900px]">
+              <table className="w-full text-left min-w-[900px] print:min-w-0">
                 <thead className="border-b border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-900/50">
                   <tr>
                     <th className={th}>Home</th>
@@ -405,25 +453,25 @@ export default function ComplianceReportPage() {
                     <tr><td colSpan={9} className="p-8 text-center text-slate-500">No homes match this filter.</td></tr>
                   )}
                   {homes.map((h) => (
-                    <tr key={h.locationId} className="hover:bg-slate-50 dark:hover:bg-slate-700/40 cursor-pointer" onClick={() => openHome(h.locationId)}>
-                      <td className="p-3">
+                    <tr key={h.locationId} className="print:break-inside-avoid hover:bg-slate-50 dark:hover:bg-slate-700/40 cursor-pointer" onClick={() => openHome(h.locationId)}>
+                      <td className="p-3 print:px-1.5 print:py-1 print:text-[9.5px]">
                         <button type="button" className="font-bold text-left hover:underline" onClick={(e) => { e.stopPropagation(); openHome(h.locationId); }}>{h.locationName}</button>
-                        <div className="flex items-center gap-2 mt-0.5"><RegulatorBadge regulator={h.regulator} /><span className="text-[11px] text-slate-500">{h.staffCount} staff</span></div>
+                        <div className="flex items-center gap-2 mt-0.5"><RegulatorBadge regulator={h.regulator} /><span className="text-[11px] print:text-[7.5px] text-slate-500">{h.staffCount} staff</span></div>
                       </td>
-                      <td className="p-3"><PctBar pct={h.compliancePct} /><Change now={h.compliancePct} before={h.previous} /></td>
-                      <td className="p-3 text-center font-bold tabular-nums">{h.counts.expired}</td>
-                      <td className="p-3 text-center font-bold tabular-nums">{h.counts.missing}</td>
-                      <td className="p-3 text-center tabular-nums">{h.counts.expiring}</td>
-                      <td className="p-3 text-center tabular-nums">{h.counts.allocated}</td>
-                      <td className="p-3 text-center tabular-nums">{h.ldaApplies ? pctText(h.ldaPct) : <span className="text-slate-400">–</span>}</td>
-                      <td className="p-3 text-center tabular-nums">{formatHours(h.hours.delivered)}</td>
-                      <td className="p-3 text-center tabular-nums">{formatHours(h.hours.lostAbsence + h.hours.lostLate)}</td>
+                      <td className="p-3 print:px-1.5 print:py-1 print:text-[9.5px]"><PctBar pct={h.compliancePct} /><Change now={h.compliancePct} before={h.previous} /></td>
+                      <td className="p-3 print:px-1.5 print:py-1 print:text-[9.5px] text-center font-bold tabular-nums">{h.counts.expired}</td>
+                      <td className="p-3 print:px-1.5 print:py-1 print:text-[9.5px] text-center font-bold tabular-nums">{h.counts.missing}</td>
+                      <td className="p-3 print:px-1.5 print:py-1 print:text-[9.5px] text-center tabular-nums">{h.counts.expiring}</td>
+                      <td className="p-3 print:px-1.5 print:py-1 print:text-[9.5px] text-center tabular-nums">{h.counts.allocated}</td>
+                      <td className="p-3 print:px-1.5 print:py-1 print:text-[9.5px] text-center tabular-nums">{h.ldaApplies ? pctText(h.ldaPct) : <span className="text-slate-400">–</span>}</td>
+                      <td className="p-3 print:px-1.5 print:py-1 print:text-[9.5px] text-center tabular-nums">{formatHours(h.hours.delivered)}</td>
+                      <td className="p-3 print:px-1.5 print:py-1 print:text-[9.5px] text-center tabular-nums">{formatHours(h.hours.lostAbsence + h.hours.lostLate)}</td>
                     </tr>
                   ))}
                 </tbody>
               </table>
             </div>
-            <p className="text-xs text-slate-500 mt-3">
+            <p className="text-xs print:text-[8px] text-slate-500 mt-3 print:mt-2">
               Compliance = training in date (including expiring soon) ÷ training that applies. N/A and &ldquo;Not yet due&rdquo; are left out. Lowest compliance is listed first. Hours come from booked face-to-face sessions, matched to homes by each person&rsquo;s location.
             </p>
           </>
@@ -447,25 +495,25 @@ export default function ComplianceReportPage() {
               </div>
             </div>
 
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-4">
+            <div className="grid grid-cols-2 md:grid-cols-4 print:grid-cols-4 gap-4 print:gap-2 mb-4 print:mb-2">
               <Tile label="Compliance" value={pctText(d.compliancePct)} tone={band(d.compliancePct).text} sub={<>{band(d.compliancePct).label} · {d.staffCount} staff<br /><Change now={d.compliancePct} before={d.previous} /></>} />
               <Tile label="Expired" value={String(d.counts.expired)} sub={`${d.counts.missing} never completed`} tone="text-red-600 dark:text-red-400" />
               <Tile label="Expiring in 60 days" value={String(d.counts.expiring)} sub={`${d.counts.allocated} allocated, not done`} />
               <Tile label="Oliver McGowan" value={d.ldaApplies ? pctText(d.ldaPct) : '–'} tone={d.ldaApplies ? band(d.ldaPct).text : undefined} sub={d.ldaApplies ? 'Learning disability & autism training' : 'Not on this home’s matrix'} />
             </div>
-            <div className="grid grid-cols-2 gap-4 mb-6">
+            <div className="grid grid-cols-2 gap-4 print:gap-2 mb-6 print:mb-3">
               <Tile label="Hours delivered" value={formatHours(d.hours.delivered)} sub={PERIOD_LABELS[periodKey]} />
               <Tile label="Hours lost" value={formatHours(d.hours.lostAbsence + d.hours.lostLate)} sub={<>{formatHours(d.hours.lostAbsence)} absences · {formatHours(d.hours.lostLate)} late{d.hours.sessionsWithoutTimes > 0 && <span className="text-amber-600"> · {d.hours.sessionsWithoutTimes} session(s) without times not counted</span>}</>} />
             </div>
 
-            <section className={`${card} p-5 mb-6`}>
-              <h3 className="text-sm font-black uppercase mb-3">Compliance by month</h3>
+            <section className={`${card} p-5 print:p-2 mb-6 print:mb-3 print:break-inside-avoid`}>
+              <h3 className="text-sm print:text-[10px] font-black uppercase mb-3 print:mb-1">Compliance by month</h3>
               <TrendChart points={d.trend} />
             </section>
 
-            <section className={`${card} mb-6 overflow-x-auto`}>
-              <h3 className="text-sm font-black uppercase p-4 pb-2">By course</h3>
-              <table className="w-full text-left min-w-[760px]">
+            <section className={`${card} mb-6 print:mb-3 overflow-x-auto`}>
+              <h3 className="text-sm print:text-[10px] font-black uppercase p-4 pb-2 print:p-2 print:pb-1">By course</h3>
+              <table className="w-full text-left min-w-[760px] print:min-w-0">
                 <thead className="border-y border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-900/50">
                   <tr>
                     <th className={th}>Course</th>
@@ -484,15 +532,15 @@ export default function ComplianceReportPage() {
                       {(i === 0 || d.courses[i - 1].category !== c.category) && (
                         <tr className="bg-slate-50/60 dark:bg-slate-900/30"><td colSpan={8} className="px-3 py-1.5 text-[10px] font-black uppercase tracking-wider text-slate-500">{c.category}</td></tr>
                       )}
-                      <tr className={c.isLda ? 'bg-blue-50/60 dark:bg-blue-950/20' : ''}>
-                        <td className="p-3 font-bold text-sm">{c.name}{c.isLda && <span className="ml-2 text-[10px] font-black text-blue-600 dark:text-blue-300">CQC REQUIRED</span>}</td>
-                        <td className="p-3"><PctBar pct={c.compliancePct} /></td>
-                        <td className="p-3 text-center tabular-nums">{c.counts.in_date}</td>
-                        <td className="p-3 text-center tabular-nums">{c.counts.expiring}</td>
-                        <td className="p-3 text-center tabular-nums font-bold">{c.counts.expired}</td>
-                        <td className="p-3 text-center tabular-nums font-bold">{c.counts.missing}</td>
-                        <td className="p-3 text-center tabular-nums">{c.counts.allocated}</td>
-                        <td className="p-3 text-center tabular-nums text-slate-500">{c.counts.na}</td>
+                      <tr className={`print:break-inside-avoid ${c.isLda ? 'bg-blue-50/60 dark:bg-blue-950/20' : ''}`}>
+                        <td className="p-3 print:px-1.5 print:py-1 print:text-[9.5px] font-bold text-sm">{c.name}{c.isLda && <span className="ml-2 text-[10px] font-black text-blue-600 dark:text-blue-300">CQC REQUIRED</span>}</td>
+                        <td className="p-3 print:px-1.5 print:py-1 print:text-[9.5px]"><PctBar pct={c.compliancePct} /></td>
+                        <td className="p-3 print:px-1.5 print:py-1 print:text-[9.5px] text-center tabular-nums">{c.counts.in_date}</td>
+                        <td className="p-3 print:px-1.5 print:py-1 print:text-[9.5px] text-center tabular-nums">{c.counts.expiring}</td>
+                        <td className="p-3 print:px-1.5 print:py-1 print:text-[9.5px] text-center tabular-nums font-bold">{c.counts.expired}</td>
+                        <td className="p-3 print:px-1.5 print:py-1 print:text-[9.5px] text-center tabular-nums font-bold">{c.counts.missing}</td>
+                        <td className="p-3 print:px-1.5 print:py-1 print:text-[9.5px] text-center tabular-nums">{c.counts.allocated}</td>
+                        <td className="p-3 print:px-1.5 print:py-1 print:text-[9.5px] text-center tabular-nums text-slate-500">{c.counts.na}</td>
                       </tr>
                     </Fragment>
                   ))}
@@ -500,7 +548,7 @@ export default function ComplianceReportPage() {
               </table>
             </section>
 
-            <section className={`${card} overflow-x-auto print:break-inside-auto`}>
+            <section className={`${card} overflow-x-auto print:hidden`}>
               <div className="flex flex-wrap items-center justify-between gap-2 p-4 pb-2">
                 <h3 className="text-sm font-black uppercase">By person – what&rsquo;s needed</h3>
                 <label className="flex items-center gap-2 text-xs font-bold print:hidden">
@@ -508,7 +556,7 @@ export default function ComplianceReportPage() {
                   Only people with something outstanding
                 </label>
               </div>
-              <table className="w-full text-left min-w-[700px]">
+              <table className="w-full text-left min-w-[700px] print:min-w-0">
                 <thead className="border-y border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-900/50">
                   <tr>
                     <th className={`${th} w-56`}>Name</th>
@@ -519,9 +567,9 @@ export default function ComplianceReportPage() {
                 <tbody className="divide-y divide-slate-200 dark:divide-slate-700">
                   {d.people.filter((p) => !onlyActions || p.actions.length > 0).map((p) => (
                     <tr key={p.name} className="align-top print:break-inside-avoid">
-                      <td className="p-3 font-bold text-sm">{p.name}</td>
-                      <td className="p-3"><PctBar pct={p.compliancePct} /></td>
-                      <td className="p-3">
+                      <td className="p-3 print:px-1.5 print:py-1 print:text-[9.5px] font-bold text-sm">{p.name}</td>
+                      <td className="p-3 print:px-1.5 print:py-1 print:text-[9.5px]"><PctBar pct={p.compliancePct} /></td>
+                      <td className="p-3 print:px-1.5 print:py-1 print:text-[9.5px]">
                         {p.actions.length === 0 ? (
                           <span className="text-xs font-bold text-emerald-600 dark:text-emerald-400">✓ Up to date</span>
                         ) : (
@@ -541,7 +589,8 @@ export default function ComplianceReportPage() {
                 </tbody>
               </table>
             </section>
-            <p className="text-xs text-slate-500 mt-3">
+            <PrintPeople people={d.people} />
+            <p className="text-xs print:text-[8px] text-slate-500 mt-3 print:mt-2">
               Compliance = training in date (including expiring soon) ÷ training that applies; N/A and &ldquo;Not yet due&rdquo; are left out. &ldquo;Booked&rdquo; means the person is on an upcoming session for that course. Figures follow the Training Matrix.
             </p>
           </>
