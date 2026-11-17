@@ -6,7 +6,6 @@ import CourseManagerModal from '@/app/components/CourseManagerModal';
 import LocationManagerModal from '@/app/components/LocationManagerModal';
 import ChecklistTemplateModal from '@/app/components/ChecklistTemplateModal';
 import ManagerDigestModal from '@/app/components/ManagerDigestModal';
-import TrainingHoursModal from '@/app/components/TrainingHoursModal';
 import { hasPermission } from '@/lib/permissions';
 import BackButton from '@/app/components/BackButton';
 import UniformButton from '@/app/components/UniformButton';
@@ -74,7 +73,6 @@ export default function AdminPage() {
   const [showLocationModal, setShowLocationModal] = useState(false);
   const [showChecklistTemplateModal, setShowChecklistTemplateModal] = useState(false);
   const [showManagerDigestModal, setShowManagerDigestModal] = useState(false);
-  const [showTrainingHoursModal, setShowTrainingHoursModal] = useState(false);
   const [accessDenied, setAccessDenied] = useState(false);
   const [permissionRetry, setPermissionRetry] = useState(0);
   const [permissionLoadError, setPermissionLoadError] = useState(false);
@@ -248,7 +246,6 @@ export default function AdminPage() {
             <>
               <DashboardCard isDark={isDark} accent="#f59e0b" emoji="📍" title="Manage Venues" description="Add and manage training locations." actionLabel="🏢 Manage" onClick={() => setShowLocationModal(true)} />
               <DashboardCard isDark={isDark} accent="#a855f7" emoji="📚" title="Course Catalog" description="Create training types and set capacities." actionLabel="📖 Manage" onClick={() => setShowCourseModal(true)} />
-              <DashboardCard isDark={isDark} accent="#0ea5e9" emoji="⏱️" title="Training Hours" description="Set how many hours each matrix course takes." actionLabel="⏱️ Set Hours" onClick={() => setShowTrainingHoursModal(true)} />
             </>
           )}
 
@@ -271,7 +268,6 @@ export default function AdminPage() {
       {isAdmin && showLocationModal && <LocationManagerModal onClose={() => setShowLocationModal(false)} />}
       {isAdmin && showChecklistTemplateModal && <ChecklistTemplateModal onClose={() => setShowChecklistTemplateModal(false)} />}
       {isAdmin && showManagerDigestModal && <ManagerDigestModal onClose={() => setShowManagerDigestModal(false)} />}
-      {isAdmin && showTrainingHoursModal && <TrainingHoursModal onClose={() => setShowTrainingHoursModal(false)} />}
     </main>
   );
 }

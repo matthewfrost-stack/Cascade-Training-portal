@@ -170,7 +170,6 @@ A calendar interface for creating and managing training events.
 
 Admin and scheduler-facing control centre with admin-only management tools:
 - **Location Manager** – create and manage training locations, including each home's managers' email (Google Group) for the monthly training-due email and who regulates it (CQC or Ofsted).
-- **Training Hours** – set how many hours each training-matrix course takes (one list of all matrix courses, grouped by category; setting a course also sets its Careskills copy). Used by the compliance report (`TrainingHoursModal`).
 - **Manager Emails** – see each home's expired / expiring / allocated counts, send yourself a preview, or send this month's emails on demand (`ManagerDigestModal`).
 - **Course Catalogue** – define courses and set default capacity. Date-specific limits are managed from the booking roster.
 - **Checklist Template** – add, edit, reorder, activate/deactivate, configure invoice inputs, and remove checklist items.
@@ -194,7 +193,6 @@ Admin and scheduler-facing control centre with admin-only management tools:
 | `AdminToolsPanel.tsx` | Admin sub-panel container |
 | `UpdateNotification.tsx` | Polls `/api/version` and shows a toast when a new deploy is detected |
 | `MatrixSyncModal.tsx` | Import options: Atlas upload or location CSV |
-| `TrainingHoursModal.tsx` | Admin list of matrix courses with an hours box each; saves changed rows only |
 | `ManagerDigestModal.tsx` | Admin view of the monthly manager email: per-home counts, preview to self, send now |
 | `LocationManagerModal.tsx` | CRUD for locations |
 | `CourseManagerModal.tsx` | CRUD for course definitions |
@@ -248,7 +246,6 @@ All routes are Next.js Route Handlers (server-side). Authentication is checked s
 | `/api/integrations/sign-in-app/webhook` | HMAC | Receive Sign In App webhooks, mark all daily bookings as attended |
 | `/api/automations/feedback-emails` | cron/admin | Send feedback/reminder emails (duplicate-safe) |
 | `/api/automations/roster-no-shows` | cron/admin | Send no-show notifications to admins |
-| `/api/training-courses/hours` | admin | GET matrix courses with hours (grouped by course name); POST to set hours on all copies of a course |
 | `/api/automations/manager-digest` | cron/admin | Monthly training-due email to each home's managers (GET+cron = send; POST `{action: status\|preview\|send}` for admins) |
 | `/api/qualifications` | admin/manager/scheduler | List and create NVQ/Diploma qualification leads (location-scoped) |
 | `/api/qualifications/[id]` | admin/manager/scheduler | Update or delete a qualification lead (location-scoped) |
@@ -347,8 +344,9 @@ Always-on workspace constraints that apply to every agent invocation.
 ## 11. Current Development Status
 
 ### Compliance report groundwork – Phase 1 (2026-11-17)
-- `training_courses.hours` (numeric, optional) set in Admin → Training Hours. `locations.regulator` ('CQC' / 'Ofsted', optional) set in Admin → Manage Venues.
-- Migration: `supabase/migrations/20261117120000_add_course_hours_and_location_regulator.sql` (public + dev). Next: Phase 2 matrix history, Phase 3 compliance report.
+- `locations.regulator` ('CQC' / 'Ofsted', optional) set in Admin → Manage Venues.
+- Training hours are worked out from booked sessions, not stored: session hours = end time − start time (no lunch deduction). Attended = session − minutes late; lost = whole session for absences + minutes late. Shown on the Intelligence Hub. Helper: `src/lib/trainingHours.ts`.
+- Migration: `supabase/migrations/20261117120000_add_location_regulator.sql` (public + dev). Next: Phase 2 matrix history, Phase 3 compliance report.
 
 ### Monthly manager training email (2026-11-17)
 - **Status: the automatic monthly send is PAUSED** until the portal goes fully live (schedule commented out in `.github/workflows/monthly-manager-digest.yml`). Previews still work. To switch on, uncomment the `schedule` lines.
