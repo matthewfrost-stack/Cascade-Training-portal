@@ -8,7 +8,7 @@ type HomeStatus = {
   locationId: string;
   locationName: string;
   managerEmail: string | null;
-  counts: { expired: number; expiring: number; allocated: number };
+  counts: { expired: number; missing: number; expiring: number; allocated: number };
   sentAt: string | null;
 };
 
@@ -145,7 +145,7 @@ export default function ManagerDigestModal({ onClose }: { onClose: () => void })
           <div>
             <h2 id="manager-digest-title" style={{ color: strong }} className="text-2xl font-black uppercase tracking-tight">Manager Emails</h2>
             <p style={{ color: muted }} className="text-sm mt-1">
-              On the 1st of each month at 7am, each home&rsquo;s managers get one email listing training that has expired, expires in the next {status?.lookaheadDays ?? 60} days, or is allocated but not done.
+              On the 1st of each month at 7am, each home&rsquo;s managers get one email listing training that has expired, has never been completed, expires in the next {status?.lookaheadDays ?? 60} days, or is allocated but not done.
             </p>
           </div>
           <button onClick={onClose} style={{ color: muted }} className="hover:text-red-500 transition-colors" aria-label="Close">
@@ -169,7 +169,7 @@ export default function ManagerDigestModal({ onClose }: { onClose: () => void })
           {loading && <p style={{ color: muted }} className="text-sm text-center py-8">Working out each home&rsquo;s training…</p>}
           {!loading && status?.homes.length === 0 && <p style={{ color: muted }} className="text-sm text-center py-8">No homes found.</p>}
           {!loading && status?.homes.map((home) => {
-            const total = home.counts.expired + home.counts.expiring + home.counts.allocated;
+            const total = home.counts.expired + home.counts.missing + home.counts.expiring + home.counts.allocated;
             return (
               <div key={home.locationId} style={{ backgroundColor: rowBg, borderColor: border }} className="p-4 border rounded-xl flex flex-col sm:flex-row sm:items-center gap-3 justify-between">
                 <div className="min-w-0">
@@ -183,6 +183,7 @@ export default function ManagerDigestModal({ onClose }: { onClose: () => void })
                     ) : (
                       <>
                         <span className="px-2 py-0.5 rounded-full bg-red-500/15 text-red-500">{home.counts.expired} expired</span>
+                        <span className="px-2 py-0.5 rounded-full bg-slate-500/20" style={{ color: strong }}>{home.counts.missing} never completed</span>
                         <span className="px-2 py-0.5 rounded-full bg-orange-500/15 text-orange-500">{home.counts.expiring} expiring</span>
                         <span className="px-2 py-0.5 rounded-full bg-yellow-500/15 text-yellow-600">{home.counts.allocated} allocated</span>
                       </>

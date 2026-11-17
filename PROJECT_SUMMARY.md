@@ -344,9 +344,9 @@ Always-on workspace constraints that apply to every agent invocation.
 ## 11. Current Development Status
 
 ### Monthly manager training email (2026-11-17)
-- On the 1st of each month at 07:00 UTC (`.github/workflows/monthly-manager-digest.yml`), each home gets one email listing, grouped by person: **expired**, **expiring in the next 60 days**, and **allocated but not completed**. A green "Booked <date>" tag shows when the person is already on an upcoming session for that course (matched by course name).
+- On the 1st of each month at 07:00 UTC (`.github/workflows/monthly-manager-digest.yml`), each home gets one email listing, grouped by person: **expired**, **never completed**, **expiring in the next 60 days**, and **allocated but not completed**. A green "Booked <date>" tag shows when the person is already on an upcoming session for that course (matched by course name).
 - Recipient is `locations.manager_email` (the home's managers' Google Group, set in Admin → Manage Venues). If it's empty, the email goes to the training inbox with a note to add it. **Each Google Group must allow posts from the training inbox address.**
-- Rules match the expiry/TNA screens (course must be on the home's matrix, no one-off courses for expiry, no deleted staff, "X" and "X (Careskills)" count as one course and the latest expiry wins), and the person must still be linked to the home. N/A is ignored.
+- Each person linked to the home is checked against each course on the home's matrix, using the same rules as the matrix cell colours in `MatrixLayout.tsx`: N/A and Not yet due are left out; Allocated wins; no completion date = never completed (the matrix's red "Missing"); completed with no expiry date, or expiring today or earlier = expired. "X" and "X (Careskills)" are one course (latest expiry wins), and the expiry rule (one-off or not) comes from the course on the home's matrix, not the copy the record was saved under.
 - `manager_digest_log` (unique per home + month) stops repeat sends. Test mode sends are not logged.
 - Code: `src/lib/managerDigest.ts` (data + email layout), `src/app/api/automations/manager-digest/route.ts`, `ManagerDigestModal.tsx`, Location Manager field. Migration: `supabase/migrations/20261117090000_add_location_manager_email_and_digest_log.sql` (public + dev).
 

@@ -4,15 +4,17 @@ import { escapeHtml } from '@/lib/email';
 /**
  * Monthly "training due" email for each home's managers.
  *
- * For every home it lists, grouped by person:
- *   - Expired: the latest expiry date for that course is before today
- *   - Expiring: the latest expiry date is within the next LOOKAHEAD_DAYS
- *   - Allocated: allocated (or awaiting/booked) and not yet completed
- *
- * It applies the same rules as the expiry checker and TNA screens: only
- * courses on that home's matrix, no one-off courses for expiry, no deleted
- * staff, and "X" / "X (Careskills)" treated as the same course. In addition,
- * a person must still be linked to the home, which matches the matrix itself.
+ * It follows the Training Matrix exactly: every person linked to the home,
+ * against every course on that home's matrix ("X" and "X (Careskills)" are one
+ * course). Each cell is judged the way MatrixLayout colours it:
+ *   - N/A or Not yet due            -> left out
+ *   - Allocated / awaiting / booked -> Allocated
+ *   - No completion date            -> Never completed (the matrix's red "Missing")
+ *   - One-off course, completed     -> left out
+ *   - No expiry date, or expired    -> Expired
+ *   - Expires within LOOKAHEAD_DAYS -> Expiring
+ * The expiry rule (one-off or not) comes from the course on the home's
+ * matrix, not from whichever copy of the course the record was saved under.
  */
 
 export const LOOKAHEAD_DAYS = 60;
@@ -22,24 +24,28 @@ type ServiceClient = ReturnType<typeof createServiceClient>;
 type One<T> = T | T[] | null | undefined;
 const first = <T,>(value: One<T>): T | undefined => (Array.isArray(value) ? value[0] : value ?? undefined);
 
-type CourseRef = { id?: string; name?: string; expiry_months?: number | null; never_expires?: boolean | null };
+type CourseRef = { id: string; name?: string | null; expiry_months?: number | null; never_expires?: boolean | null };
 
 export type DigestItem = {
   course: string;
-  date?: string;        // expiry date (YYYY-MM-DD) for expired / expiring
-  bookedOn?: string;    // earliest upcoming booking (YYYY-MM-DD), if any
+  date?: string;          // expiry date (YYYY-MM-DD), when there is one
+  noExpiryDate?: boolean; // completed, but no expiry date recorded
+  bookedOn?: string;      // earliest upcoming booking (YYYY-MM-DD), if any
 };
 
 export type DigestPerson = { name: string; items: DigestItem[] };
+
+export type DigestCounts = { expired: number; missing: number; expiring: number; allocated: number };
 
 export type HomeDigest = {
   locationId: string;
   locationName: string;
   managerEmail: string | null;
   expired: DigestPerson[];
+  missing: DigestPerson[];
   expiring: DigestPerson[];
   allocated: DigestPerson[];
-  counts: { expired: number; expiring: number; allocated: number };
+  counts: DigestCounts;
 };
 
 // ---------- dates ----------
@@ -71,7 +77,7 @@ function formatShortDate(isoDate: string): string {
   return d.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric', timeZone: 'UTC' });
 }
 
-// ---------- course helpers (same rules as /api/courses/*) ----------
+// ---------- course helpers (same rules as the matrix) ----------
 
 function canonicalCourseName(name?: string | null): string {
   if (!name) return '';
@@ -82,7 +88,7 @@ function displayCourseName(name?: string | null): string {
   return (name || 'Unknown course').replace(/\s+\(Careskills\)\s*$/i, '').replace(/\s+/g, ' ').trim();
 }
 
-function isOneOffCourse(course: CourseRef | undefined): boolean {
+function isOneOffCourse(course: Pick<CourseRef, 'expiry_months' | 'never_expires'> | undefined): boolean {
   return Boolean(course?.never_expires || !course?.expiry_months || course?.expiry_months === 9999);
 }
 
@@ -107,19 +113,31 @@ async function fetchAll<T>(
   return rows;
 }
 
+/** Runs `task` for each item with at most `limit` running at once. */
+async function mapLimited<T, R>(items: T[], limit: number, task: (item: T) => Promise<R>): Promise<R[]> {
+  const results: R[] = new Array(items.length);
+  let next = 0;
+  const workers = Array.from({ length: Math.min(limit, items.length) }, async () => {
+    while (next < items.length) {
+      const index = next++;
+      results[index] = await task(items[index]);
+    }
+  });
+  await Promise.all(workers);
+  return results;
+}
+
 // ---------- data ----------
 
 type LocationRow = { id: string; name: string; manager_email?: string | null };
-type StaffLocationRow = { staff_id: string; location_id: string };
-type LocationCourseRow = { location_id: string; training_course_id: string; training_courses: One<CourseRef> };
+type StaffLocationRow = { staff_id: string; location_id: string; profiles: One<{ full_name?: string | null; is_deleted?: boolean | null }> };
+type LocationCourseRow = { location_id: string; training_course_id: string };
 type MatrixRow = {
   staff_id: string;
   course_id: string;
+  completion_date: string | null;
   expiry_date: string | null;
   status: string | null;
-  completed_at_location_id: string | null;
-  profiles: One<{ full_name?: string | null; is_deleted?: boolean | null }>;
-  training_courses: One<CourseRef>;
 };
 type EventRow = { id: string; event_date: string; courses: One<{ name?: string | null }> };
 type BookingRow = { profile_id: string; event_id: string };
@@ -153,33 +171,30 @@ export async function buildHomeDigests(
   if (locations.length === 0) return [];
   const locationIds = locations.map((loc) => loc.id);
 
-  const [staffLinks, courseLinks, matrixRows, upcomingEvents] = await Promise.all([
+  const [staffLinks, courseLinks, allCourses, upcomingEvents] = await Promise.all([
     fetchAll<StaffLocationRow>((from, to) =>
-      service.from('staff_locations').select('staff_id, location_id').in('location_id', locationIds).range(from, to)),
+      service.from('staff_locations').select('staff_id, location_id, profiles(full_name, is_deleted)').in('location_id', locationIds).range(from, to)),
     fetchAll<LocationCourseRow>((from, to) =>
-      service.from('location_training_courses').select('location_id, training_course_id, training_courses(id, name)').in('location_id', locationIds).range(from, to)),
-    fetchAll<MatrixRow>((from, to) =>
-      service
-        .from('staff_training_matrix')
-        .select('staff_id, course_id, expiry_date, status, completed_at_location_id, profiles(full_name, is_deleted), training_courses(id, name, expiry_months, never_expires)')
-        .in('completed_at_location_id', locationIds)
-        .or('expiry_date.not.is.null,status.in.(allocated,awaiting,booked)')
-        .range(from, to)),
+      service.from('location_training_courses').select('location_id, training_course_id').in('location_id', locationIds).range(from, to)),
+    fetchAll<CourseRef>((from, to) =>
+      service.from('training_courses').select('id, name, expiry_months, never_expires').range(from, to)),
     fetchAll<EventRow>((from, to) =>
       service.from('training_events').select('id, event_date, courses(name)').gte('event_date', today).range(from, to)),
   ]);
 
-  // Who is still linked to each home.
-  const linkedStaff = new Set(staffLinks.map((row) => `${row.location_id}::${row.staff_id}`));
+  // Every matrix record for each home (one home at a time keeps each query small).
+  const matrixByLocation = new Map<string, MatrixRow[]>();
+  await mapLimited(locationIds, 6, async (locationId) => {
+    const rows = await fetchAll<MatrixRow>((from, to) =>
+      service
+        .from('staff_training_matrix')
+        .select('staff_id, course_id, completion_date, expiry_date, status')
+        .eq('completed_at_location_id', locationId)
+        .range(from, to));
+    matrixByLocation.set(locationId, rows);
+  });
 
-  // Which courses are on each home's matrix (by id or by name).
-  const validCourseIds = new Set<string>();
-  const validCourseNames = new Set<string>();
-  for (const link of courseLinks) {
-    validCourseIds.add(`${link.location_id}::${link.training_course_id}`);
-    const name = canonicalCourseName(first(link.training_courses)?.name);
-    if (name) validCourseNames.add(`${link.location_id}::${name}`);
-  }
+  const courseById = new Map(allCourses.map((course) => [course.id, course]));
 
   // Earliest upcoming booking per person + course name.
   const eventById = new Map(upcomingEvents.map((event) => [event.id, event]));
@@ -199,72 +214,7 @@ export async function buildHomeDigests(
     }
   }
 
-  // Combine rows per home + person + course (so "X" and "X (Careskills)" count once,
-  // and a renewal recorded under either name clears the older expiry).
-  type Agg = { locationId: string; staffId: string; staffName: string; course: string; canonical: string; latestExpiry?: string; allocated: boolean };
-  const combined = new Map<string, Agg>();
-
-  for (const row of matrixRows) {
-    const locationId = row.completed_at_location_id;
-    if (!locationId || !row.staff_id) continue;
-    if (!linkedStaff.has(`${locationId}::${row.staff_id}`)) continue;
-
-    const profile = first(row.profiles);
-    if (isDeletedProfile(profile)) continue;
-
-    const course = first(row.training_courses);
-    const canonical = canonicalCourseName(course?.name);
-    if (!canonical) continue;
-    const onMatrix = validCourseIds.has(`${locationId}::${row.course_id}`) || validCourseNames.has(`${locationId}::${canonical}`);
-    if (!onMatrix) continue;
-
-    const status = (row.status || '').toLowerCase();
-    if (status === 'na') continue;
-
-    const key = `${locationId}::${row.staff_id}::${canonical}`;
-    const agg = combined.get(key) || {
-      locationId,
-      staffId: row.staff_id,
-      staffName: (profile?.full_name || 'Unknown').trim(),
-      course: displayCourseName(course?.name),
-      canonical,
-      allocated: false,
-    };
-
-    if (['allocated', 'awaiting', 'booked'].includes(status)) agg.allocated = true;
-    if (row.expiry_date && !isOneOffCourse(course)) {
-      const expiry = row.expiry_date.slice(0, 10);
-      if (!agg.latestExpiry || expiry > agg.latestExpiry) agg.latestExpiry = expiry;
-    }
-    combined.set(key, agg);
-  }
-
-  // Sort into the three lists per home.
-  type Bucket = Map<string, DigestPerson>;
-  const buckets = new Map<string, { expired: Bucket; expiring: Bucket; allocated: Bucket }>();
-  for (const loc of locations) buckets.set(loc.id, { expired: new Map(), expiring: new Map(), allocated: new Map() });
-
-  const addTo = (bucket: Bucket, agg: Agg, item: DigestItem) => {
-    const person = bucket.get(agg.staffId) || { name: agg.staffName, items: [] };
-    person.items.push(item);
-    bucket.set(agg.staffId, person);
-  };
-
-  for (const agg of combined.values()) {
-    const home = buckets.get(agg.locationId);
-    if (!home) continue;
-    const booking = bookedOn.get(`${agg.staffId}::${agg.canonical}`);
-
-    if (agg.latestExpiry) {
-      if (agg.latestExpiry < today) addTo(home.expired, agg, { course: agg.course, date: agg.latestExpiry, bookedOn: booking });
-      else if (agg.latestExpiry <= horizon) addTo(home.expiring, agg, { course: agg.course, date: agg.latestExpiry, bookedOn: booking });
-      // Otherwise in date: nothing to do, even if a duplicate row says allocated.
-    } else if (agg.allocated) {
-      addTo(home.allocated, agg, { course: agg.course, bookedOn: booking });
-    }
-  }
-
-  const finish = (bucket: Bucket): DigestPerson[] =>
+  const finish = (bucket: Map<string, DigestPerson>): DigestPerson[] =>
     Array.from(bucket.values())
       .map((person) => ({
         ...person,
@@ -274,18 +224,99 @@ export async function buildHomeDigests(
   const countItems = (people: DigestPerson[]) => people.reduce((sum, person) => sum + person.items.length, 0);
 
   return locations.map((loc) => {
-    const home = buckets.get(loc.id)!;
-    const expired = finish(home.expired);
-    const expiring = finish(home.expiring);
-    const allocated = finish(home.allocated);
+    // Columns on this home's matrix, one per course name.
+    const columns = new Map<string, CourseRef>();
+    for (const link of courseLinks) {
+      if (link.location_id !== loc.id) continue;
+      const course = courseById.get(link.training_course_id);
+      const key = canonicalCourseName(course?.name);
+      if (!course || !key) continue;
+      // Prefer the non-Careskills copy as the column's course, as the matrix does.
+      const existing = columns.get(key);
+      if (!existing || (/\(careskills\)/i.test(existing.name || '') && !/\(careskills\)/i.test(course.name || ''))) {
+        columns.set(key, course);
+      }
+    }
+
+    // Records for this home, grouped by person + course name.
+    const recordsByCell = new Map<string, MatrixRow[]>();
+    for (const row of matrixByLocation.get(loc.id) || []) {
+      const key = `${row.staff_id}::${canonicalCourseName(courseById.get(row.course_id)?.name)}`;
+      const list = recordsByCell.get(key) || [];
+      list.push(row);
+      recordsByCell.set(key, list);
+    }
+
+    // People on this home's matrix.
+    const people = new Map<string, string>();
+    for (const link of staffLinks) {
+      if (link.location_id !== loc.id) continue;
+      const profile = first(link.profiles);
+      if (isDeletedProfile(profile)) continue;
+      people.set(link.staff_id, (profile?.full_name || 'Unknown').trim());
+    }
+
+    const buckets = { expired: new Map<string, DigestPerson>(), missing: new Map<string, DigestPerson>(), expiring: new Map<string, DigestPerson>(), allocated: new Map<string, DigestPerson>() };
+    const addTo = (bucket: Map<string, DigestPerson>, staffId: string, item: DigestItem) => {
+      const person = bucket.get(staffId) || { name: people.get(staffId) || 'Unknown', items: [] };
+      person.items.push(item);
+      bucket.set(staffId, person);
+    };
+
+    for (const [staffId] of people) {
+      for (const [courseKey, column] of columns) {
+        const records = recordsByCell.get(`${staffId}::${courseKey}`) || [];
+        const statuses = records.map((r) => (r.status || '').toLowerCase());
+        const course = displayCourseName(column.name);
+        const booking = bookedOn.get(`${staffId}::${courseKey}`);
+
+        if (statuses.includes('na') || statuses.includes('not_yet_due')) continue;
+
+        // Latest completion and latest expiry across "X" and "X (Careskills)".
+        const completed = records.filter((r) => r.completion_date);
+        const latestExpiry = completed
+          .map((r) => r.expiry_date?.slice(0, 10))
+          .filter((d): d is string => Boolean(d))
+          .sort()
+          .pop();
+
+        if (statuses.some((s) => s === 'allocated' || s === 'awaiting' || s === 'booked')) {
+          // Already renewed under the other copy of the course? Then it's in date.
+          if (latestExpiry && latestExpiry > horizon && !isOneOffCourse(column)) continue;
+          addTo(buckets.allocated, staffId, { course, bookedOn: booking });
+          continue;
+        }
+
+        if (completed.length === 0) {
+          addTo(buckets.missing, staffId, { course, bookedOn: booking });
+          continue;
+        }
+
+        if (isOneOffCourse(column)) continue;
+
+        if (!latestExpiry) {
+          addTo(buckets.expired, staffId, { course, noExpiryDate: true, bookedOn: booking });
+        } else if (latestExpiry <= today) { // the matrix counts 'expires today' as expired
+          addTo(buckets.expired, staffId, { course, date: latestExpiry, bookedOn: booking });
+        } else if (latestExpiry < horizon) {
+          addTo(buckets.expiring, staffId, { course, date: latestExpiry, bookedOn: booking });
+        }
+      }
+    }
+
+    const expired = finish(buckets.expired);
+    const missing = finish(buckets.missing);
+    const expiring = finish(buckets.expiring);
+    const allocated = finish(buckets.allocated);
     return {
       locationId: loc.id,
       locationName: loc.name,
       managerEmail: loc.manager_email?.trim() || null,
       expired,
+      missing,
       expiring,
       allocated,
-      counts: { expired: countItems(expired), expiring: countItems(expiring), allocated: countItems(allocated) },
+      counts: { expired: countItems(expired), missing: countItems(missing), expiring: countItems(expiring), allocated: countItems(allocated) },
     };
   });
 }
@@ -297,7 +328,7 @@ export function digestSubject(home: HomeDigest, period: string): string {
 }
 
 export function renderDigestEmail(home: HomeDigest, period: string, baseUrl: string, opts: { noManagerEmail?: boolean } = {}): string {
-  const total = home.counts.expired + home.counts.expiring + home.counts.allocated;
+  const total = home.counts.expired + home.counts.missing + home.counts.expiring + home.counts.allocated;
   const safeHome = escapeHtml(home.locationName);
   const safeMonth = escapeHtml(periodLabel(period));
   const calendarUrl = escapeHtml(`${baseUrl}/apps/booking-calendar`);
@@ -328,6 +359,9 @@ export function renderDigestEmail(home: HomeDigest, period: string, baseUrl: str
       </td></tr>`;
   };
 
+  const expiredText = (item: DigestItem) =>
+    item.noExpiryDate ? ' – no expiry date recorded' : ` – expired ${escapeHtml(formatShortDate(item.date || ''))}`;
+
   const noEmailBanner = opts.noManagerEmail
     ? `<tr><td style="padding:16px 32px 0 32px;"><p style="margin:0;padding:12px;border:1px solid #fcd34d;background:#fffbeb;border-radius:6px;color:#92400e;font-size:14px;">
         This home does not have a managers' email address set, so this has been sent to the training inbox. Add it in <strong>Admin → Manage Venues</strong>, then edit ${safeHome}.
@@ -335,12 +369,13 @@ export function renderDigestEmail(home: HomeDigest, period: string, baseUrl: str
     : '';
 
   const body = total === 0
-    ? `<tr><td style="padding:24px 32px 0 32px;"><p style="margin:0;padding:16px;border-radius:6px;background:#f0fdf4;color:#166534;font-size:15px;">✅ <strong>All up to date.</strong> Nobody at ${safeHome} has training expired, expiring in the next ${LOOKAHEAD_DAYS} days, or waiting to be completed.</p></td></tr>`
+    ? `<tr><td style="padding:24px 32px 0 32px;"><p style="margin:0;padding:16px;border-radius:6px;background:#f0fdf4;color:#166534;font-size:15px;">✅ <strong>All up to date.</strong> Nobody at ${safeHome} has training expired, never completed, expiring in the next ${LOOKAHEAD_DAYS} days, or waiting to be completed.</p></td></tr>`
     : `
       <tr><td style="padding:24px 32px 0 32px;color:#1f2937;font-size:15px;line-height:1.6;">
         <p style="margin:0;">Here is the training for <strong>${safeHome}</strong> that needs booking or chasing. Please book these onto courses so everyone stays in date.</p>
       </td></tr>
-      ${section('🔴 Expired', '#dc2626', home.expired, home.counts.expired, (item) => ` – expired ${escapeHtml(formatShortDate(item.date || ''))}`)}
+      ${section('🔴 Expired', '#dc2626', home.expired, home.counts.expired, expiredText)}
+      ${section('⚫ Never completed', '#374151', home.missing, home.counts.missing, () => '')}
       ${section(`🟠 Expiring in the next ${LOOKAHEAD_DAYS} days`, '#ea580c', home.expiring, home.counts.expiring, (item) => ` – expires ${escapeHtml(formatShortDate(item.date || ''))}`)}
       ${section('🟡 Allocated, not yet completed', '#ca8a04', home.allocated, home.counts.allocated, () => '')}`;
 
