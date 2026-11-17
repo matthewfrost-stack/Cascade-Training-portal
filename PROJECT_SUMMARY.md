@@ -229,6 +229,8 @@ All routes are Next.js Route Handlers (server-side). Authentication is checked s
 | `/api/training-matrix/records` | all roles | Fetch individual training records (location-scoped) |
 | `/api/training-matrix/bootstrap` | all roles | Bootstrap matrix data for a location |
 | `/api/training-matrix/import-csv` | admin | Import training matrix from CSV |
+| `/api/reports/compliance` | admin/scheduler/manager | Compliance overview (all scoped homes) or one home (`?locationId=`), hours for `from`/`to` |
+| `/api/reports/compliance/snapshot` | cron/admin | Save this month's compliance figures for every home |
 | `/api/training-matrix/history/restore` | admin/scheduler | Put a matrix cell back to its values before one history entry |
 | `/api/training-matrix/history` | admin/scheduler/manager | History of one matrix cell (person + course incl. Careskills copy + home), newest first, location-scoped |
 | `/api/training-matrix/staff-group` | admin+ | Manage staff groups in the matrix |
@@ -344,6 +346,11 @@ Always-on workspace constraints that apply to every agent invocation.
 ---
 
 ## 11. Current Development Status
+
+### Compliance report – Phase 3 (2026-11-17)
+- `/reports/compliance` (dashboard tile "Compliance Report"; `COMPLIANCE_REPORT` permission: admin, scheduler, manager; managers see their own homes). Overview of every home (lowest compliance first, CQC/Ofsted filter, change since last snapshot) → click a home for: headline tiles, Oliver McGowan (learning disability & autism) %, hours delivered/lost for the chosen period, monthly trend, by-course and by-person tables with "Booked" dates. **Download PDF** = print view (forces light theme, adds generated-by/date header); **Download Excel** = 3 tabs via `write-excel-file` (browser build, loaded on demand).
+- Compliance % = in date (incl. expiring) ÷ cells that apply; N/A and Not yet due excluded. Cell rules live in **`src/lib/compliance.ts` (`evaluateHomes`)**, shared by the report, snapshots and the manager email (`managerDigest.ts` now builds on it). Report assembly: `src/lib/complianceReport.ts`. Hours per home match people by `profiles.location` (as the Intelligence Hub does).
+- Monthly snapshots: `compliance_snapshots` (one row per home per month, re-saving replaces). Saved 06:00 UTC on the 1st by `.github/workflows/monthly-compliance-snapshot.yml` (no emails) or by admins ("Save this month's snapshot"). Routes: `GET /api/reports/compliance`, `GET|POST /api/reports/compliance/snapshot`. Migration: `20261117180000_add_compliance_snapshots.sql`.
 
 ### Training matrix history – Phase 2 (2026-11-17)
 - A trigger on `staff_training_matrix` (public + dev) writes every change to completion date, expiry, status, course or home into `staff_training_matrix_history` (who, when, old → new, source). Identical rewrites aren't logged; history is append-only (no write policies).

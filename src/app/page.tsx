@@ -135,6 +135,17 @@ export default function LandingPage() {
             onClick={() => router.push('/training-matrix')}
           />
 
+          {hasPermission(userRole, 'COMPLIANCE_REPORT', 'canView') && (
+            <TileButton
+              title="Compliance Report"
+              description="Compliance by home for CQC and Ofsted: who needs what, training hours, monthly trend, and PDF / Excel downloads."
+              emoji="📋"
+              accent="emerald"
+              actionText="Open Report"
+              onClick={() => router.push('/reports/compliance')}
+            />
+          )}
+
           {/* Course Expiry Checker Card */}
           <TileButton
             title="Course Expiry Checker"
