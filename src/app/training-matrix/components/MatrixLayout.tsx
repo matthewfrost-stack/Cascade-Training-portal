@@ -130,7 +130,7 @@ export function MatrixLayout() {
     newCourseName, setNewCourseName, editingHeader, setEditingHeader, editHeaderValue, setEditHeaderValue, editNeverExpires, setEditNeverExpires,
     lastRemovedCourse, setLastRemovedCourse, selectedCells, bulkEditMode, setBulkEditMode, bulkEditStatus, setBulkEditStatus,
     bulkEditDate, setBulkEditDate, saveCategoryOverride, formatExpiryDisplay,
-    saveCourseChanges, getDateStatus, getDateColor, getStatusDisplay, canEditMatrix, handleCourseDropStart, handleCourseDragOver,
+    saveCourseChanges, fetchMatrixData, getDateStatus, getDateColor, getStatusDisplay, canEditMatrix, handleCourseDropStart, handleCourseDragOver,
     handleCourseDropEnd, handleStaffDropStart, handleStaffDragOver, persistCourseOrdering, handleStaffDropEnd, addNewCourse, deleteCourse,
     undoRemoveCourse, exportMatrixCsv, deleteStaffMember, toggleCellSelection, selectAllInCourse, deselectAllInCourse,
     selectAllForStaff, clearAllSelections, applyBulkUpdate, updateAllExpiriesForCourse, handleSaveTraining
@@ -863,6 +863,8 @@ export function MatrixLayout() {
                 courseId={editingCell.courseId}
                 locationId={selectedLocation}
                 isDark={isDark}
+                canEdit={canEditMatrix}
+                onRestored={() => { setEditingCell(null); setEditDate(''); setEditStatus(null); void fetchMatrixData(); }}
               />
             )}
           </div>

@@ -22,7 +22,8 @@ export type MatrixChangeSource =
   | 'atlas_sync'
   | 'restored'
   | 'removed_from_home'
-  | 'course_removed';
+  | 'course_removed'
+  | 'history_restore';
 
 /**
  * Server-side Supabase client using the service key.

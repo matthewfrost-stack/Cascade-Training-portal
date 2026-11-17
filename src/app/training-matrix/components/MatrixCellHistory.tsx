@@ -49,47 +49,65 @@ function describeWho(entry: HistoryEntry): string {
     case 'restored': return `Restored from archive${by}`;
     case 'removed_from_home': return `Removed from home${by}`;
     case 'course_removed': return `Course removed from home${by}`;
+    case 'history_restore': return `Changed back from history${by}`;
     default: return entry.by ? entry.by : 'System';
   }
 }
 
-/** One line describing what changed. */
-function describeChange(entry: HistoryEntry): string {
-  if (entry.action === 'created') {
-    const parts = [`Added as ${statusLabel(entry.status.to)}`];
-    if (entry.completion.to) parts.push(`completed ${day(entry.completion.to)}`);
-    if (entry.expiry.to) parts.push(`expires ${day(entry.expiry.to)}`);
-    return parts.join(' · ');
-  }
-  if (entry.action === 'removed') {
-    const was = [statusLabel(entry.status.from)];
-    if (entry.completion.from) was.push(`completed ${day(entry.completion.from)}`);
-    return `Record removed (was ${was.join(', ')})`;
-  }
-  const parts: string[] = [];
-  if (entry.status.from !== entry.status.to && statusLabel(entry.status.from) !== statusLabel(entry.status.to)) {
-    parts.push(`${statusLabel(entry.status.from)} → ${statusLabel(entry.status.to)}`);
-  }
-  if (entry.completion.from !== entry.completion.to) {
-    parts.push(entry.completion.from ? `Completed ${day(entry.completion.from)} → ${day(entry.completion.to)}` : `Completed ${day(entry.completion.to)}`);
-  }
-  if (entry.expiry.from !== entry.expiry.to) {
-    parts.push(entry.expiry.from ? `Expiry ${day(entry.expiry.from)} → ${day(entry.expiry.to)}` : `Expires ${day(entry.expiry.to)}`);
-  }
-  if (entry.movedFrom) parts.push(`Moved from ${entry.movedFrom}`);
-  return parts.length ? parts.join(' · ') : 'Updated';
+/** What the record looked like, e.g. "Completed 05/01/2026 · expires 05/01/2027". */
+function describeState(status: string | null, completion: string | null, expiry: string | null): string {
+  const parts = [statusLabel(status)];
+  if (completion) parts.push(`completed ${day(completion)}`);
+  if (expiry) parts.push(`expires ${day(expiry)}`);
+  return parts.join(' · ');
 }
 
-export function MatrixCellHistory({ staffId, courseId, locationId, isDark }: { staffId: string; courseId: string; locationId: string; isDark: boolean }) {
+/** From / To lines for one entry (null when there's no "from"). */
+function describeFromTo(entry: HistoryEntry): { from: string | null; to: string | null; note: string | null } {
+  if (entry.action === 'created') {
+    return { from: null, to: describeState(entry.status.to, entry.completion.to, entry.expiry.to), note: 'Record added' };
+  }
+  if (entry.action === 'removed') {
+    return { from: describeState(entry.status.from, entry.completion.from, entry.expiry.from), to: null, note: 'Record removed' };
+  }
+  const valuesChanged =
+    entry.status.from !== entry.status.to || entry.completion.from !== entry.completion.to || entry.expiry.from !== entry.expiry.to;
+  if (!valuesChanged) return { from: null, to: null, note: entry.movedFrom ? `Moved from ${entry.movedFrom}` : 'Updated' };
+  return {
+    from: describeState(entry.status.from, entry.completion.from, entry.expiry.from),
+    to: describeState(entry.status.to, entry.completion.to, entry.expiry.to),
+    note: entry.movedFrom ? `Moved from ${entry.movedFrom}` : null,
+  };
+}
+
+const canChangeBack = (entry: HistoryEntry) =>
+  entry.action === 'removed'
+  || (entry.action === 'updated'
+    && (entry.status.from !== entry.status.to || entry.completion.from !== entry.completion.to || entry.expiry.from !== entry.expiry.to));
+
+export function MatrixCellHistory({
+  staffId,
+  courseId,
+  locationId,
+  isDark,
+  canEdit = false,
+  onRestored,
+}: {
+  staffId: string;
+  courseId: string;
+  locationId: string;
+  isDark: boolean;
+  canEdit?: boolean;
+  /** Called after a successful "change back" so the matrix can refresh. */
+  onRestored?: () => void;
+}) {
   const [open, setOpen] = useState(false);
   const [entries, setEntries] = useState<HistoryEntry[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+  const [restoringId, setRestoringId] = useState<string | null>(null);
 
-  const toggle = async () => {
-    const next = !open;
-    setOpen(next);
-    if (!next || entries) return;
+  const load = async () => {
     setLoading(true);
     setError(null);
     try {
@@ -102,6 +120,33 @@ export function MatrixCellHistory({ staffId, courseId, locationId, isDark }: { s
       setError(loadError instanceof Error ? loadError.message : 'Could not load history.');
     } finally {
       setLoading(false);
+    }
+  };
+
+  const toggle = async () => {
+    const next = !open;
+    setOpen(next);
+    if (next && !entries) await load();
+  };
+
+  const changeBack = async (entry: HistoryEntry) => {
+    const target = describeState(entry.status.from, entry.completion.from, entry.expiry.from);
+    if (!window.confirm(`Change this record back to:\n\n${target}\n\nThe change back will also be recorded in the history.`)) return;
+    setRestoringId(entry.id);
+    setError(null);
+    try {
+      const response = await fetch('/api/training-matrix/history/restore', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ historyId: entry.id }),
+      });
+      const body = (await response.json().catch(() => ({}))) as { error?: string };
+      if (!response.ok) throw new Error(body.error || 'Could not change it back.');
+      onRestored?.();
+    } catch (restoreError) {
+      setError(restoreError instanceof Error ? restoreError.message : 'Could not change it back.');
+    } finally {
+      setRestoringId(null);
     }
   };
 
@@ -119,7 +164,7 @@ export function MatrixCellHistory({ staffId, courseId, locationId, isDark }: { s
       </button>
 
       {open && (
-        <div className="mt-2 max-h-48 overflow-y-auto pr-1">
+        <div className="mt-2 max-h-64 overflow-y-auto pr-1">
           {loading && <p className={`text-xs ${muted}`}>Loading…</p>}
           {error && <p className="text-xs text-red-500">{error}</p>}
           {entries && entries.length === 0 && (
@@ -127,14 +172,43 @@ export function MatrixCellHistory({ staffId, courseId, locationId, isDark }: { s
           )}
           {entries && entries.length > 0 && (
             <ul className="space-y-2">
-              {entries.map((entry) => (
-                <li key={entry.id} className="text-xs leading-snug">
-                  <span className={`font-bold ${isDark ? 'text-gray-200' : 'text-slate-800'}`}>{when(entry.changedAt)}</span>
-                  <span className={muted}> · </span>
-                  <span className={isDark ? 'text-gray-300' : 'text-slate-700'}>{describeChange(entry)}</span>
-                  <span className={`block italic ${muted}`}>{describeWho(entry)}</span>
-                </li>
-              ))}
+              {entries.map((entry) => {
+                const { from, to, note } = describeFromTo(entry);
+                return (
+                  <li key={entry.id} className={`text-xs leading-snug rounded-lg p-2 ${isDark ? 'bg-gray-800/60' : 'bg-slate-50'}`}>
+                    <div className="flex items-start justify-between gap-2">
+                      <div>
+                        <span className={`font-bold ${isDark ? 'text-gray-200' : 'text-slate-800'}`}>{when(entry.changedAt)}</span>
+                        <span className={`italic ${muted}`}> · {describeWho(entry)}</span>
+                      </div>
+                      {canEdit && canChangeBack(entry) && (
+                        <button
+                          type="button"
+                          onClick={() => void changeBack(entry)}
+                          disabled={restoringId !== null}
+                          className={`shrink-0 px-2 py-0.5 rounded-md font-bold transition-colors disabled:opacity-50 ${isDark ? 'bg-gray-700 text-gray-100 hover:bg-gray-600' : 'bg-white border border-slate-300 text-slate-700 hover:bg-slate-100'}`}
+                          title="Put this record back to how it was before this change"
+                        >
+                          {restoringId === entry.id ? 'Changing…' : '↩ Change back'}
+                        </button>
+                      )}
+                    </div>
+                    {note && <div className={`mt-0.5 ${muted}`}>{note}</div>}
+                    {from && (
+                      <div className="mt-0.5">
+                        <span className={`font-bold ${muted}`}>From: </span>
+                        <span className={isDark ? 'text-red-300' : 'text-red-700'}>{from}</span>
+                      </div>
+                    )}
+                    {to && (
+                      <div>
+                        <span className={`font-bold ${muted}`}>To: </span>
+                        <span className={isDark ? 'text-green-300' : 'text-green-700'}>{to}</span>
+                      </div>
+                    )}
+                  </li>
+                );
+              })}
             </ul>
           )}
         </div>
