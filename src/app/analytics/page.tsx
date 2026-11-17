@@ -60,6 +60,16 @@ interface DetailRecord {
 
 type GroupedDetails = Record<string, Record<string, DetailRecord[]>>;
 
+// Sign In App and the kiosk register record lateness automatically and put
+// their own name in as the "reason". No reason was actually given, so group
+// them with "Not specified" rather than showing them as separate reasons.
+const AUTO_LATE_LABELS = new Set(['sign in app', 'kiosk register']);
+function lateReasonLabel(reason?: string | null): string {
+  const trimmed = (reason || '').trim();
+  if (!trimmed || AUTO_LATE_LABELS.has(trimmed.toLowerCase())) return 'Not specified';
+  return trimmed;
+}
+
 function getCourseName(event?: AnalyticsEvent): string | undefined {
   const course = event?.courses;
   return Array.isArray(course) ? course[0]?.name : course?.name;
@@ -370,14 +380,14 @@ export default function AnalyticsDashboard() {
       const h = hoursByBooking.get(item.id);
       if (!h) return sum;
       if (type === 'absence' && !item.attended_at && (item.absence_reason || 'Not specified') === reason) return sum + h.lostAbsence;
-      if (type === 'lateness' && item.minutes_late && item.minutes_late > 0 && (item.late_reason || 'Not specified') === reason) return sum + h.lostLate;
+      if (type === 'lateness' && item.minutes_late && item.minutes_late > 0 && lateReasonLabel(item.late_reason) === reason) return sum + h.lostLate;
       return sum;
     }, 0);
 
   // Calculate lateness reasons breakdown
   const latenessReasons = data.reduce<Record<string, number>>((acc, item) => {
     if (item?.minutes_late && item.minutes_late > 0) {
-      const reason = item?.late_reason || 'Not specified';
+      const reason = lateReasonLabel(item?.late_reason);
       acc[reason] = (acc[reason] || 0) + 1;
     }
     return acc;
@@ -404,7 +414,7 @@ export default function AnalyticsDashboard() {
   const getDetailedData = (type: 'lateness' | 'absence', reason: string) => {
     if (type === 'lateness') {
       return data
-        .filter((item) => item?.minutes_late && item.minutes_late > 0 && (item?.late_reason || 'Not specified') === reason)
+        .filter((item) => item?.minutes_late && item.minutes_late > 0 && lateReasonLabel(item?.late_reason) === reason)
         .map((item) => ({
           name: item?.profiles?.full_name || 'Unknown',
           location: item?.profiles?.location || 'Unassigned Location',
