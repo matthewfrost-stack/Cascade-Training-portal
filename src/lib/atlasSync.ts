@@ -48,6 +48,8 @@ type CourseLocationRow = {
 
 type AtlasSyncOptions = {
   dryRun?: boolean;
+  /** Admin who started the sync by hand; empty for the nightly run. */
+  triggeredBy?: string | null;
 };
 
 export type AtlasSyncSummary = {
@@ -498,7 +500,7 @@ async function runWithConcurrency<T>(items: T[], concurrency: number, task: (ite
 export async function runAtlasCompletedCourseSync(options: AtlasSyncOptions = {}): Promise<AtlasSyncSummary> {
   const rawRecords = await fetchAtlasCompletedRecords();
   const completedRecords = deduplicateRecords(normalizeCompletedCourses(rawRecords));
-  const service = createServiceClient();
+  const service = createServiceClient({ source: 'atlas_sync', userId: options.triggeredBy });
 
   const [profiles, courses, matrix, staffLocations, courseLocations] = await Promise.all([
     fetchAllRows(service, 'profiles', 'id, full_name, email, is_deleted'),

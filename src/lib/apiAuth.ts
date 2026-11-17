@@ -10,14 +10,42 @@ export type RoleTier = 'staff' | 'manager' | 'scheduler' | 'admin';
 const isDev = process.env.NEXT_PUBLIC_VERCEL_ENV !== 'production';
 const schema = isDev ? 'dev' : 'public';
 
-export function createServiceClient() {
+/**
+ * Where a training matrix change came from. Recorded in the matrix history by
+ * a database trigger (see migration 20261117150000_add_training_matrix_history).
+ */
+export type MatrixChangeSource =
+  | 'new_starter'
+  | 'bulk_edit'
+  | 'csv_import'
+  | 'atlas_import'
+  | 'atlas_sync'
+  | 'restored'
+  | 'removed_from_home'
+  | 'course_removed';
+
+/**
+ * Server-side Supabase client using the service key.
+ *
+ * Pass `changeTag` on clients that write to staff_training_matrix so the
+ * matrix history shows where the change came from and who started it. The
+ * tag travels as request headers that the trigger trusts only for service-key
+ * requests; without the trigger installed they are simply ignored.
+ */
+export function createServiceClient(changeTag?: { source: MatrixChangeSource; userId?: string | null }) {
+  const tagHeaders: Record<string, string> = {};
+  if (changeTag) {
+    tagHeaders['x-change-source'] = changeTag.source;
+    if (changeTag.userId) tagHeaders['x-changed-by'] = changeTag.userId;
+  }
   return createClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL || '',
     process.env.SUPABASE_SECRET_KEY || process.env.SUPABASE_SERVICE_ROLE_KEY || '',
     {
       db: { 
         schema 
-      }
+      },
+      ...(changeTag ? { global: { headers: tagHeaders } } : {}),
     }
   );
 }

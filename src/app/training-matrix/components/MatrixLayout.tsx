@@ -2,6 +2,7 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { useMatrix } from '../context/MatrixContext';
 import { GroupManagerModal } from './GroupManagerModal';
+import { MatrixCellHistory } from './MatrixCellHistory';
 import { Course, Staff, MatrixCell } from '../types';
 import { HoverPopoverCard, RecordDetailModal, DisplayRecordItem } from '@/app/components/RecordHoverPopoverModal';
 
@@ -855,6 +856,15 @@ export function MatrixLayout() {
               <button onClick={() => { if (editStatus === 'completed' && !editDate) { alert('Please select a completion date'); return; } if (!editStatus) { alert('Please select a status'); return; } const sm = staff.find((s: Staff) => s.id === editingCell.staffId); const co = courses.find((c: Course) => c.id === editingCell.courseId); const ce = matrixData[editingCell.staffId]?.[editingCell.courseId]; if (sm && co) handleSaveTraining(sm.id, co.id, ce?.training_id || null, editStatus === 'completed' ? editDate : null, editStatus); }} className="flex-1 px-4 py-2.5 bg-green-600 hover:bg-green-700 text-white rounded-xl text-xs font-bold transition-colors">Save</button>
               <button onClick={() => { setEditingCell(null); setEditDate(''); setEditStatus(null); }} className={`flex-1 px-4 py-2.5 rounded-xl text-xs font-bold transition-colors ${isDark ? 'bg-gray-800 hover:bg-gray-700 text-gray-200' : 'bg-slate-100 hover:bg-slate-200 text-slate-700'}`}>Cancel</button>
             </div>
+            {selectedLocation && (
+              <MatrixCellHistory
+                key={`${editingCell.staffId}|${editingCell.courseId}`}
+                staffId={editingCell.staffId}
+                courseId={editingCell.courseId}
+                locationId={selectedLocation}
+                isDark={isDark}
+              />
+            )}
           </div>
         </div>
       )}

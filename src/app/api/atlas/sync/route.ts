@@ -10,10 +10,10 @@ function isAuthorizedCron(request: NextRequest): boolean {
   return isAuthorizedCronHeader(request.headers.get('authorization'));
 }
 
-async function runSync(request: NextRequest): Promise<NextResponse> {
+async function runSync(request: NextRequest, triggeredBy: string | null = null): Promise<NextResponse> {
   const dryRun = new URL(request.url).searchParams.get('dryRun') === 'true';
   try {
-    const summary = await runAtlasCompletedCourseSync({ dryRun });
+    const summary = await runAtlasCompletedCourseSync({ dryRun, triggeredBy });
     return NextResponse.json({ success: true, summary });
   } catch (error) {
     console.error('Atlas completed-course sync failed:', error);
@@ -34,5 +34,5 @@ export async function GET(request: NextRequest) {
 export async function POST(request: NextRequest) {
   const authz = await requireRole(['admin']);
   if ('error' in authz) return authz.error;
-  return runSync(request);
+  return runSync(request, authz.userId);
 }

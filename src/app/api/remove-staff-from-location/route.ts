@@ -8,7 +8,7 @@ export async function POST(request: NextRequest) {
     const authz = await requireRole(['admin', 'scheduler']);
     if ('error' in authz) return authz.error;
 
-    const supabaseAdmin = createServiceClient();
+    const supabaseAdmin = createServiceClient({ source: 'removed_from_home', userId: authz.userId });
     const body = await request.json();
     const { staffId, locationId } = body;
 

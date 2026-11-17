@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import readXlsxFile from 'read-excel-file/node';
-import { requireRole } from '@/lib/apiAuth';
+import { createServiceClient, requireRole } from '@/lib/apiAuth';
 import { ATLAS_COURSE_ALIASES } from '@/lib/atlasSync';
 
 export const dynamic = 'force-dynamic';
@@ -134,7 +134,8 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const supabase = authz.service;
+    // Tagged so the matrix history shows these changes as an Atlas import by this admin.
+    const supabase = createServiceClient({ source: 'atlas_import', userId: authz.userId });
 
     // Parse Excel file with proper structure understanding
     // Row 1: Keys/Legend
