@@ -35,7 +35,7 @@ export async function POST(request: NextRequest) {
   const authz = await requireRole(['admin']);
   if ('error' in authz) return authz.error;
 
-  const service = createServiceClient();
+  const service = createServiceClient({ source: 'restored', userId: authz.userId });
   const { userId } = authz;
   const body = await request.json();
   const deletedItemId = body?.deletedItemId as string | undefined;

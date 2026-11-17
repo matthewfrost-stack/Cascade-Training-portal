@@ -74,7 +74,7 @@ export async function POST(request: NextRequest) {
     if ('error' in authz) return authz.error;
 
     const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
-    const supabaseAdmin = createServiceClient();
+    const supabaseAdmin = createServiceClient({ source: 'new_starter', userId: authz.userId });
     const emailOptions = getEmailSendOptionsFromHeaders(
       request.headers.get('x-email-test-mode'),
       request.headers.get('x-test-email-address')

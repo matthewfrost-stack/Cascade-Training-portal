@@ -5,7 +5,7 @@ export async function POST(request: NextRequest) {
   const authz = await requireRole(['admin', 'scheduler']);
   if ('error' in authz) return authz.error;
 
-  const supabaseAdmin = createServiceClient();
+  const supabaseAdmin = createServiceClient({ source: 'course_removed', userId: authz.userId });
 
   const body = await request.json();
   const courseId = body?.courseId as string | undefined;

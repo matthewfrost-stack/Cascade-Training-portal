@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { addMonths } from 'date-fns';
-import { requireRole } from '@/lib/apiAuth';
+import { createServiceClient, requireRole } from '@/lib/apiAuth';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -233,6 +233,8 @@ export async function POST(request: NextRequest) {
   try {
     const authz = await requireRole(['admin']);
     if ('error' in authz) return authz.error;
+    // Tagged so the matrix history shows these changes as a CSV upload by this admin.
+    const matrixWriter = createServiceClient({ source: 'csv_import', userId: authz.userId });
 
     const form = await request.formData();
     const locationId = String(form.get('locationId') || '').trim();
@@ -816,13 +818,13 @@ export async function POST(request: NextRequest) {
     const chunkSize = 500;
     for (let i = 0; i < upserts.length; i += chunkSize) {
       const chunk = upserts.slice(i, i + chunkSize);
-      let { error } = await authz.service
+      let { error } = await matrixWriter
         .from('staff_training_matrix')
         .upsert(chunk, { onConflict: 'staff_id,course_id,completed_at_location_id' });
 
       // Support deployments that still use the legacy unique key.
       if (error?.code === '42P10') {
-        const fallback = await authz.service
+        const fallback = await matrixWriter
           .from('staff_training_matrix')
           .upsert(chunk, { onConflict: 'staff_id,course_id' });
         error = fallback.error;
@@ -859,7 +861,7 @@ export async function POST(request: NextRequest) {
         const deleteChunkSize = 500;
         for (let i = 0; i < deleteIds.length; i += deleteChunkSize) {
           const chunk = deleteIds.slice(i, i + deleteChunkSize);
-          const { error } = await authz.service
+          const { error } = await matrixWriter
             .from('staff_training_matrix')
             .delete()
             .in('id', chunk);
