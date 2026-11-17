@@ -4,7 +4,17 @@ import { useState, useEffect } from 'react';
 import { supabase } from '@/lib/supabase';
 import Icon from './Icon';
 
-interface ManagedLocation { id: string; name: string; accessible_office_regions?: string[] | null }
+interface ManagedLocation { id: string; name: string; accessible_office_regions?: string[] | null; manager_email?: string | null }
+
+const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+/** Empty is allowed (the monthly email then goes to the training inbox). */
+function cleanManagerEmail(value: string): { value: string | null; error?: string } {
+  const trimmed = value.trim().toLowerCase();
+  if (!trimmed) return { value: null };
+  if (!EMAIL_PATTERN.test(trimmed)) return { value: null, error: 'Please enter a valid managers\' email address, e.g. oakwood-managers@cascade-care.com' };
+  return { value: trimmed };
+}
 interface ManagedVenue { id: string; name: string; office_region?: string | null }
 
 export default function LocationManagerModal({ onClose }: { onClose: () => void }) {
@@ -12,9 +22,11 @@ export default function LocationManagerModal({ onClose }: { onClose: () => void 
   const [venues, setVenues] = useState<ManagedVenue[]>([]);
   const [newLocationName, setNewLocationName] = useState('');
   const [newLocationAccessible, setNewLocationAccessible] = useState<string[]>(['Hull']);
+  const [newLocationManagerEmail, setNewLocationManagerEmail] = useState('');
   const [editingLocationId, setEditingLocationId] = useState<string | null>(null);
   const [editingLocationName, setEditingLocationName] = useState('');
   const [editingLocationAccessible, setEditingLocationAccessible] = useState<string[]>(['Hull']);
+  const [editingLocationManagerEmail, setEditingLocationManagerEmail] = useState('');
   const [newVenueName, setNewVenueName] = useState('');
   const [newVenueOffice, setNewVenueOffice] = useState('Hull');
   const [editingVenueId, setEditingVenueId] = useState<string | null>(null);
@@ -60,15 +72,19 @@ export default function LocationManagerModal({ onClose }: { onClose: () => void 
   const handleAddLocation = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!newLocationName.trim()) return;
+    const managerEmail = cleanManagerEmail(newLocationManagerEmail);
+    if (managerEmail.error) { alert(managerEmail.error); return; }
     setLoading(true);
     try {
       const { error } = await supabase.from('locations').insert([{ 
         name: newLocationName, 
-        accessible_office_regions: newLocationAccessible
+        accessible_office_regions: newLocationAccessible,
+        ...(managerEmail.value ? { manager_email: managerEmail.value } : {}),
       }]);
       if (error) throw error;
       setNewLocationName('');
       setNewLocationAccessible(['Hull']);
+      setNewLocationManagerEmail('');
       fetchData();
     } catch (error: unknown) {
       alert(error instanceof Error ? error.message : 'Unable to add location');
@@ -109,21 +125,31 @@ export default function LocationManagerModal({ onClose }: { onClose: () => void 
     setEditingLocationId(loc.id);
     setEditingLocationName(loc.name);
     setEditingLocationAccessible(loc.accessible_office_regions || ['Hull']);
+    setEditingLocationManagerEmail(loc.manager_email || '');
   };
 
   const handleSaveLocation = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!editingLocationId || !editingLocationName.trim()) return;
+    const managerEmail = cleanManagerEmail(editingLocationManagerEmail);
+    if (managerEmail.error) { alert(managerEmail.error); return; }
     setLoading(true);
     try {
       const { error } = await supabase.from('locations').update({
         name: editingLocationName,
-        accessible_office_regions: editingLocationAccessible
+        accessible_office_regions: editingLocationAccessible,
+        manager_email: managerEmail.value,
       }).eq('id', editingLocationId);
-      if (error) throw error;
+      if (error) {
+        if (error.code === 'PGRST204' || /manager_email/.test(error.message || '')) {
+          throw new Error('The managers\' email field needs a database update first. Ask an admin to run the latest Supabase migration.');
+        }
+        throw error;
+      }
       setEditingLocationId(null);
       setEditingLocationName('');
       setEditingLocationAccessible(['Hull']);
+      setEditingLocationManagerEmail('');
       await fetchData();
     } catch (error: unknown) {
       alert(error instanceof Error ? error.message : 'Failed to save location');
@@ -222,6 +248,19 @@ export default function LocationManagerModal({ onClose }: { onClose: () => void 
                   />
 
                   <div>
+                    <label style={{ color: isDark ? '#94a3b8' : '#64748b' }} className="text-[9px] font-black uppercase block mb-2">Managers&rsquo; email (Google Group)</label>
+                    <input
+                      type="email"
+                      placeholder="e.g. oakwood-managers@cascade-care.com"
+                      style={{ backgroundColor: isDark ? '#0f172a' : '#f1f5f9', color: isDark ? '#f1f5f9' : '#1e293b', borderColor: isDark ? '#334155' : '#cbd5e1' }}
+                      className="w-full p-3 border rounded-xl outline-none focus:ring-2 focus:ring-blue-500"
+                      value={editingLocationManagerEmail}
+                      onChange={(e) => setEditingLocationManagerEmail(e.target.value)}
+                    />
+                    <p style={{ color: isDark ? '#94a3b8' : '#64748b' }} className="text-[11px] mt-1">Receives the monthly &ldquo;training due&rdquo; email. Leave blank to send it to the training inbox.</p>
+                  </div>
+
+                  <div>
                     <label style={{ color: isDark ? '#94a3b8' : '#64748b' }} className="text-[9px] font-black uppercase block mb-2">Can Access</label>
                     <div className="flex gap-4">
                       <label className="flex items-center gap-2">
@@ -292,6 +331,19 @@ export default function LocationManagerModal({ onClose }: { onClose: () => void 
                   />
 
                   <div>
+                    <label style={{ color: isDark ? '#94a3b8' : '#64748b' }} className="text-[9px] font-black uppercase block mb-2">Managers&rsquo; email (Google Group)</label>
+                    <input
+                      type="email"
+                      placeholder="e.g. oakwood-managers@cascade-care.com"
+                      style={{ backgroundColor: isDark ? '#0f172a' : '#f1f5f9', color: isDark ? '#f1f5f9' : '#1e293b', borderColor: isDark ? '#334155' : '#cbd5e1' }}
+                      className="w-full p-3 border rounded-xl outline-none focus:ring-2 focus:ring-blue-500"
+                      value={newLocationManagerEmail}
+                      onChange={(e) => setNewLocationManagerEmail(e.target.value)}
+                    />
+                    <p style={{ color: isDark ? '#94a3b8' : '#64748b' }} className="text-[11px] mt-1">Receives the monthly &ldquo;training due&rdquo; email. Leave blank to send it to the training inbox.</p>
+                  </div>
+
+                  <div>
                     <label style={{ color: isDark ? '#94a3b8' : '#64748b' }} className="text-[9px] font-black uppercase block mb-2">Can Access</label>
                     <div className="flex gap-4">
                       <label className="flex items-center gap-2">
@@ -348,6 +400,7 @@ export default function LocationManagerModal({ onClose }: { onClose: () => void 
                     <div>
                       <p style={{ color: isDark ? '#f1f5f9' : '#1e293b' }} className="font-bold">{loc.name}</p>
                       <p style={{ color: isDark ? '#94a3b8' : '#64748b' }} className="text-[9px] font-bold mt-1">Can Access: {loc.accessible_office_regions?.join(', ') || 'Hull'}</p>
+                      <p style={{ color: loc.manager_email ? (isDark ? '#94a3b8' : '#64748b') : '#d97706' }} className="text-[9px] font-bold mt-0.5">{loc.manager_email ? `📧 ${loc.manager_email}` : '📧 No managers\' email set'}</p>
                     </div>
                     <div className="flex gap-2">
                       <button 

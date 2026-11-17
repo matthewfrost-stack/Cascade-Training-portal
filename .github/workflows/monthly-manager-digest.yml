@@ -1,0 +1,24 @@
+name: Monthly Manager Training Email
+on:
+  schedule:
+    # 07:00 UTC on the 1st of each month (7am in winter, 8am in summer UK time).
+    - cron: '0 7 1 * *'
+  workflow_dispatch: # Allows a manual run from the GitHub Actions tab
+
+jobs:
+  send:
+    runs-on: ubuntu-latest
+    env:
+      APP_URL: ${{ secrets.APP_URL }}
+      CRON_SECRET: ${{ secrets.CRON_SECRET }}
+    steps:
+      - name: Send monthly training-due emails to home managers
+        run: |
+          if [ -z "$APP_URL" ]; then
+            echo "APP_URL secret is not set. Add your Vercel production URL to GitHub Secrets as APP_URL."
+            exit 1
+          fi
+
+          # Each home is only emailed once per month, so a retry is safe.
+          curl --fail-with-body --silent --show-error --max-time 320 -X GET "$APP_URL/api/automations/manager-digest" \
+            -H "Authorization: Bearer $CRON_SECRET"

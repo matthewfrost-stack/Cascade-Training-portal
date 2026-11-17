@@ -66,6 +66,11 @@ const TEST_EMAIL_ADDRESS =
   process.env.GMAIL_USER ||
   '';
 
+/** The training inbox the portal sends from; also used as a fallback recipient. */
+export function getTrainingInboxAddress(): string {
+  return SENDER_EMAIL === 'noreply@example.com' ? '' : SENDER_EMAIL;
+}
+
 function getEmailProviderLabel() {
   if (process.env.SMTP_URL || process.env.SMTP_HOST) return 'smtp';
   if (process.env.GMAIL_USER && process.env.GMAIL_APP_PASSWORD) return 'gmail_app_password';

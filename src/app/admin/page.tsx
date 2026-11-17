@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import CourseManagerModal from '@/app/components/CourseManagerModal';
 import LocationManagerModal from '@/app/components/LocationManagerModal';
 import ChecklistTemplateModal from '@/app/components/ChecklistTemplateModal';
+import ManagerDigestModal from '@/app/components/ManagerDigestModal';
 import { hasPermission } from '@/lib/permissions';
 import BackButton from '@/app/components/BackButton';
 import UniformButton from '@/app/components/UniformButton';
@@ -71,6 +72,7 @@ export default function AdminPage() {
   const [showCourseModal, setShowCourseModal] = useState(false);
   const [showLocationModal, setShowLocationModal] = useState(false);
   const [showChecklistTemplateModal, setShowChecklistTemplateModal] = useState(false);
+  const [showManagerDigestModal, setShowManagerDigestModal] = useState(false);
   const [accessDenied, setAccessDenied] = useState(false);
   const [permissionRetry, setPermissionRetry] = useState(0);
   const [permissionLoadError, setPermissionLoadError] = useState(false);
@@ -255,6 +257,7 @@ export default function AdminPage() {
             <>
               <DashboardCard isDark={isDark} accent="#6366f1" emoji="✅" title="Checklist Template" description="Add/remove booking checklist items." actionLabel="✅ Manage" onClick={() => setShowChecklistTemplateModal(true)} />
               <DashboardCard isDark={isDark} accent="#06b6d4" emoji="🤖" title="Automation Control" description="Control internal feedback email automation system." actionLabel="🤖 Control Automation" onClick={() => router.push('/automation-control')} />
+              <DashboardCard isDark={isDark} accent="#ef4444" emoji="📬" title="Manager Emails" description="Monthly 'training due' email to each home's managers." actionLabel="📬 Manage" onClick={() => setShowManagerDigestModal(true)} />
             </>
           )}
         </div>
@@ -264,6 +267,7 @@ export default function AdminPage() {
       {isAdmin && showCourseModal && <CourseManagerModal onClose={() => setShowCourseModal(false)} />}
       {isAdmin && showLocationModal && <LocationManagerModal onClose={() => setShowLocationModal(false)} />}
       {isAdmin && showChecklistTemplateModal && <ChecklistTemplateModal onClose={() => setShowChecklistTemplateModal(false)} />}
+      {isAdmin && showManagerDigestModal && <ManagerDigestModal onClose={() => setShowManagerDigestModal(false)} />}
     </main>
   );
 }

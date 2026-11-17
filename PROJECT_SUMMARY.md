@@ -169,7 +169,8 @@ A calendar interface for creating and managing training events.
 `src/app/admin/page.tsx`
 
 Admin and scheduler-facing control centre with admin-only management tools:
-- **Location Manager** – create and manage training locations.
+- **Location Manager** – create and manage training locations, including each home's managers' email (Google Group) for the monthly training-due email.
+- **Manager Emails** – see each home's expired / expiring / allocated counts, send yourself a preview, or send this month's emails on demand (`ManagerDigestModal`).
 - **Course Catalogue** – define courses and set default capacity. Date-specific limits are managed from the booking roster.
 - **Checklist Template** – add, edit, reorder, activate/deactivate, configure invoice inputs, and remove checklist items.
 - **Automation Control** – configure scheduled jobs (e.g. feedback email triggers).
@@ -192,6 +193,7 @@ Admin and scheduler-facing control centre with admin-only management tools:
 | `AdminToolsPanel.tsx` | Admin sub-panel container |
 | `UpdateNotification.tsx` | Polls `/api/version` and shows a toast when a new deploy is detected |
 | `MatrixSyncModal.tsx` | Import options: Atlas upload or location CSV |
+| `ManagerDigestModal.tsx` | Admin view of the monthly manager email: per-home counts, preview to self, send now |
 | `LocationManagerModal.tsx` | CRUD for locations |
 | `CourseManagerModal.tsx` | CRUD for course definitions |
 | `DuplicateRemovalModal.tsx` | Detect and merge duplicate staff records |
@@ -244,6 +246,7 @@ All routes are Next.js Route Handlers (server-side). Authentication is checked s
 | `/api/integrations/sign-in-app/webhook` | HMAC | Receive Sign In App webhooks, mark all daily bookings as attended |
 | `/api/automations/feedback-emails` | cron/admin | Send feedback/reminder emails (duplicate-safe) |
 | `/api/automations/roster-no-shows` | cron/admin | Send no-show notifications to admins |
+| `/api/automations/manager-digest` | cron/admin | Monthly training-due email to each home's managers (GET+cron = send; POST `{action: status\|preview\|send}` for admins) |
 | `/api/qualifications` | admin/manager/scheduler | List and create NVQ/Diploma qualification leads (location-scoped) |
 | `/api/qualifications/[id]` | admin/manager/scheduler | Update or delete a qualification lead (location-scoped) |
 | `/api/qualifications/[id]/timeline` | admin/manager/scheduler | Add timeline events to a qualification lead |
@@ -340,6 +343,13 @@ Always-on workspace constraints that apply to every agent invocation.
 
 ## 11. Current Development Status
 
+### Monthly manager training email (2026-11-17)
+- On the 1st of each month at 07:00 UTC (`.github/workflows/monthly-manager-digest.yml`), each home gets one email listing, grouped by person: **expired**, **never completed**, **expiring in the next 60 days**, and **allocated but not completed**. A green "Booked <date>" tag shows when the person is already on an upcoming session for that course (matched by course name).
+- Recipient is `locations.manager_email` (the home's managers' Google Group, set in Admin → Manage Venues). If it's empty, the email goes to the training inbox with a note to add it. **Each Google Group must allow posts from the training inbox address.**
+- Each person linked to the home is checked against each course on the home's matrix, using the same rules as the matrix cell colours in `MatrixLayout.tsx`: N/A and Not yet due are left out; Allocated wins; no completion date = never completed (the matrix's red "Missing"); completed with no expiry date, or expiring today or earlier = expired. "X" and "X (Careskills)" are one course (latest expiry wins), and the expiry rule (one-off or not) comes from the course on the home's matrix, not the copy the record was saved under.
+- `manager_digest_log` (unique per home + month) stops repeat sends. Test mode sends are not logged.
+- Code: `src/lib/managerDigest.ts` (data + email layout), `src/app/api/automations/manager-digest/route.ts`, `ManagerDigestModal.tsx`, Location Manager field. Migration: `supabase/migrations/20261117090000_add_location_manager_email_and_digest_log.sql` (public + dev).
+
 ### Password reset journey (2026-11-16)
 - Previously the emailed "Reset Your Password" link was an implicit-flow magic link that the PKCE browser client and `/auth/callback` couldn't handle, so it ended on a 404 and never showed a password form.
 - New: formal email template ("Reset your Cascade Portal password" / "Set up your Cascade Portal account"), `/auth/confirm`, `/auth/set-password`, `/auth/forgot-password`, `/api/auth/forgot-password`, and a "Forgotten your password?" link on `/login`. Sender is unchanged (Training Team, training inbox).
@@ -431,4 +441,4 @@ Edit `src/lib/permissions.ts` — all permission gates read from here.
 
 ---
 
-*Last updated: 2026-11-16*
+*Last updated: 2026-11-17*
