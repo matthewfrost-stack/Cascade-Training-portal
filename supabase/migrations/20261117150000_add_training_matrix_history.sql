@@ -27,10 +27,10 @@
 -- ---------- history tables ----------
 CREATE TABLE IF NOT EXISTS public.staff_training_matrix_history (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-  matrix_id uuid,                 -- the staff_training_matrix row (kept even if it is deleted)
-  staff_id uuid,
-  course_id uuid,
-  location_id uuid,
+  matrix_id text,                 -- matrix row id, kept even if the row is deleted (ids stored as text: any id type works)
+  staff_id text,
+  course_id text,
+  location_id text,
   action text NOT NULL,           -- 'created' | 'updated' | 'removed'
   old_completion_date date,
   new_completion_date date,
@@ -38,8 +38,8 @@ CREATE TABLE IF NOT EXISTS public.staff_training_matrix_history (
   new_expiry_date date,
   old_status text,
   new_status text,
-  old_course_id uuid,
-  old_location_id uuid,
+  old_course_id text,
+  old_location_id text,
   source text NOT NULL,           -- 'manual', 'atlas_sync', 'csv_import', ...
   changed_by uuid,                -- profile id, when known
   changed_at timestamptz NOT NULL DEFAULT now()
@@ -122,7 +122,7 @@ BEGIN
          (matrix_id, staff_id, course_id, location_id, action,
           old_completion_date, old_expiry_date, old_status, source, changed_by)
        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)', TG_TABLE_SCHEMA)
-    USING OLD.id, OLD.staff_id, OLD.course_id, OLD.completed_at_location_id, act,
+    USING OLD.id::text, OLD.staff_id::text, OLD.course_id::text, OLD.completed_at_location_id::text, act,
           OLD.completion_date, OLD.expiry_date, OLD.status, src, actor;
   ELSIF TG_OP = 'INSERT' THEN
     EXECUTE format(
@@ -130,7 +130,7 @@ BEGIN
          (matrix_id, staff_id, course_id, location_id, action,
           new_completion_date, new_expiry_date, new_status, source, changed_by)
        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)', TG_TABLE_SCHEMA)
-    USING NEW.id, NEW.staff_id, NEW.course_id, NEW.completed_at_location_id, act,
+    USING NEW.id::text, NEW.staff_id::text, NEW.course_id::text, NEW.completed_at_location_id::text, act,
           NEW.completion_date, NEW.expiry_date, NEW.status, src, actor;
   ELSE
     EXECUTE format(
@@ -139,11 +139,11 @@ BEGIN
           old_completion_date, new_completion_date, old_expiry_date, new_expiry_date,
           old_status, new_status, old_course_id, old_location_id, source, changed_by)
        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)', TG_TABLE_SCHEMA)
-    USING NEW.id, NEW.staff_id, NEW.course_id, NEW.completed_at_location_id, act,
+    USING NEW.id::text, NEW.staff_id::text, NEW.course_id::text, NEW.completed_at_location_id::text, act,
           OLD.completion_date, NEW.completion_date, OLD.expiry_date, NEW.expiry_date,
           OLD.status, NEW.status,
-          CASE WHEN OLD.course_id IS DISTINCT FROM NEW.course_id THEN OLD.course_id END,
-          CASE WHEN OLD.completed_at_location_id IS DISTINCT FROM NEW.completed_at_location_id THEN OLD.completed_at_location_id END,
+          CASE WHEN OLD.course_id IS DISTINCT FROM NEW.course_id THEN OLD.course_id::text END,
+          CASE WHEN OLD.completed_at_location_id IS DISTINCT FROM NEW.completed_at_location_id THEN OLD.completed_at_location_id::text END,
           src, actor;
   END IF;
 

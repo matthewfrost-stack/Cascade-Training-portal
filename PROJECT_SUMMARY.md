@@ -347,7 +347,7 @@ Always-on workspace constraints that apply to every agent invocation.
 ### Training matrix history – Phase 2 (2026-11-17)
 - A trigger on `staff_training_matrix` (public + dev) writes every change to completion date, expiry, status, course or home into `staff_training_matrix_history` (who, when, old → new, source). Identical rewrites aren't logged; history is append-only (no write policies).
 - Source: browser edits = `manual` + signed-in user. Server routes pass `createServiceClient({ source, userId })` (`src/lib/apiAuth.ts`), which sends `x-change-source` / `x-changed-by` headers; the trigger trusts them only for service-key requests. Sources: new_starter, bulk_edit, csv_import, atlas_import, atlas_sync, restored, removed_from_home, course_removed; anything else = `system`. **Any new code that writes to the matrix from the server should pass a change tag.**
-- UI: "🕘 History" in the matrix cell edit box (`MatrixCellHistory.tsx`), last 20 entries. Migration: `supabase/migrations/20261117150000_add_training_matrix_history.sql`.
+- UI: "🕘 History" in the matrix cell edit box (`MatrixCellHistory.tsx`), last 20 entries. Migrations: `20261117150000_add_training_matrix_history.sql` + fix `20261117160000_fix_training_matrix_history_id_types.sql` (matrix ids are bigint; history stores all ids as text).
 
 ### Compliance report groundwork – Phase 1 (2026-11-17)
 - `locations.regulator` ('CQC' / 'Ofsted', optional) set in Admin → Manage Venues.
