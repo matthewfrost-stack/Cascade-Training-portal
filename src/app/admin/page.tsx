@@ -256,7 +256,7 @@ export default function AdminPage() {
           {isAdmin && (
             <>
               <DashboardCard isDark={isDark} accent="#6366f1" emoji="✅" title="Checklist Template" description="Add/remove booking checklist items." actionLabel="✅ Manage" onClick={() => setShowChecklistTemplateModal(true)} />
-              <DashboardCard isDark={isDark} accent="#06b6d4" emoji="🤖" title="Automation Control" description="Control internal feedback email automation system." actionLabel="🤖 Control Automation" onClick={() => router.push('/automation-control')} />
+              <DashboardCard isDark={isDark} accent="#06b6d4" emoji="🤖" title="Feedback & Emails" description="Feedback form questions, feedback emails and booking reminders." actionLabel="✉️ Manage" onClick={() => router.push('/automation-control')} />
               <DashboardCard isDark={isDark} accent="#ef4444" emoji="📬" title="Manager Emails" description="Monthly 'training due' email to each home's managers." actionLabel="📬 Manage" onClick={() => setShowManagerDigestModal(true)} />
             </>
           )}
