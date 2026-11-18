@@ -346,6 +346,12 @@ Always-on workspace constraints that apply to every agent invocation.
 
 ## 11. Current Development Status
 
+### Qualification evidence – certificates (2026-11-18)
+- Marking someone **Completed** or **Holds an equivalent** needs the date (completed on / achieved on) **and an uploaded certificate**; **Not required** needs a note. Enforced in the UI and `PUT /api/diploma`.
+- Certificates live in the **private** Storage bucket `qualification-certificates` (`<schema>/<profileId>/<qualification>/…`, PDF/images, 10 MB). `/api/qualification-certificates`: POST → one-time signed upload URL (browser uploads direct; Vercel caps bodies ~4.5 MB), PATCH → records it on `staff_qualifications` (replaces and deletes the old file), GET → 2-minute signed link. Access via `canManagePerson` (`src/lib/qualificationAccess.ts`): admins all; others only people at their homes (children's homes for Level 3). Client helper `src/lib/certificateUpload.ts`.
+- `staff_qualifications` + `achieved_on`, `certificate_path`, `certificate_name`, `extended_to`, `extension_reason` (extensions used by the Care Certificate next). Migration `20261118210000_qualification_evidence.sql`.
+- **Care Certificate never expires** on every matrix (`20261118200000_care_certificate_never_expires.sql`: same as the header's "Never expires": never_expires, expiry_months 9999, expiry dates cleared). Matrix history label `qualification_tracker` added for tracker writes.
+
 ### Level 3 Diploma moved into the NVQ & Diploma Tracker (2026-11-18)
 - The tracker is now the **"🎓 Level 3 Diploma – children's homes"** tab on `/apps/nvq-diploma` (component `src/app/components/Level3DiplomaTracker.tsx`; `?tab=level3`). Its own dashboard tile and the `DIPLOMA_TRACKER` permission were removed; `/reports/diploma` redirects to the tab. Access is unchanged and matches the enquiries tab: admins see every home, managers/schedulers only the homes assigned to or managed by them (`getScopedLocations`). Qualifications on entry will come from another system later (free-text field for now).
 

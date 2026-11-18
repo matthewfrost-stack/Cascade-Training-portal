@@ -52,13 +52,16 @@ export async function PUT(request: NextRequest) {
     provider: text(r.provider),
     completed_on: date(r.completedOn),
     equivalent: text(r.equivalent),
+    achieved_on: date(r.achievedOn),
     notes: text(r.notes, 2000),
     updated_by: userId,
     updated_at: new Date().toISOString(),
   };
-  if (row.status === 'equivalent' && !row.equivalent) {
-    return NextResponse.json({ error: 'Say which equivalent qualification they hold.' }, { status: 400 });
-  }
+  // Evidence: marking someone off needs the date and a certificate on file.
+  if (row.status === 'completed' && !row.completed_on) return NextResponse.json({ error: 'Enter the date they completed it.' }, { status: 400 });
+  if (row.status === 'equivalent' && !row.equivalent) return NextResponse.json({ error: 'Say which equivalent qualification they hold.' }, { status: 400 });
+  if (row.status === 'equivalent' && !row.achieved_on) return NextResponse.json({ error: 'Enter the date they achieved it.' }, { status: 400 });
+  if (row.status === 'not_required' && !row.notes) return NextResponse.json({ error: 'Add a note saying why it isn’t required.' }, { status: 400 });
 
   try {
     // Only people at a children's home this user can see.
@@ -70,6 +73,10 @@ export async function PUT(request: NextRequest) {
       : { data: [] };
     if (!links || links.length === 0) return NextResponse.json({ error: 'This person is not at a children’s home you manage.' }, { status: 403 });
 
+    if (row.status === 'completed' || row.status === 'equivalent') {
+      const { data: current } = await service.from('staff_qualifications').select('certificate_path').eq('profile_id', profileId).eq('qualification', L3).maybeSingle();
+      if (!current?.certificate_path) return NextResponse.json({ error: 'Upload a copy of the certificate first.' }, { status: 400 });
+    }
     const { error } = await service.from('staff_qualifications').upsert(row, { onConflict: 'profile_id,qualification' });
     if (error) throw error;
     // The start date (and qualifications on entry) belong to the person, shared with the Care Certificate.

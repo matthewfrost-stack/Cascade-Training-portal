@@ -50,6 +50,7 @@ function describeWho(entry: HistoryEntry): string {
     case 'removed_from_home': return `Removed from home${by}`;
     case 'course_removed': return `Course removed from home${by}`;
     case 'history_restore': return `Changed back from history${by}`;
+    case 'qualification_tracker': return `Qualification tracker${by}`;
     default: return entry.by ? entry.by : 'System';
   }
 }

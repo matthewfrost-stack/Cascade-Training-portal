@@ -19,6 +19,8 @@ export type DiplomaPerson = {
   provider: string | null;
   completedOn: string | null;
   equivalent: string | null;
+  achievedOn: string | null;
+  certificateName: string | null;
   notes: string | null;
   band: DiplomaBand;
   updatedAt: string | null;
@@ -29,11 +31,12 @@ export type DiplomaHome = { locationId: string; locationName: string; people: Di
 type QualRow = {
   profile_id: string; status: DiplomaStatus; start_date: string | null; enrolled_on: string | null; provider: string | null;
   completed_on: string | null; equivalent: string | null; notes: string | null; updated_at: string | null;
+  achieved_on: string | null; certificate_name: string | null;
 };
 
 export class DiplomaNotReady extends Error {
   constructor() {
-    super('The Level 3 Diploma tracker needs the database update first. Run the migrations 20261118170000_level3_diploma_tracker.sql and 20261118190000_staff_start_date.sql in the Supabase SQL Editor.');
+    super('The Level 3 Diploma tracker needs the database update first. Run the latest migrations (20261118170000, 20261118190000 and 20261118210000) in the Supabase SQL Editor.');
   }
 }
 
@@ -76,11 +79,11 @@ export async function buildDiplomaHomes(service: ServiceClient, onlyLocationIds:
   for (let i = 0; i < staffIds.length; i += 200) {
     const { data, error } = await service
       .from('staff_qualifications')
-      .select('profile_id, status, start_date, enrolled_on, provider, completed_on, equivalent, notes, updated_at')
+      .select('profile_id, status, start_date, enrolled_on, provider, completed_on, equivalent, notes, updated_at, achieved_on, certificate_name')
       .eq('qualification', L3)
       .in('profile_id', staffIds.slice(i, i + 200));
     if (error) {
-      if (error.code === '42P01' || /staff_qualifications/.test(error.message || '')) throw new DiplomaNotReady();
+      if (error.code === '42P01' || error.code === '42703' || /staff_qualifications|achieved_on|certificate_name/.test(error.message || '')) throw new DiplomaNotReady();
       throw new Error(error.message);
     }
     for (const row of (data || []) as QualRow[]) records.set(row.profile_id, row);
@@ -113,6 +116,8 @@ export async function buildDiplomaHomes(service: ServiceClient, onlyLocationIds:
         provider: r?.provider || null,
         completedOn: r?.completed_on?.slice(0, 10) || null,
         equivalent: r?.equivalent || null,
+        achievedOn: r?.achieved_on?.slice(0, 10) || null,
+        certificateName: r?.certificate_name || null,
         notes: r?.notes || null,
         band: diplomaBand({ status, startDate }, today),
         updatedAt: r?.updated_at || null,

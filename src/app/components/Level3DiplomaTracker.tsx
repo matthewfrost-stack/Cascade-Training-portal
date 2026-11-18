@@ -14,6 +14,7 @@ import {
   type DiplomaStatus,
 } from '@/lib/diploma';
 import type { DiplomaHome, DiplomaPerson } from '@/lib/diplomaTracker';
+import { openCertificate, uploadCertificate } from '@/lib/certificateUpload';
 
 type Loaded = { homes: DiplomaHome[]; today: string };
 
@@ -61,22 +62,37 @@ function Tile({ label, value, sub, tone }: { label: string; value: string; sub?:
 
 // ---------- edit panel ----------
 
-type Draft = { status: DiplomaStatus; startDate: string; qualificationsOnEntry: string; enrolledOn: string; provider: string; completedOn: string; equivalent: string; notes: string };
+type Draft = { status: DiplomaStatus; startDate: string; qualificationsOnEntry: string; enrolledOn: string; provider: string; completedOn: string; equivalent: string; achievedOn: string; notes: string };
 const toDraft = (p: DiplomaPerson): Draft => ({
   status: p.status, startDate: p.startDate || '', qualificationsOnEntry: p.qualificationsOnEntry || '', enrolledOn: p.enrolledOn || '', provider: p.provider || '',
-  completedOn: p.completedOn || '', equivalent: p.equivalent || '', notes: p.notes || '',
+  completedOn: p.completedOn || '', equivalent: p.equivalent || '', achievedOn: p.achievedOn || '', notes: p.notes || '',
 });
 
 function EditPanel({ person, today, onSaved, onCancel }: { person: DiplomaPerson; today: string; onSaved: (p: DiplomaPerson) => void; onCancel: () => void }) {
   const [d, setD] = useState<Draft>(toDraft(person));
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
+  const [certificateName, setCertificateName] = useState(person.certificateName);
+  const [uploading, setUploading] = useState(false);
+  const needsEvidence = d.status === 'completed' || d.status === 'equivalent';
+  const upload = async (file: File | undefined) => {
+    if (!file) return;
+    setUploading(true);
+    setError('');
+    try { setCertificateName(await uploadCertificate(person.profileId, 'L3_RESIDENTIAL_CHILDCARE', file)); }
+    catch (e) { setError(e instanceof Error ? e.message : 'The upload failed.'); }
+    finally { setUploading(false); }
+  };
   const set = <K extends keyof Draft>(k: K, v: Draft[K]) => setD((x) => ({ ...x, [k]: v }));
   const preview = diplomaBand({ status: d.status, startDate: d.startDate || null }, today);
   const due = dueDate(d.startDate || null);
 
   const save = async () => {
+    if (d.status === 'completed' && !d.completedOn) { setError('Enter the date they completed it.'); return; }
     if (d.status === 'equivalent' && !d.equivalent.trim()) { setError('Say which equivalent qualification they hold.'); return; }
+    if (d.status === 'equivalent' && !d.achievedOn) { setError('Enter the date they achieved it.'); return; }
+    if (needsEvidence && !certificateName) { setError('Upload a copy of the certificate.'); return; }
+    if (d.status === 'not_required' && !d.notes.trim()) { setError('Add a note saying why it isn’t required.'); return; }
     setSaving(true);
     setError('');
     try {
@@ -85,7 +101,8 @@ function EditPanel({ person, today, onSaved, onCancel }: { person: DiplomaPerson
       if (!response.ok) throw new Error(body.error || 'Could not save.');
       onSaved({
         ...person, status: d.status, startDate: d.startDate || null, qualificationsOnEntry: d.qualificationsOnEntry.trim() || null, dueDate: due, enrolledOn: d.enrolledOn || null, provider: d.provider.trim() || null,
-        completedOn: d.completedOn || null, equivalent: d.equivalent.trim() || null, notes: d.notes.trim() || null, band: preview, updatedAt: new Date().toISOString(),
+        completedOn: d.completedOn || null, equivalent: d.equivalent.trim() || null, achievedOn: d.achievedOn || null, certificateName,
+        notes: d.notes.trim() || null, band: preview, updatedAt: new Date().toISOString(),
       });
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Could not save.');
@@ -135,7 +152,28 @@ function EditPanel({ person, today, onSaved, onCancel }: { person: DiplomaPerson
             <input id={id('equiv')} className={input} value={d.equivalent} maxLength={300} placeholder="e.g. Level 3 Diploma for the Children and Young People's Workforce" onChange={(e) => set('equivalent', e.target.value)} />
           </div>
         )}
+        {d.status === 'equivalent' && (
+          <div>
+            <label className={smallLabel} htmlFor={id('achieved')}>Achieved on</label>
+            <input id={id('achieved')} type="date" className={input} value={d.achievedOn} onChange={(e) => set('achievedOn', e.target.value)} />
+          </div>
+        )}
       </div>
+      {(needsEvidence || certificateName) && (
+        <div className="rounded-lg border border-dashed border-slate-300 dark:border-slate-600 p-3 flex flex-wrap items-center gap-3">
+          <span className="text-sm">
+            {certificateName
+              ? <>📄 <strong>{certificateName}</strong></>
+              : <span className="text-amber-700 dark:text-amber-300 font-semibold">Certificate needed{needsEvidence ? ' to mark them off' : ''}</span>}
+          </span>
+          {certificateName && <UniformButton variant="secondary" size="sm" onClick={() => void openCertificate(person.profileId, 'L3_RESIDENTIAL_CHILDCARE')}>View</UniformButton>}
+          <label className={`text-xs font-bold px-3 py-2 rounded-lg cursor-pointer ${uploading ? 'opacity-50' : 'bg-blue-600 text-white hover:bg-blue-700'}`}>
+            {uploading ? 'Uploading…' : certificateName ? 'Replace certificate' : 'Upload certificate'}
+            <input type="file" accept="application/pdf,image/*" className="sr-only" disabled={uploading} onChange={(e) => { void upload(e.target.files?.[0]); e.target.value = ''; }} />
+          </label>
+          <span className="text-[11px] text-slate-500">PDF or photo, up to 10 MB. Kept privately.</span>
+        </div>
+      )}
       <div>
         <label className={smallLabel} htmlFor={id('notes')}>Notes</label>
         <textarea id={id('notes')} className={input} rows={2} maxLength={2000} value={d.notes}
@@ -145,7 +183,7 @@ function EditPanel({ person, today, onSaved, onCancel }: { person: DiplomaPerson
       <div className="flex flex-wrap items-center gap-2">
         <span className="text-xs text-slate-500 mr-auto">Will show as <Pill band={preview} /></span>
         <UniformButton variant="secondary" size="sm" onClick={onCancel} disabled={saving}>Cancel</UniformButton>
-        <UniformButton variant="primary" size="sm" onClick={() => void save()} disabled={saving}>{saving ? 'Saving…' : 'Save'}</UniformButton>
+        <UniformButton variant="primary" size="sm" onClick={() => void save()} disabled={saving || uploading}>{saving ? 'Saving…' : 'Save'}</UniformButton>
       </div>
     </div>
   );
@@ -156,14 +194,14 @@ function EditPanel({ person, today, onSaved, onCancel }: { person: DiplomaPerson
 async function downloadExcel(homes: DiplomaHome[], today: string) {
   const { default: writeXlsxFile } = await import('write-excel-file/browser');
   const bold = { fontWeight: 'bold' as const };
-  const head = ['Home', 'Name', 'Qualifications on entry', 'Status', 'Where they stand', 'Start date', 'Deadline', 'Time left', 'Provider', 'Enrolled on', 'Completed on', 'Equivalent', 'Notes'];
+  const head = ['Home', 'Name', 'Qualifications on entry', 'Status', 'Where they stand', 'Start date', 'Deadline', 'Time left', 'Provider', 'Enrolled on', 'Completed on', 'Equivalent', 'Achieved on', 'Certificate on file', 'Notes'];
   const rows = homes.flatMap((h) => h.people.map((p) => [
     h.locationName, p.name, p.qualificationsOnEntry || '', STATUS_LABELS[p.status], BAND_LABELS[p.band], day(p.startDate), day(p.dueDate), timeLeft(p.dueDate, today),
-    p.provider || '', day(p.enrolledOn), day(p.completedOn), p.equivalent || '', p.notes || '',
+    p.provider || '', day(p.enrolledOn), day(p.completedOn), p.equivalent || '', day(p.achievedOn), p.certificateName ? 'Yes' : 'No', p.notes || '',
   ]));
   await writeXlsxFile([head.map((value) => ({ value, ...bold })), ...rows], {
     sheet: 'Level 3 Diploma',
-    columns: [{ width: 24 }, { width: 26 }, { width: 30 }, { width: 18 }, { width: 22 }, { width: 13 }, { width: 13 }, { width: 18 }, { width: 24 }, { width: 13 }, { width: 13 }, { width: 30 }, { width: 40 }],
+    columns: [{ width: 24 }, { width: 26 }, { width: 30 }, { width: 18 }, { width: 22 }, { width: 13 }, { width: 13 }, { width: 18 }, { width: 24 }, { width: 13 }, { width: 13 }, { width: 30 }, { width: 13 }, { width: 12 }, { width: 40 }],
     stickyRowsCount: 1,
   }).toFile(`Level 3 Diploma tracker - ${today}.xlsx`);
 }
@@ -302,7 +340,7 @@ export default function Level3DiplomaTracker() {
                             <tr key={key} className="align-top">
                               <td className="p-3 font-bold">{p.name}{p.qualificationsOnEntry && <div className="text-[11px] font-normal text-slate-500" title="Qualifications on entry">On entry: {p.qualificationsOnEntry}</div>}</td>
                               <td className="p-3"><Pill band={p.band} /></td>
-                              <td className="p-3">{STATUS_LABELS[p.status]}{p.status === 'equivalent' && p.equivalent && <div className="text-[11px] text-slate-500">{p.equivalent}</div>}{p.status === 'completed' && p.completedOn && <div className="text-[11px] text-slate-500">{day(p.completedOn)}</div>}</td>
+                              <td className="p-3">{STATUS_LABELS[p.status]}{p.status === 'equivalent' && p.equivalent && <div className="text-[11px] text-slate-500">{p.equivalent}</div>}{p.status === 'completed' && p.completedOn && <div className="text-[11px] text-slate-500">{day(p.completedOn)}</div>}{p.status === 'equivalent' && p.achievedOn && <div className="text-[11px] text-slate-500">{day(p.achievedOn)}</div>}{p.certificateName && <button type="button" onClick={() => void openCertificate(p.profileId, 'L3_RESIDENTIAL_CHILDCARE')} className="block text-[11px] font-bold text-blue-600 dark:text-blue-300 hover:underline">📄 View certificate</button>}</td>
                               <td className="p-3 tabular-nums whitespace-nowrap">{day(p.startDate)}</td>
                               <td className="p-3 tabular-nums whitespace-nowrap">{p.band === 'done' || p.band === 'not_required' ? '–' : <>{day(p.dueDate)}<div className="text-[11px] text-slate-500">{timeLeft(p.dueDate, data.today)}</div></>}</td>
                               <td className="p-3">{p.provider || <span className="text-slate-400">–</span>}</td>
