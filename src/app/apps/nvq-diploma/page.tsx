@@ -5,6 +5,7 @@ import MainHeader from '@/app/components/MainHeader';
 import QualificationTimeline, { type QualificationTimelineEvent } from '@/app/components/QualificationTimeline';
 import UniformButton from '@/app/components/UniformButton';
 import Level3DiplomaTracker from '@/app/components/Level3DiplomaTracker';
+import CareCertificateTracker from '@/app/components/CareCertificateTracker';
 import { hasPermission } from '@/lib/permissions';
 import { useCurrentUserProfile } from '@/lib/useCurrentUserProfile';
 
@@ -92,13 +93,14 @@ export default function NvqDiplomaPage() {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);
-  const [tab, setTab] = useState<'enquiries' | 'level3'>('enquiries');
+  const [tab, setTab] = useState<'enquiries' | 'level3' | 'care'>('enquiries');
   useEffect(() => {
-    if (new URLSearchParams(window.location.search).get('tab') === 'level3') setTab('level3');
+    const wanted = new URLSearchParams(window.location.search).get('tab');
+    if (wanted === 'level3' || wanted === 'care') setTab(wanted);
   }, []);
-  const chooseTab = (next: 'enquiries' | 'level3') => {
+  const chooseTab = (next: 'enquiries' | 'level3' | 'care') => {
     setTab(next);
-    window.history.replaceState(null, '', next === 'level3' ? '/apps/nvq-diploma?tab=level3' : '/apps/nvq-diploma');
+    window.history.replaceState(null, '', next === 'enquiries' ? '/apps/nvq-diploma' : `/apps/nvq-diploma?tab=${next}`);
   };
 
   async function loadLeads() {
@@ -217,14 +219,14 @@ export default function NvqDiplomaPage() {
       <div className="mx-auto max-w-7xl">
         <MainHeader title="NVQ & Diploma Tracker" backPath="/" showThemeToggle={false} />
         <div role="tablist" className="mb-6 flex gap-1 overflow-x-auto border-b border-slate-200 dark:border-slate-800">
-          {([['enquiries', 'Enquiries & learners'], ['level3', '🎓 Level 3 Diploma – children’s homes']] as const).map(([key, label]) => (
+          {([['enquiries', 'Enquiries & learners'], ['care', '📘 Care Certificate – all homes'], ['level3', '🎓 Level 3 Diploma – children’s homes']] as const).map(([key, label]) => (
             <button key={key} type="button" role="tab" aria-selected={tab === key} onClick={() => chooseTab(key)}
               className={`-mb-px whitespace-nowrap border-b-2 px-4 py-2.5 text-sm font-bold ${tab === key ? 'border-blue-600 text-blue-700 dark:text-blue-300' : 'border-transparent text-slate-500 hover:text-slate-800 dark:hover:text-slate-200'}`}>
               {label}
             </button>
           ))}
         </div>
-        {tab === 'level3' ? <Level3DiplomaTracker /> : (<>
+        {tab === 'level3' ? <Level3DiplomaTracker /> : tab === 'care' ? <CareCertificateTracker /> : (<>
         <div className="mb-6 flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
           <div><p className="text-sm font-semibold text-slate-500 dark:text-slate-400">Record each learner journey from first enquiry through course completion.</p></div>
           {canEdit && <UniformButton onClick={() => setShowForm((value) => !value)}>{showForm ? 'Close enquiry form' : 'New enquiry'}</UniformButton>}

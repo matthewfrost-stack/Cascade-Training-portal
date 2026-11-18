@@ -346,6 +346,11 @@ Always-on workspace constraints that apply to every agent invocation.
 
 ## 11. Current Development Status
 
+### Care Certificate tracker (2026-11-18)
+- **"📘 Care Certificate – all homes"** tab on `/apps/nvq-diploma` (`?tab=care`, `src/app/components/CareCertificateTracker.tsx`). Everyone at every home the user can see (admins all; managers/schedulers their homes). Deadline = `profiles.start_date` + 12 weeks (`src/lib/careCertificate.ts`), or an agreed **extension** (`extended_to` + required `extension_reason`, must be after the normal deadline). Bands: overdue / start date needed / due within 2 weeks / within 12 weeks / completed / not required.
+- Completion is read from the Training Matrix: any course named "Care Certificate…" except the assessor tutorial (`careCertCourses`). Manual statuses: **completed** elsewhere (date + certificate; also **written to the matrix** at each of the person's homes in the user's scope whose matrix has the course, never replacing a later date, history source `qualification_tracker`), **equivalent** (what + date + certificate), **not required** (note).
+- `GET|PUT /api/care-certificate`; server assembly `src/lib/careCertificateTracker.ts`. Excel download.
+
 ### Qualification evidence – certificates (2026-11-18)
 - Marking someone **Completed** or **Holds an equivalent** needs the date (completed on / achieved on) **and an uploaded certificate**; **Not required** needs a note. Enforced in the UI and `PUT /api/diploma`.
 - Certificates live in the **private** Storage bucket `qualification-certificates` (`<schema>/<profileId>/<qualification>/…`, PDF/images, 10 MB). `/api/qualification-certificates`: POST → one-time signed upload URL (browser uploads direct; Vercel caps bodies ~4.5 MB), PATCH → records it on `staff_qualifications` (replaces and deletes the old file), GET → 2-minute signed link. Access via `canManagePerson` (`src/lib/qualificationAccess.ts`): admins all; others only people at their homes (children's homes for Level 3). Client helper `src/lib/certificateUpload.ts`.
