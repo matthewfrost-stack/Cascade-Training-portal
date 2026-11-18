@@ -67,6 +67,10 @@ export async function proxy(request: NextRequest) {
   if (!user && !isLoginPage && !pathname.startsWith('/auth')) {
     const url = request.nextUrl.clone()
     url.pathname = '/login'
+    // Remember where they were going (e.g. a feedback link from an email) so
+    // the login page can send them back there after signing in.
+    url.search = ''
+    if (pathname !== '/') url.searchParams.set('next', pathname + request.nextUrl.search)
     return NextResponse.redirect(url)
   }
 
@@ -117,6 +121,7 @@ export async function proxy(request: NextRequest) {
           pathname.startsWith('/training-matrix/') ||
           pathname === '/profile' ||
           pathname.startsWith('/profile/') ||
+          pathname === '/feedback' ||
           pathname === '/auth/change-password-required'
 
         if (!isStaffAllowedPath && pathname !== '/login' && !pathname.startsWith('/auth/')) {

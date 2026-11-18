@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { supabase } from '@/lib/supabase';
 import Icon from './Icon';
+import { useCurrentUserProfile } from '@/lib/useCurrentUserProfile';
 
 type FeedbackField = {
   id: string;
@@ -66,7 +67,12 @@ export default function FeedbackManagerModal({ onClose }: { onClose: () => void 
   const [recentEvents, setRecentEvents] = useState<FeedbackEvent[]>([]);
   // Testing Mode State
   const [isTestMode, setIsTestMode] = useState(true);
-  const [testEmail, setTestEmail] = useState('training@cascade-care.com');
+  const [testEmail, setTestEmail] = useState('');
+  // Test emails go to the person using the screen by default.
+  const { profile: me } = useCurrentUserProfile();
+  useEffect(() => {
+    if (me?.email) setTestEmail((current) => current || me.email || '');
+  }, [me?.email]);
   const [manualLoading, setManualLoading] = useState(false);
 
   useEffect(() => {
@@ -216,7 +222,9 @@ export default function FeedbackManagerModal({ onClose }: { onClose: () => void 
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || 'Failed to send emails');
       
-      setMessage({ type: 'success', text: `Successfully sent ${data.count} feedback emails!` });
+      setMessage(data.count > 0
+        ? { type: 'success', text: data.testMode ? `Test email sent to ${testEmail} (one sample; the session is not marked as sent).` : `Sent ${data.count} feedback email${data.count === 1 ? '' : 's'}.` }
+        : { type: 'error', text: data.message || 'No emails were sent.' });
       // Refresh events to show sent status
       fetchData();
     } catch (err: unknown) {

@@ -262,7 +262,6 @@ All routes are Next.js Route Handlers (server-side). Authentication is checked s
 | `/api/archive/remove-location-course` | admin/scheduler | Remove a course from a location |
 | `/api/cleanup-orphaned-profiles` | admin | Remove profile rows with no matching auth user |
 | `/api/send-password-reset` | admin | Send a password reset email to a staff member |
-| `/api/schedule-feedback-emails` | admin | Schedule and trigger feedback email sends |
 | `/api/test-email` | admin/scheduler | Send a test email to verify SMTP configuration |
 | `/api/debug-email-config` | admin | Inspect email configuration (masked values) |
 | `/api/debug-profiles` | admin | Inspect profile data for debugging |
@@ -346,6 +345,22 @@ Always-on workspace constraints that apply to every agent invocation.
 ---
 
 ## 11. Current Development Status
+
+### Feedback forms – Phase 4, part 3: emails (2026-11-18)
+- `/api/automations/feedback-emails` (cron every 10 min via `cron.yml`, or admin): **two switches** on `feedback_automation_settings`: `is_enabled` = feedback email only (to people signed in on the register, link `/feedback?event=<id>`), new `reminders_enabled` = booking reminders (staff N days before + list to each home's manager Google Group from `locations.manager_email`; homes without one are skipped; the guessed `{home}managers@` addresses are no longer used). Both OFF.
+- Emails are due from their target time for up to 12 h (was a ±5 min window that a late GitHub run would miss). Test-mode sends go to one address, send one sample of each kind and do **not** mark the session as sent (they used to, which would have blocked the real email). Sending for one session (`POST { eventId }`) always needs an admin.
+- Removed the unused `/api/schedule-feedback-emails` (wrong time zone). `isTestSend()` added to `src/lib/email.ts`. Migration `20261118150000_feedback_reminders_switch.sql`.
+
+### Feedback forms – Phase 4, part 2: results (2026-11-18)
+- `/feedback/results` rebuilt: reads/deletes via **`GET|DELETE /api/feedback/results`** (admin only; was the browser client, and delete silently failed because there was no DELETE policy). Filters: period (by session date) + course. Each current question is summarised automatically (`summariseQuestion` in `src/lib/feedbackForm.ts`: before→after averages, 1–10 average, option/word counts with positive/negative colours, comments). Anonymous responses show as "Anonymous". Response rate = feedback_submissions ÷ bookings signed in (`attended_at`), per course and overall. Excel: Responses + Response rates sheets. Deleting a named response also clears its `feedback_submissions` row so the person can answer again. Older rows are read via `answersFromRow` (original columns).
+- `/feedback` without a link: admins/schedulers get recent sessions (last 60 days) with Open form / Copy link; "📝 Open the form" on Feedback Results.
+
+### Feedback forms – Phase 4, part 1: the form (2026-11-18)
+- Staff can now open `/feedback` (proxy allowed list); before, they were redirected to the booking calendar. Logged-out visitors are sent to `/login?next=…` and returned to the link after signing in (`src/proxy.ts`, `src/app/login/page.tsx`; only same-site paths).
+- One form for every course. Questions come from `feedback_settings` key `default_form` (`config.fields`, what the builder edits) via `normaliseQuestions` in **`src/lib/feedbackForm.ts`** (also reads the older builder types; falls back to `DEFAULT_QUESTIONS`). Types: before_after, scale (1–10 buttons), choice, words, text. `feedback_form_config` is no longer used.
+- `GET|POST /api/feedback` (any logged-in role): course/date from the session, never the link; validation shared with the page (`validateAnswers`). Name optional: anonymous responses store no name or id. `feedback_submissions` (event, person; unique; server-only) records who has responded, unlinked from the answers, so nobody answers twice. Answers in `course_feedback.responses`; standard answers are also copied to the old columns.
+- Shared question renderer `src/app/components/FeedbackQuestionFields.tsx` (for the admin preview later).
+- Migration `20261118120000_feedback_form_v2.sql`: `is_anonymous`, `respondent_id`, old NOT NULLs dropped, `feedback_submissions`, and **security**: `course_feedback` was readable by any logged-in user (`USING true`) → admins only; browser inserts removed.
 
 ### Compliance check snapshots (2026-11-18)
 - Snapshots are now taken **per home by the compliance team** (admins + schedulers, homes in their scope) with "📸 Take snapshot" on a home's report page, plus an optional note. Every snapshot is kept (several a month is fine), with who took it (`taken_by`, `taken_by_name`) and `note`.

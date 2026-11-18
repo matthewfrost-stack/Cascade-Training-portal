@@ -44,7 +44,10 @@ export default function SignInPage() {
         setMessageType('error');
         return;
       }
-      router.replace('/');
+      // Back to the page they were trying to open (only paths on this site).
+      const next = new URLSearchParams(window.location.search).get('next') || '';
+      const safeNext = next.startsWith('/') && !next.startsWith('//') && !next.startsWith('/\\') ? next : '/';
+      router.replace(safeNext);
     } catch (error: unknown) {
       setMessage(getErrorMessage(error));
       setMessageType('error');

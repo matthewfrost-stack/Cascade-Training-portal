@@ -1,421 +1,361 @@
 'use client';
 
-import { useState, useEffect, useMemo, useRef } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { supabase } from '@/lib/supabase';
-import { useCurrentUserProfile } from '@/lib/useCurrentUserProfile';
 import BackButton from '@/app/components/BackButton';
 import UniformButton from '@/app/components/UniformButton';
+import {
+  summariseQuestion,
+  type BeforeAfter,
+  type CourseRate,
+  type FeedbackAnswer,
+  type FeedbackQuestion,
+  type FeedbackResponseRow,
+  type QuestionSummary,
+} from '@/lib/feedbackForm';
 
-const DESCRIPTORS = [
-  'Well tutored', 'Useful', 'Basic', 'Practical', 'Fun',
-  'Nothing New', 'Professional', 'Informative', 'Boring', 'Motivating',
-  'Too Long', 'Educational', 'Hard to follow', 'Vague', 'Participative',
-  'Interactive', 'Disorganised',
-];
+type ResultsResponse = {
+  period: { from: string; to: string };
+  questions: FeedbackQuestion[];
+  responses: FeedbackResponseRow[];
+  rates: CourseRate[];
+  courseNames: string[];
+  error?: string;
+};
 
-const POSITIVE_DESCRIPTORS = new Set(['Well tutored', 'Useful', 'Practical', 'Fun', 'Professional', 'Informative', 'Motivating', 'Educational', 'Participative', 'Interactive']);
+type PeriodKey = '3m' | '12m' | 'this-year' | 'last-year' | 'all';
+const PERIOD_LABELS: Record<PeriodKey, string> = { '3m': 'Last 3 months', '12m': 'Last 12 months', 'this-year': 'This year', 'last-year': 'Last year', all: 'All time' };
 
-interface FeedbackRow {
-  id: string;
-  created_at: string;
-  event_id: string | null;
-  course_name: string | null;
-  event_date: string | null;
-  respondent_name: string;
-  session_time: string;
-  knowledge_before: number;
-  knowledge_after: number;
-  confidence_before: number;
-  confidence_after: number;
-  work_role_relevance: number;
-  session_descriptors: string[];
-  skills_gained: boolean;
-  additional_comments: string | null;
-  responses?: {
-    knowledge_before?: number;
-    knowledge_after?: number;
-    confidence_before?: number;
-    confidence_after?: number;
-    relevance?: number;
-    skills_gained?: boolean | 'Yes' | 'No';
-    descriptors?: string[];
-    comments?: string;
+function ukToday() {
+  return new Intl.DateTimeFormat('en-CA', { timeZone: 'Europe/London' }).format(new Date());
+}
+
+function periodRange(key: PeriodKey) {
+  const today = ukToday();
+  const year = Number(today.slice(0, 4));
+  const back = (months: number) => {
+    const d = new Date(`${today}T00:00:00Z`);
+    d.setUTCMonth(d.getUTCMonth() - months);
+    return d.toISOString().slice(0, 10);
   };
+  if (key === '3m') return { from: back(3), to: today };
+  if (key === 'this-year') return { from: `${year}-01-01`, to: today };
+  if (key === 'last-year') return { from: `${year - 1}-01-01`, to: `${year - 1}-12-31` };
+  if (key === 'all') return { from: '2000-01-01', to: today };
+  return { from: back(12), to: today };
 }
 
-function avg(nums: number[]) {
-  if (!nums.length) return 0;
-  return nums.reduce((a, b) => a + b, 0) / nums.length;
+const day = (iso?: string | null) =>
+  iso ? new Date(`${iso.slice(0, 10)}T00:00:00Z`).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric', timeZone: 'UTC' }) : '';
+const one = (n: number) => (Math.round(n * 10) / 10).toFixed(1);
+const pct = (part: number, whole: number) => (whole ? Math.round((part / whole) * 100) : 0);
+
+function answerText(q: FeedbackQuestion, value: FeedbackAnswer | undefined) {
+  if (value === undefined) return '–';
+  if (q.type === 'before_after') { const v = value as BeforeAfter; return `${v.before} → ${v.after}`; }
+  if (Array.isArray(value)) return value.join(', ');
+  return String(value);
 }
 
-function StatCard({ label, value, sub, color }: { label: string; value: string; sub?: string; color: string }) {
+// ---------- pieces ----------
+
+const card = 'rounded-2xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 shadow-sm';
+
+function Tile({ label, value, sub }: { label: string; value: string; sub?: string }) {
   return (
-    <div className={`rounded-xl p-4 ${color}`}>
-      <p className="text-xs font-bold uppercase tracking-wide opacity-75 mb-1">{label}</p>
-      <p className="text-3xl font-black">{value}</p>
-      {sub && <p className="text-xs opacity-75 mt-1">{sub}</p>}
+    <div className={`${card} p-4`}>
+      <p className="text-[10px] font-black uppercase tracking-widest text-slate-500 dark:text-slate-400">{label}</p>
+      <p className="text-3xl font-black mt-1 tabular-nums text-slate-900 dark:text-slate-100">{value}</p>
+      {sub && <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">{sub}</p>}
     </div>
   );
 }
 
+function Bar({ value, max, tone }: { value: number; max: number; tone: string }) {
+  return (
+    <div className="flex-1 h-3 rounded-full bg-slate-200 dark:bg-slate-700 overflow-hidden">
+      <div className={`h-full rounded-full ${tone}`} style={{ width: `${max ? (value / max) * 100 : 0}%` }} />
+    </div>
+  );
+}
+
+function QuestionCard({ q, s, total }: { q: FeedbackQuestion; s: QuestionSummary; total: number }) {
+  return (
+    <section className={`${card} p-5`}>
+      <div className="flex flex-wrap items-baseline justify-between gap-2 mb-4">
+        <h3 className="font-bold text-slate-900 dark:text-slate-100">{q.label}</h3>
+        <span className="text-xs text-slate-500">{s.answered} of {total} answered</span>
+      </div>
+
+      {s.kind === 'before_after' && (s.answered === 0 ? <p className="text-sm text-slate-500">No answers yet.</p> : (
+        <div className="space-y-2">
+          {[{ name: 'Before', v: s.before, tone: 'bg-slate-400' }, { name: 'After', v: s.after, tone: 'bg-blue-500' }].map((row) => (
+            <div key={row.name} className="flex items-center gap-3 text-sm">
+              <span className="w-14 text-slate-500">{row.name}</span>
+              <Bar value={row.v} max={10} tone={row.tone} />
+              <span className="w-14 text-right font-bold tabular-nums">{one(row.v)}/10</span>
+            </div>
+          ))}
+          <p className={`text-sm font-bold ${s.after - s.before >= 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-red-600 dark:text-red-400'}`}>
+            Average change: {s.after - s.before >= 0 ? '+' : ''}{one(s.after - s.before)}
+          </p>
+        </div>
+      ))}
+
+      {s.kind === 'scale' && (s.answered === 0 ? <p className="text-sm text-slate-500">No answers yet.</p> : (
+        <div className="flex items-center gap-3 text-sm">
+          <span className="w-14 text-slate-500">Average</span>
+          <Bar value={s.average} max={10} tone="bg-blue-500" />
+          <span className="w-14 text-right font-bold tabular-nums">{one(s.average)}/10</span>
+        </div>
+      ))}
+
+      {s.kind === 'counts' && (
+        <div className="space-y-1.5">
+          {s.counts.map((c) => (
+            <div key={c.option} className="flex items-center gap-3 text-sm">
+              <span className="w-36 shrink-0 truncate" title={c.option}>{c.option}</span>
+              <Bar value={c.count} max={Math.max(1, ...s.counts.map((x) => x.count))} tone={c.positive === undefined ? 'bg-blue-500' : c.positive ? 'bg-emerald-500' : 'bg-red-500'} />
+              <span className="w-20 text-right tabular-nums"><strong>{c.count}</strong> <span className="text-slate-500">({pct(c.count, s.answered)}%)</span></span>
+            </div>
+          ))}
+          {s.counts.some((c) => c.positive !== undefined) && <p className="text-xs text-slate-500 pt-1">Green = positive word, red = negative word.</p>}
+        </div>
+      )}
+
+      {s.kind === 'text' && (s.items.length === 0 ? <p className="text-sm text-slate-500">No comments.</p> : (
+        <ul className="space-y-2 max-h-96 overflow-y-auto pr-1">
+          {s.items.map((item, i) => (
+            <li key={i} className="rounded-lg bg-slate-50 dark:bg-slate-900/50 p-3">
+              <p className="text-sm whitespace-pre-wrap">{item.text}</p>
+              <p className="text-[11px] text-slate-500 mt-1">{item.name} · {item.courseName}{item.date ? ` · ${day(item.date)}` : ''}</p>
+            </li>
+          ))}
+        </ul>
+      ))}
+    </section>
+  );
+}
+
+// ---------- Excel ----------
+
+async function downloadExcel(data: ResultsResponse, label: string) {
+  const { default: writeXlsxFile } = await import('write-excel-file/browser');
+  const bold = { fontWeight: 'bold' as const };
+  const headers = ['Submitted', 'Course', 'Session date', 'Name'];
+  for (const q of data.questions) {
+    if (q.type === 'before_after') headers.push(`${q.label} – before`, `${q.label} – after`);
+    else headers.push(q.label);
+  }
+  const rows = data.responses.map((r) => {
+    const cells: (string | number)[] = [new Date(r.submittedAt).toLocaleString('en-GB'), r.courseName, r.eventDate ? day(r.eventDate) : '', r.name];
+    for (const q of data.questions) {
+      const v = r.answers[q.id];
+      if (q.type === 'before_after') { const ba = v as BeforeAfter | undefined; cells.push(ba?.before ?? '', ba?.after ?? ''); }
+      else if (typeof v === 'number') cells.push(v);
+      else cells.push(v === undefined ? '' : Array.isArray(v) ? v.join(', ') : String(v));
+    }
+    return cells;
+  });
+  const rateRows = [
+    ['Course', 'Sessions', 'Attended', 'Responded', 'Response rate'].map((value) => ({ value, ...bold })),
+    ...data.rates.map((r) => [r.courseName, r.sessions, r.attended, r.responded, { value: r.attended ? r.responded / r.attended : 0, type: Number, format: '0%' }]),
+  ];
+  await writeXlsxFile([
+    { data: [headers.map((value) => ({ value, ...bold })), ...rows], sheet: 'Responses', columns: headers.map((h, i) => ({ width: i < 4 ? 18 : Math.min(40, Math.max(12, h.length)) })), stickyRowsCount: 1 },
+    { data: rateRows, sheet: 'Response rates', columns: [{ width: 40 }, { width: 10 }, { width: 10 }, { width: 11 }, { width: 14 }] },
+  ]).toFile(`Training feedback - ${label} - ${ukToday()}.xlsx`);
+}
+
+// ---------- page ----------
+
 export default function FeedbackResultsPage() {
   const router = useRouter();
-  const [feedback, setFeedback] = useState<FeedbackRow[]>([]);
+  const [periodKey, setPeriodKey] = useState<PeriodKey>('12m');
+  const [course, setCourse] = useState('');
+  const [data, setData] = useState<ResultsResponse | null>(null);
   const [loading, setLoading] = useState(true);
-  const [isDark, setIsDark] = useState(true);
-  const [filterCourse, setFilterCourse] = useState('all');
-  const [expandedRow, setExpandedRow] = useState<string | null>(null);
-  const [deletingId, setDeletingId] = useState<string | null>(null);
-  const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [expanded, setExpanded] = useState<string | null>(null);
+  const [confirmDelete, setConfirmDelete] = useState<string | null>(null);
+  const [deleting, setDeleting] = useState(false);
+  const [exporting, setExporting] = useState(false);
 
-  // Role via the shared hook (/api/profile with cookie fallback) instead of a
-  // client supabase.auth.getUser(), which returned null when the browser
-  // session wasn't attached and wrongly redirected admins to /dashboard.
-  const { profile, isAuthenticated, loading: authLoading } = useCurrentUserProfile();
-  const initializedRef = useRef(false);
-
-  useEffect(() => {
-    const isDarkMode = document.documentElement.classList.contains('dark');
-    setIsDark(isDarkMode);
-    const handleTheme = (e: Event) => {
-      const customEvent = e as CustomEvent<{ isDark?: boolean }>;
-      if (typeof customEvent.detail?.isDark === 'boolean') setIsDark(customEvent.detail.isDark);
-    };
-    window.addEventListener('themeChange', handleTheme);
-    return () => window.removeEventListener('themeChange', handleTheme);
-  }, []);
-
-  useEffect(() => {
-    if (authLoading) return;
-    if (!isAuthenticated) { router.push('/login'); return; }
-    const role = profile?.role_tier;
-    if (!role) return; // wait for role to resolve (hook retries)
-    if (role !== 'admin') { router.push('/dashboard'); return; }
-    if (initializedRef.current) return;
-    initializedRef.current = true;
-    fetchFeedback();
-
-  }, [authLoading, isAuthenticated, profile, router]);
-
-  async function deleteResponse(id: string) {
-    setDeletingId(id);
-    await supabase.from('course_feedback').delete().eq('id', id);
-    setFeedback(prev => prev.filter(f => f.id !== id));
-    setExpandedRow(null);
-    setConfirmDeleteId(null);
-    setDeletingId(null);
-  }
-
-  async function fetchFeedback() {
+  const load = useCallback(async () => {
     setLoading(true);
-    const { data } = await supabase
-      .from('course_feedback')
-      .select('*')
-      .order('created_at', { ascending: false });
-    setFeedback(data || []);
-    setLoading(false);
-  }
+    setError(null);
+    const { from, to } = periodRange(periodKey);
+    const qs = new URLSearchParams({ from, to, ...(course ? { course } : {}) });
+    try {
+      const response = await fetch(`/api/feedback/results?${qs.toString()}`);
+      const body = await response.json().catch(() => ({}));
+      if (response.status === 403) throw new Error('Only admins can see feedback results.');
+      if (!response.ok) throw new Error(body.error || 'Could not load feedback results.');
+      setData(body as ResultsResponse);
+    } catch (loadError) {
+      setError(loadError instanceof Error ? loadError.message : 'Could not load feedback results.');
+    } finally {
+      setLoading(false);
+    }
+  }, [periodKey, course]);
 
-  const courseOptions = useMemo(() => {
-    const names = Array.from(new Set(feedback.map(f => f.course_name).filter(Boolean))) as string[];
-    return names.sort();
-  }, [feedback]);
+  useEffect(() => { void load(); }, [load]);
 
-  const filtered = useMemo(() => {
-    if (filterCourse === 'all') return feedback;
-    return feedback.filter(f => f.course_name === filterCourse);
-  }, [feedback, filterCourse]);
+  const deleteResponse = async (id: string) => {
+    setDeleting(true);
+    try {
+      const response = await fetch(`/api/feedback/results?id=${id}`, { method: 'DELETE' });
+      const body = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(body.error || 'Could not delete the response.');
+      setData((prev) => (prev ? { ...prev, responses: prev.responses.filter((r) => r.id !== id) } : prev));
+      setExpanded(null);
+      setConfirmDelete(null);
+    } catch (deleteError) {
+      setError(deleteError instanceof Error ? deleteError.message : 'Could not delete the response.');
+    } finally {
+      setDeleting(false);
+    }
+  };
 
-  const stats = useMemo(() => {
-    if (!filtered.length) return null;
-    const knowledgeImprovements = filtered.map(f => {
-      const before = f.responses?.knowledge_before ?? f.knowledge_before;
-      const after = f.responses?.knowledge_after ?? f.knowledge_after;
-      return after - before;
-    });
-    const confidenceImprovements = filtered.map(f => {
-      const before = f.responses?.confidence_before ?? f.confidence_before;
-      const after = f.responses?.confidence_after ?? f.confidence_after;
-      return after - before;
-    });
-    const skillsGainedCount = filtered.filter(f => {
-      const val = f.responses?.skills_gained ?? f.skills_gained;
-      return val === true || val === 'Yes';
-    }).length;
+  const totals = useMemo(() => {
+    const rates = data?.rates || [];
+    const attended = rates.reduce((a, r) => a + r.attended, 0);
+    const responded = rates.reduce((a, r) => a + r.responded, 0);
+    const anonymous = (data?.responses || []).filter((r) => r.anonymous).length;
+    return { attended, responded, anonymous, sessions: rates.reduce((a, r) => a + r.sessions, 0) };
+  }, [data]);
 
-    const descriptorCounts: Record<string, number> = {};
-    DESCRIPTORS.forEach(d => { descriptorCounts[d] = 0; });
-    filtered.forEach(f => {
-      const descriptors = f.responses?.descriptors ?? f.session_descriptors ?? [];
-      descriptors.forEach((d: string) => {
-        if (descriptorCounts[d] !== undefined) descriptorCounts[d]++;
-      });
-    });
-
-    const sortedDescriptors = Object.entries(descriptorCounts)
-      .sort((a, b) => b[1] - a[1])
-      .filter(([, count]) => count > 0);
-
-    const maxDescriptorCount = sortedDescriptors[0]?.[1] || 1;
-
-    return {
-      total: filtered.length,
-      avgKnowledgeBefore: avg(filtered.map(f => f.responses?.knowledge_before ?? f.knowledge_before)),
-      avgKnowledgeAfter: avg(filtered.map(f => f.responses?.knowledge_after ?? f.knowledge_after)),
-      avgKnowledgeImprovement: avg(knowledgeImprovements),
-      avgConfidenceBefore: avg(filtered.map(f => f.responses?.confidence_before ?? f.confidence_before)),
-      avgConfidenceAfter: avg(filtered.map(f => f.responses?.confidence_after ?? f.confidence_after)),
-      avgConfidenceImprovement: avg(confidenceImprovements),
-      avgRelevance: avg(filtered.map(f => f.responses?.relevance ?? f.work_role_relevance)),
-      skillsGainedPct: Math.round((skillsGainedCount / filtered.length) * 100),
-      sortedDescriptors,
-      maxDescriptorCount,
-      comments: filtered.filter(f => f.responses?.comments || f.additional_comments),
-    };
-  }, [filtered]);
-
-  const bg = isDark ? 'bg-gray-950' : 'bg-gray-100';
-  const card = isDark ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-200';
-  const text = isDark ? 'text-gray-100' : 'text-gray-900';
-  const subtext = isDark ? 'text-gray-400' : 'text-gray-500';
+  const select = 'bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-600 text-slate-900 dark:text-slate-100 rounded-lg p-2 text-sm outline-none focus:ring-2 focus:ring-blue-500';
+  const responses = data?.responses || [];
 
   return (
-    <div className={`min-h-screen ${bg} transition-colors duration-300 p-4 md:p-8`}>
-      <div className="max-w-5xl mx-auto">
-
-        {/* Header */}
-        <div className="flex items-center gap-4 mb-6">
+    <main className="min-h-screen p-4 md:p-8 bg-slate-100 dark:bg-slate-900 text-slate-900 dark:text-slate-100">
+      <div className="max-w-6xl mx-auto">
+        <div className="flex flex-wrap justify-between items-center gap-4 mb-6">
           <BackButton to="/admin" />
+          <h1 className="text-2xl md:text-3xl font-black uppercase tracking-tighter">Feedback Results</h1>
+          <UniformButton variant="secondary" size="sm" onClick={() => router.push('/feedback')}>📝 Open the form</UniformButton>
+        </div>
+
+        <div className={`${card} p-4 mb-6 flex flex-wrap items-end gap-4`}>
           <div>
-            <h1 className={`text-2xl font-black uppercase tracking-tight ${text}`}>Feedback Results</h1>
-            <p className={`text-sm ${subtext}`}>Training course feedback analysis</p>
+            <label htmlFor="fb-period" className="block text-[10px] font-bold uppercase text-slate-500 mb-1">Sessions in</label>
+            <select id="fb-period" value={periodKey} onChange={(e) => setPeriodKey(e.target.value as PeriodKey)} className={select}>
+              {Object.entries(PERIOD_LABELS).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
+            </select>
           </div>
+          <div className="min-w-[220px] flex-1 max-w-md">
+            <label htmlFor="fb-course" className="block text-[10px] font-bold uppercase text-slate-500 mb-1">Course</label>
+            <select id="fb-course" value={course} onChange={(e) => setCourse(e.target.value)} className={`${select} w-full`}>
+              <option value="">All courses</option>
+              {(data?.courseNames || []).map((c) => <option key={c} value={c}>{c}</option>)}
+              {course && data && !data.courseNames.includes(course) && <option value={course}>{course}</option>}
+            </select>
+          </div>
+          <div className="flex-1" />
+          <UniformButton variant="primary" size="sm" disabled={!data || responses.length === 0 || exporting} onClick={async () => {
+            if (!data) return;
+            setExporting(true);
+            try { await downloadExcel(data, course || 'all courses'); } catch { setError('Could not create the Excel file.'); } finally { setExporting(false); }
+          }}>
+            {exporting ? 'Preparing…' : '📊 Download Excel'}
+          </UniformButton>
         </div>
 
-        {/* Filter */}
-        <div className={`rounded-xl border p-4 mb-6 ${card}`}>
-          <div className="flex flex-wrap items-center gap-4">
-            <div>
-              <label className={`text-xs font-bold uppercase tracking-wide ${subtext} block mb-1`}>Filter by Course</label>
-              <select
-                value={filterCourse}
-                onChange={e => setFilterCourse(e.target.value)}
-                className={`rounded-lg border px-3 py-2 text-sm font-semibold outline-none ${isDark ? 'bg-gray-700 border-gray-600 text-white' : 'bg-gray-50 border-gray-300 text-gray-900'}`}
-              >
-                <option value="all">All Courses</option>
-                {courseOptions.map(c => <option key={c} value={c}>{c}</option>)}
-              </select>
-            </div>
-            <UniformButton onClick={fetchFeedback} className="ml-auto">
-              Refresh
-            </UniformButton>
-          </div>
-        </div>
+        {error && <div className="mb-4 rounded-lg border border-red-300 bg-red-50 dark:bg-red-950/30 dark:border-red-900/50 p-3 text-sm text-red-700 dark:text-red-200">{error}</div>}
+        {loading && <p className="text-center text-slate-500 py-16">Loading feedback…</p>}
 
-        {loading ? (
-          <div className={`text-center py-16 ${subtext}`}>Loading feedback...</div>
-        ) : !stats ? (
-          <div className={`text-center py-16 rounded-xl border ${card} ${subtext}`}>
-            No feedback responses yet.
-          </div>
-        ) : (
+        {!loading && data && (
           <div className="space-y-6">
-
-            {/* Summary Cards */}
             <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-              <StatCard
-                label="Total Responses"
-                value={String(stats.total)}
-                color="bg-blue-600 text-white"
-              />
-              <StatCard
-                label="Knowledge Gain"
-                value={`+${stats.avgKnowledgeImprovement.toFixed(1)}`}
-                sub={`${stats.avgKnowledgeBefore.toFixed(1)} → ${stats.avgKnowledgeAfter.toFixed(1)}`}
-                color="bg-emerald-600 text-white"
-              />
-              <StatCard
-                label="Confidence Gain"
-                value={`+${stats.avgConfidenceImprovement.toFixed(1)}`}
-                sub={`${stats.avgConfidenceBefore.toFixed(1)} → ${stats.avgConfidenceAfter.toFixed(1)}`}
-                color="bg-purple-600 text-white"
-              />
-              <StatCard
-                label="Skills Gained"
-                value={`${stats.skillsGainedPct}%`}
-                sub={`Avg relevance: ${stats.avgRelevance.toFixed(1)}/10`}
-                color="bg-amber-500 text-white"
-              />
+              <Tile label="Responses" value={String(responses.length)} sub={totals.anonymous ? `${totals.anonymous} anonymous` : undefined} />
+              <Tile label="Response rate" value={totals.attended ? `${pct(totals.responded, totals.attended)}%` : '–'} sub={`${totals.responded} of ${totals.attended} attendees`} />
+              <Tile label="Sessions" value={String(totals.sessions)} sub="with attendance recorded" />
+              <Tile label="Courses" value={String(data.rates.length)} sub={PERIOD_LABELS[periodKey]} />
             </div>
 
-            {/* Before / After detail */}
-            <div className={`rounded-xl border p-5 ${card}`}>
-              <h2 className={`text-sm font-black uppercase tracking-wide ${subtext} mb-4`}>Before vs After</h2>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                {[
-                  { label: 'Knowledge', before: stats.avgKnowledgeBefore, after: stats.avgKnowledgeAfter },
-                  { label: 'Confidence', before: stats.avgConfidenceBefore, after: stats.avgConfidenceAfter },
-                ].map(({ label, before, after }) => (
-                  <div key={label}>
-                    <p className={`text-sm font-bold mb-3 ${text}`}>{label}</p>
-                    {[{ name: 'Before', value: before, color: 'bg-gray-400' }, { name: 'After', value: after, color: 'bg-blue-500' }].map(({ name, value, color }) => (
-                      <div key={name} className="mb-2">
-                        <div className="flex justify-between text-xs mb-1">
-                          <span className={subtext}>{name}</span>
-                          <span className={`font-bold ${text}`}>{value.toFixed(1)}/10</span>
-                        </div>
-                        <div className={`h-3 rounded-full ${isDark ? 'bg-gray-700' : 'bg-gray-200'}`}>
-                          <div className={`h-3 rounded-full ${color} transition-all`} style={{ width: `${(value / 10) * 100}%` }} />
-                        </div>
-                      </div>
+            {responses.length === 0 ? (
+              <div className={`${card} p-10 text-center text-slate-500`}>No feedback for this period{course ? ' and course' : ''} yet.</div>
+            ) : (
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                {data.questions.map((q) => (
+                  <div key={q.id} className={q.type === 'text' || q.type === 'words' ? 'lg:col-span-2' : ''}>
+                    <QuestionCard q={q} s={summariseQuestion(q, responses)} total={responses.length} />
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {data.rates.length > 0 && (
+              <section className={`${card} overflow-x-auto`}>
+                <h2 className="text-sm font-black uppercase p-4 pb-2">Response rate by course</h2>
+                <table className="w-full text-left text-sm min-w-[560px]">
+                  <thead className="border-y border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-900/50 text-[11px] uppercase text-slate-500">
+                    <tr>
+                      <th className="p-3">Course</th><th className="p-3 text-center">Sessions</th><th className="p-3 text-center">Attended</th>
+                      <th className="p-3 text-center">Responded</th><th className="p-3">Rate</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-200 dark:divide-slate-700">
+                    {data.rates.map((r) => (
+                      <tr key={r.courseName}>
+                        <td className="p-3 font-bold">{r.courseName}</td>
+                        <td className="p-3 text-center tabular-nums">{r.sessions}</td>
+                        <td className="p-3 text-center tabular-nums">{r.attended}</td>
+                        <td className="p-3 text-center tabular-nums">{r.responded}</td>
+                        <td className="p-3"><div className="flex items-center gap-2 min-w-[140px]"><Bar value={r.responded} max={r.attended} tone="bg-blue-500" /><span className="w-10 text-right font-bold tabular-nums">{pct(r.responded, r.attended)}%</span></div></td>
+                      </tr>
                     ))}
-                  </div>
-                ))}
-              </div>
-            </div>
-
-            {/* Descriptors */}
-            {stats.sortedDescriptors.length > 0 && (
-              <div className={`rounded-xl border p-5 ${card}`}>
-                <h2 className={`text-sm font-black uppercase tracking-wide ${subtext} mb-4`}>How sessions were described</h2>
-                <div className="space-y-2">
-                  {stats.sortedDescriptors.map(([descriptor, count]) => {
-                    const pct = Math.round((count / stats.maxDescriptorCount) * 100);
-                    const isPositive = POSITIVE_DESCRIPTORS.has(descriptor);
-                    return (
-                      <div key={descriptor} className="flex items-center gap-3">
-                        <span className={`text-sm font-medium w-36 flex-shrink-0 ${text}`}>{descriptor}</span>
-                        <div className={`flex-1 h-5 rounded-full ${isDark ? 'bg-gray-700' : 'bg-gray-200'}`}>
-                          <div
-                            className={`h-5 rounded-full transition-all ${isPositive ? 'bg-emerald-500' : 'bg-red-500'}`}
-                            style={{ width: `${pct}%` }}
-                          />
-                        </div>
-                        <span className={`text-sm font-bold w-8 text-right ${text}`}>{count}</span>
-                      </div>
-                    );
-                  })}
-                </div>
-                <p className={`text-xs mt-3 ${subtext}`}>Green = positive descriptor, Red = negative descriptor</p>
-              </div>
+                  </tbody>
+                </table>
+                <p className="text-xs text-slate-500 p-4 pt-2">Attended = signed in on the register. Responded includes anonymous responses.</p>
+              </section>
             )}
 
-            {/* Comments */}
-            {stats.comments.length > 0 && (
-              <div className={`rounded-xl border p-5 ${card}`}>
-                <h2 className={`text-sm font-black uppercase tracking-wide ${subtext} mb-4`}>Additional Comments ({stats.comments.length})</h2>
-                <div className="space-y-3">
-                  {stats.comments.map(f => (
-                    <div key={f.id} className={`rounded-lg p-3 ${isDark ? 'bg-gray-700' : 'bg-gray-50'}`}>
-                      <div className="flex items-center justify-between mb-1">
-                        <span className={`text-sm font-semibold ${text}`}>{f.respondent_name}</span>
-                        <span className={`text-xs ${subtext}`}>
-                          {f.course_name && `${f.course_name} · `}
-                          {f.event_date && new Date(f.event_date + 'T00:00:00').toLocaleDateString('en-GB')}
-                        </span>
-                      </div>
-                      <p className={`text-sm ${subtext}`}>{f.additional_comments}</p>
-                    </div>
+            {responses.length > 0 && (
+              <section className={card}>
+                <h2 className="text-sm font-black uppercase p-4 pb-2">All responses ({responses.length})</h2>
+                <ul className="divide-y divide-slate-200 dark:divide-slate-700">
+                  {responses.map((r) => (
+                    <li key={r.id}>
+                      <button type="button" aria-expanded={expanded === r.id} onClick={() => { setExpanded(expanded === r.id ? null : r.id); setConfirmDelete(null); }}
+                        className="w-full px-4 py-3 flex flex-wrap items-center gap-x-3 gap-y-1 text-left hover:bg-slate-50 dark:hover:bg-slate-700/40">
+                        <span className={`font-bold text-sm ${r.anonymous ? 'italic text-slate-500' : ''}`}>{r.name}</span>
+                        <span className="text-xs text-slate-500">{r.courseName}{r.eventDate ? ` · ${day(r.eventDate)}` : ''}</span>
+                        <span className="ml-auto text-xs text-slate-400">{expanded === r.id ? '▲' : '▼'}</span>
+                      </button>
+                      {expanded === r.id && (
+                        <div className="px-4 pb-4">
+                          <dl className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-2 text-sm">
+                            {data.questions.map((q) => (
+                              <div key={q.id} className={q.type === 'text' || q.type === 'words' ? 'sm:col-span-2' : ''}>
+                                <dt className="text-[11px] font-bold uppercase text-slate-500">{q.label}{q.type === 'before_after' ? ' (before → after)' : ''}</dt>
+                                <dd className="whitespace-pre-wrap">{answerText(q, r.answers[q.id])}</dd>
+                              </div>
+                            ))}
+                          </dl>
+                          <div className="flex justify-end items-center gap-2 mt-3">
+                            <span className="text-[11px] text-slate-500 mr-auto">Sent {new Date(r.submittedAt).toLocaleString('en-GB')}</span>
+                            {confirmDelete === r.id ? (
+                              <>
+                                <span className="text-xs text-slate-500">Delete this response?</span>
+                                <UniformButton variant="danger" size="sm" disabled={deleting} onClick={() => void deleteResponse(r.id)}>{deleting ? 'Deleting…' : 'Yes, delete'}</UniformButton>
+                                <UniformButton variant="secondary" size="sm" onClick={() => setConfirmDelete(null)}>Cancel</UniformButton>
+                              </>
+                            ) : (
+                              <UniformButton variant="secondary" size="sm" onClick={() => setConfirmDelete(r.id)}>Delete response</UniformButton>
+                            )}
+                          </div>
+                        </div>
+                      )}
+                    </li>
                   ))}
-                </div>
-              </div>
+                </ul>
+              </section>
             )}
-
-            {/* Individual Responses */}
-            <div className={`rounded-xl border ${card}`}>
-              <div className="p-5 border-b border-gray-700">
-                <h2 className={`text-sm font-black uppercase tracking-wide ${subtext}`}>All Responses</h2>
-              </div>
-              <div className="divide-y divide-gray-700">
-                {filtered.map(f => (
-                  <div key={f.id}>
-                    <button
-                      className={`w-full px-5 py-4 flex items-center justify-between hover:${isDark ? 'bg-gray-700' : 'bg-gray-50'} transition-colors text-left`}
-                      onClick={() => setExpandedRow(expandedRow === f.id ? null : f.id)}
-                    >
-                      <div>
-                        <span className={`font-semibold text-sm ${text}`}>{f.respondent_name}</span>
-                        <span className={`text-xs ml-3 ${subtext}`}>{f.session_time}</span>
-                        {f.course_name && <span className={`text-xs ml-2 ${subtext}`}>· {f.course_name}</span>}
-                        {f.event_date && <span className={`text-xs ml-2 ${subtext}`}>· {new Date(f.event_date + 'T00:00:00').toLocaleDateString('en-GB')}</span>}
-                      </div>
-                      <div className="flex items-center gap-3">
-                        <span className={`text-xs font-bold px-2 py-1 rounded-full ${ (f.responses?.skills_gained === 'Yes' || f.responses?.skills_gained === true || f.skills_gained) ? 'bg-emerald-900 text-emerald-300' : 'bg-red-900 text-red-300'}`}>
-                          {(f.responses?.skills_gained === 'Yes' || f.responses?.skills_gained === true || f.skills_gained) ? 'Skills gained' : 'No new skills'}
-                        </span>
-                        <span className={`text-xs ${subtext}`}>{expandedRow === f.id ? '▲' : '▼'}</span>
-                      </div>
-                    </button>
-                    {expandedRow === f.id && (
-                      <div className={`px-5 pb-4 ${isDark ? 'bg-gray-750' : 'bg-gray-50'}`}>
-                        <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-3">
-                          {[
-                            { label: 'Knowledge Before', value: f.responses?.knowledge_before ?? f.knowledge_before },
-                            { label: 'Knowledge After', value: f.responses?.knowledge_after ?? f.knowledge_after },
-                            { label: 'Confidence Before', value: f.responses?.confidence_before ?? f.confidence_before },
-                            { label: 'Confidence After', value: f.responses?.confidence_after ?? f.confidence_after },
-                            { label: 'Relevance', value: f.responses?.relevance ?? f.work_role_relevance },
-                          ].map(({ label, value }) => (
-                            <div key={label} className={`rounded-lg p-3 text-center ${isDark ? 'bg-gray-700' : 'bg-white border border-gray-200'}`}>
-                              <p className={`text-xs ${subtext} mb-1`}>{label}</p>
-                              <p className={`text-xl font-black ${text}`}>{value}/10</p>
-                            </div>
-                          ))}
-                        </div>
-                        {(f.responses?.descriptors || f.session_descriptors)?.length > 0 && (
-                          <div className="mb-3">
-                            <p className={`text-xs font-bold uppercase ${subtext} mb-2`}>Descriptors</p>
-                            <div className="flex flex-wrap gap-1.5">
-                              {(f.responses?.descriptors || f.session_descriptors).map((d: string) => (
-                                <span key={d} className={`text-xs px-2 py-1 rounded-full font-medium ${POSITIVE_DESCRIPTORS.has(d) ? 'bg-emerald-900 text-emerald-300' : 'bg-slate-700 text-slate-300'}`}>{d}</span>
-                              ))}
-                            </div>
-                          </div>
-                        )}
-                        {(f.responses?.comments || f.additional_comments) && (
-                          <div className="mb-3">
-                            <p className={`text-xs font-bold uppercase ${subtext} mb-1`}>Comments</p>
-                            <p className={`text-sm ${text}`}>{f.responses?.comments || f.additional_comments}</p>
-                          </div>
-                        )}
-                        <div className="flex justify-end mt-2">
-                          {confirmDeleteId === f.id ? (
-                            <div className="flex items-center gap-2">
-                              <span className={`text-xs ${subtext}`}>Are you sure?</span>
-                              <button
-                                onClick={() => deleteResponse(f.id)}
-                                disabled={deletingId === f.id}
-                                className="text-xs font-bold px-3 py-1.5 rounded-lg bg-red-600 hover:bg-red-700 text-white transition-colors disabled:opacity-50"
-                              >
-                                {deletingId === f.id ? 'Deleting...' : 'Yes, delete'}
-                              </button>
-                              <button
-                                onClick={() => setConfirmDeleteId(null)}
-                                className={`text-xs font-bold px-3 py-1.5 rounded-lg transition-colors ${isDark ? 'bg-gray-600 hover:bg-gray-500 text-white' : 'bg-gray-200 hover:bg-gray-300 text-gray-700'}`}
-                              >
-                                Cancel
-                              </button>
-                            </div>
-                          ) : (
-                            <button
-                              onClick={() => setConfirmDeleteId(f.id)}
-                              className="text-xs font-semibold px-3 py-1.5 rounded-lg text-red-400 hover:bg-red-900/30 transition-colors"
-                            >
-                              Delete response
-                            </button>
-                          )}
-                        </div>
-                      </div>
-                    )}
-                  </div>
-                ))}
-              </div>
-            </div>
-
           </div>
         )}
       </div>
-    </div>
+    </main>
   );
 }
