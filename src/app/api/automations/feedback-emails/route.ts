@@ -239,7 +239,7 @@ async function handleRequest(req: Request) {
 
       for (const kind of kinds) {
         // Feedback: only people signed in on the register. Reminders: everyone booked.
-        let query = service.from('bookings').select('profiles(email, full_name, location)').eq('event_id', event.id);
+        let query = service.from('bookings').select('profiles:profile_id(email, full_name, location)').eq('event_id', event.id);
         if (kind === 'feedback') query = query.not('attended_at', 'is', null);
         const { data: bookings, error } = await query;
         if (error) throw error;
