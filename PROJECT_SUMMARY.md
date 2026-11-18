@@ -347,6 +347,10 @@ Always-on workspace constraints that apply to every agent invocation.
 
 ## 11. Current Development Status
 
+### Feedback forms – Phase 4, part 2: results (2026-11-18)
+- `/feedback/results` rebuilt: reads/deletes via **`GET|DELETE /api/feedback/results`** (admin only; was the browser client, and delete silently failed because there was no DELETE policy). Filters: period (by session date) + course. Each current question is summarised automatically (`summariseQuestion` in `src/lib/feedbackForm.ts`: before→after averages, 1–10 average, option/word counts with positive/negative colours, comments). Anonymous responses show as "Anonymous". Response rate = feedback_submissions ÷ bookings signed in (`attended_at`), per course and overall. Excel: Responses + Response rates sheets. Deleting a named response also clears its `feedback_submissions` row so the person can answer again. Older rows are read via `answersFromRow` (original columns).
+- `/feedback` without a link: admins/schedulers get recent sessions (last 60 days) with Open form / Copy link; "📝 Open the form" on Feedback Results.
+
 ### Feedback forms – Phase 4, part 1: the form (2026-11-18)
 - Staff can now open `/feedback` (proxy allowed list); before, they were redirected to the booking calendar. Logged-out visitors are sent to `/login?next=…` and returned to the link after signing in (`src/proxy.ts`, `src/app/login/page.tsx`; only same-site paths).
 - One form for every course. Questions come from `feedback_settings` key `default_form` (`config.fields`, what the builder edits) via `normaliseQuestions` in **`src/lib/feedbackForm.ts`** (also reads the older builder types; falls back to `DEFAULT_QUESTIONS`). Types: before_after, scale (1–10 buttons), choice, words, text. `feedback_form_config` is no longer used.

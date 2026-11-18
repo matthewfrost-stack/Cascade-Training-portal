@@ -146,3 +146,76 @@ export function validateAnswers(questions: FeedbackQuestion[], input: unknown): 
   }
   return { answers };
 }
+
+// ---------- results ----------
+
+export type FeedbackResponseRow = {
+  id: string;
+  submittedAt: string;
+  courseName: string;
+  eventDate: string | null;
+  name: string;
+  anonymous: boolean;
+  answers: FeedbackAnswers;
+};
+
+export type CourseRate = { courseName: string; sessions: number; attended: number; responded: number };
+
+/**
+ * Answers from a course_feedback row: the `responses` JSON, filled in from the
+ * original columns for responses saved by the first version of the form.
+ */
+export function answersFromRow(row: Record<string, unknown>): FeedbackAnswers {
+  const out: FeedbackAnswers = {};
+  const num = (v: unknown) => (typeof v === 'number' ? v : null);
+  const kb = num(row.knowledge_before), ka = num(row.knowledge_after);
+  if (kb !== null && ka !== null) out.knowledge = { before: kb, after: ka };
+  const cb = num(row.confidence_before), ca = num(row.confidence_after);
+  if (cb !== null && ca !== null) out.confidence = { before: cb, after: ca };
+  if (num(row.work_role_relevance) !== null) out.relevance = row.work_role_relevance as number;
+  if (Array.isArray(row.session_descriptors) && row.session_descriptors.length) out.descriptors = row.session_descriptors.map(String);
+  if (typeof row.skills_gained === 'boolean') out.skills_gained = row.skills_gained ? 'Yes' : 'No';
+  if (typeof row.additional_comments === 'string' && row.additional_comments.trim()) out.comments = row.additional_comments.trim();
+
+  const saved = row.responses && typeof row.responses === 'object' ? (row.responses as Record<string, unknown>) : {};
+  for (const [key, value] of Object.entries(saved)) {
+    if (value === null || value === undefined || value === '') continue;
+    // Very first builder format used flat keys (knowledge_before …) – already covered above.
+    if (/_(before|after)$/.test(key) || (key === 'skills_gained' && typeof value === 'boolean')) continue;
+    out[key] = value as FeedbackAnswer;
+  }
+  return out;
+}
+
+export type QuestionSummary =
+  | { kind: 'before_after'; answered: number; before: number; after: number }
+  | { kind: 'scale'; answered: number; average: number }
+  | { kind: 'counts'; answered: number; counts: { option: string; count: number; positive?: boolean }[] }
+  | { kind: 'text'; answered: number; items: { text: string; name: string; courseName: string; date: string | null }[] };
+
+const mean = (nums: number[]) => (nums.length ? nums.reduce((a, b) => a + b, 0) / nums.length : 0);
+
+/** Totals for one question across the given responses. */
+export function summariseQuestion(q: FeedbackQuestion, responses: FeedbackResponseRow[]): QuestionSummary {
+  const values = responses.map((r) => ({ r, v: r.answers[q.id] })).filter(({ v }) => v !== undefined);
+  if (q.type === 'before_after') {
+    const pairs = values.map(({ v }) => v as BeforeAfter).filter((p) => typeof p?.before === 'number' && typeof p?.after === 'number');
+    return { kind: 'before_after', answered: pairs.length, before: mean(pairs.map((p) => p.before)), after: mean(pairs.map((p) => p.after)) };
+  }
+  if (q.type === 'scale') {
+    const nums = values.map(({ v }) => v).filter((v): v is number => typeof v === 'number');
+    return { kind: 'scale', answered: nums.length, average: mean(nums) };
+  }
+  if (q.type === 'choice' || q.type === 'words') {
+    const tally = new Map<string, number>((q.options || []).map((o) => [o, 0]));
+    for (const { v } of values) for (const o of Array.isArray(v) ? v : [v]) if (typeof o === 'string') tally.set(o, (tally.get(o) || 0) + 1);
+    const positive = new Set(q.positive || []);
+    const counts = Array.from(tally, ([option, count]) => ({ option, count, ...(q.type === 'words' ? { positive: positive.has(option) } : {}) }));
+    if (q.type === 'words') counts.sort((a, b) => b.count - a.count);
+    return { kind: 'counts', answered: values.length, counts };
+  }
+  const items = values
+    .filter(({ v }) => typeof v === 'string' && v.trim())
+    .map(({ r, v }) => ({ text: v as string, name: r.name, courseName: r.courseName, date: r.eventDate }));
+  return { kind: 'text', answered: items.length, items };
+}
