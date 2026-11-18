@@ -39,11 +39,11 @@ export async function GET(request: NextRequest) {
       }
       const detail = await buildHomeDetail(service, locationId, { from, to });
       if (!detail) return NextResponse.json({ error: 'Home not found.' }, { status: 404 });
-      return NextResponse.json({ generated, detail });
+      return NextResponse.json({ generated, detail, canSnapshot: authz.role === 'admin' || authz.role === 'scheduler' });
     }
 
     const homes = await buildOverview(service, scope.all ? null : scope.ids, { from, to });
-    return NextResponse.json({ generated, period: { from, to }, homes, canSnapshot: authz.role === 'admin' });
+    return NextResponse.json({ generated, period: { from, to }, homes });
   } catch (error) {
     if (error instanceof MissingMigrationError) return NextResponse.json({ error: error.message }, { status: 503 });
     console.error('Compliance report failed:', error);

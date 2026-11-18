@@ -8,8 +8,9 @@ import { formatHours } from '@/lib/trainingHours';
 import type { HomeDetail, HomeSummary, PersonAction } from '@/lib/complianceReport';
 
 type Generated = { at: string; by: string };
-type OverviewResponse = { generated: Generated; period: { from: string; to: string }; homes: HomeSummary[]; canSnapshot: boolean; error?: string };
-type DetailResponse = { generated: Generated; detail: HomeDetail; error?: string };
+type OverviewResponse = { generated: Generated; period: { from: string; to: string }; homes: HomeSummary[]; error?: string };
+type DetailResponse = { generated: Generated; detail: HomeDetail; canSnapshot?: boolean; error?: string };
+type Check = HomeDetail['checks'][number];
 type PeriodKey = '12m' | 'this-year' | 'last-year';
 type RegulatorFilter = 'all' | 'CQC' | 'Ofsted' | 'none';
 
@@ -34,10 +35,9 @@ const PERIOD_LABELS: Record<PeriodKey, string> = { '12m': 'Last 12 months', 'thi
 const day = (iso?: string | null) =>
   iso ? new Date(`${iso.slice(0, 10)}T00:00:00Z`).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric', timeZone: 'UTC' }) : '';
 
-const monthLabel = (period: string) => {
-  const [y, m] = period.split('-').map(Number);
-  return new Date(Date.UTC(y, m - 1, 1)).toLocaleDateString('en-GB', { month: 'short', year: '2-digit', timeZone: 'UTC' });
-};
+/** A snapshot time as a UK date, e.g. "3 Oct 26". */
+const checkDate = (iso: string) => new Date(iso).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: '2-digit', timeZone: 'Europe/London' });
+const checkDateTime = (iso: string) => new Date(iso).toLocaleString('en-GB', { day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit', timeZone: 'Europe/London' });
 
 const pctText = (pct: number | null) => (pct === null ? '–' : `${pct % 1 === 0 ? pct.toFixed(0) : pct.toFixed(1)}%`);
 
@@ -104,11 +104,11 @@ function PctBar({ pct }: { pct: number | null }) {
 function Change({ now, before }: { now: number | null; before: HomeSummary['previous'] }) {
   if (!before || now === null || before.compliancePct === null) return null;
   const diff = Math.round((now - before.compliancePct) * 10) / 10;
-  if (diff === 0) return <span className="text-[11px] print:text-[7.5px] text-slate-500">no change since {monthLabel(before.period)}</span>;
+  if (diff === 0) return <span className="text-[11px] print:text-[7.5px] text-slate-500">no change since last check ({checkDate(before.takenAt)})</span>;
   const up = diff > 0;
   return (
     <span className={`text-[11px] print:text-[7.5px] font-bold ${up ? 'text-emerald-600 dark:text-emerald-400' : 'text-red-600 dark:text-red-400'}`}>
-      {up ? '▲' : '▼'} {Math.abs(diff)} pts since {monthLabel(before.period)}
+      {up ? '▲' : '▼'} {Math.abs(diff)} pts since last check ({checkDate(before.takenAt)})
     </span>
   );
 }
@@ -132,29 +132,125 @@ function RegulatorBadge({ regulator }: { regulator: HomeSummary['regulator'] }) 
   );
 }
 
-/** Monthly compliance % from saved snapshots: one series, bars with hover values. */
-function TrendChart({ points }: { points: HomeDetail['trend'] }) {
+/** Compliance % at each check snapshot (oldest first): one series, bars with hover values. */
+function TrendChart({ points }: { points: Check[] }) {
   if (points.length === 0) {
-    return <p className="text-sm text-slate-500">No monthly snapshots yet. The first is saved on the 1st of the month (or by an admin from the overview).</p>;
+    return <p className="text-sm text-slate-500">No check snapshots yet. Use &ldquo;📸 Take snapshot&rdquo; when you check this home to start tracking its progress.</p>;
   }
   return (
     <div>
-      <div className="flex items-end gap-2 h-36 print:h-20 border-b border-slate-300 dark:border-slate-600 pl-1" role="img" aria-label="Compliance by month">
+      <div className="flex items-end gap-2 h-36 print:h-20 border-b border-slate-300 dark:border-slate-600 pl-1" role="img" aria-label="Compliance at each check">
         {points.map((p) => {
           const b = band(p.compliancePct);
           return (
-            <div key={p.period} className="flex-1 flex flex-col items-center justify-end h-full group relative min-w-[18px]">
+            <div key={p.id} className="flex-1 flex flex-col items-center justify-end h-full group relative min-w-[18px]">
               <span className="text-[10px] font-bold text-slate-600 dark:text-slate-300 mb-1 tabular-nums">{pctText(p.compliancePct)}</span>
-              <div className={`w-full max-w-[28px] rounded-t ${b.bar}`} style={{ height: `${Math.max(p.compliancePct ?? 0, 1)}%` }} title={`${monthLabel(p.period)}: ${pctText(p.compliancePct)}${p.ldaPct !== null ? ` · Oliver McGowan ${pctText(p.ldaPct)}` : ''}`} />
+              <div className={`w-full max-w-[28px] rounded-t ${b.bar}`} style={{ height: `${Math.max(p.compliancePct ?? 0, 1)}%` }} title={`${checkDateTime(p.takenAt)}: ${pctText(p.compliancePct)}${p.ldaPct !== null ? ` · Oliver McGowan ${pctText(p.ldaPct)}` : ''}${p.takenBy ? ` · ${p.takenBy}` : ''}`} />
             </div>
           );
         })}
       </div>
       <div className="flex gap-2 pl-1 mt-1">
         {points.map((p) => (
-          <span key={p.period} className="flex-1 text-center text-[10px] text-slate-500 min-w-[18px]">{monthLabel(p.period)}</span>
+          <span key={p.id} className="flex-1 text-center text-[10px] text-slate-500 min-w-[18px]">{checkDate(p.takenAt)}</span>
         ))}
       </div>
+    </div>
+  );
+}
+
+/** Difference between two numbers, coloured by whether it is better or worse. */
+function Delta({ now, before, higherIsBetter, pct }: { now: number | null; before: number | null; higherIsBetter: boolean; pct?: boolean }) {
+  if (now === null || before === null) return <span className="text-slate-400">–</span>;
+  const diff = Math.round((now - before) * 10) / 10;
+  if (diff === 0) return <span className="text-slate-500">no change</span>;
+  const better = higherIsBetter ? diff > 0 : diff < 0;
+  return (
+    <span className={`font-bold ${better ? 'text-emerald-600 dark:text-emerald-400' : 'text-red-600 dark:text-red-400'}`}>
+      {diff > 0 ? '▲' : '▼'} {Math.abs(diff)}{pct ? ' pts' : ''}
+    </span>
+  );
+}
+
+/** "Where they are now vs where they were at the last check." */
+function SinceLastCheck({ detail, last }: { detail: HomeDetail; last: Check }) {
+  const rows: { label: string; then: number | null; now: number | null; higherIsBetter: boolean; pct?: boolean }[] = [
+    { label: 'Compliance', then: last.compliancePct, now: detail.compliancePct, higherIsBetter: true, pct: true },
+    { label: 'Expired', then: last.expired, now: detail.counts.expired, higherIsBetter: false },
+    { label: 'Never completed', then: last.missing, now: detail.counts.missing, higherIsBetter: false },
+    { label: 'Expiring in 60 days', then: last.expiring, now: detail.counts.expiring, higherIsBetter: false },
+    { label: 'Allocated, not done', then: last.allocated, now: detail.counts.allocated, higherIsBetter: false },
+    ...(detail.ldaApplies ? [{ label: 'Oliver McGowan', then: last.ldaPct, now: detail.ldaPct, higherIsBetter: true, pct: true }] : []),
+  ];
+  const show = (v: number | null, pct?: boolean) => (pct ? pctText(v) : v === null ? '–' : String(v));
+  return (
+    <div className="overflow-x-auto">
+      <p className="text-xs print:text-[8px] text-slate-500 mb-2 print:mb-1">
+        Last check: <strong>{checkDateTime(last.takenAt)}</strong>{last.takenBy && <> by {last.takenBy}</>}{last.note && <> – &ldquo;{last.note}&rdquo;</>}
+      </p>
+      <table className="w-full text-left text-sm print:text-[9px] min-w-[420px] print:min-w-0">
+        <thead className="border-b border-slate-200 dark:border-slate-700">
+          <tr className="text-[11px] print:text-[7.5px] uppercase text-slate-500">
+            <th className="py-1.5 pr-3 font-bold">Measure</th>
+            <th className="py-1.5 px-3 font-bold text-right">At last check</th>
+            <th className="py-1.5 px-3 font-bold text-right">Now</th>
+            <th className="py-1.5 pl-3 font-bold text-right">Change</th>
+          </tr>
+        </thead>
+        <tbody className="divide-y divide-slate-100 dark:divide-slate-700/60">
+          {rows.map((r) => (
+            <tr key={r.label}>
+              <td className="py-1.5 print:py-0.5 pr-3 font-bold">{r.label}</td>
+              <td className="py-1.5 print:py-0.5 px-3 text-right tabular-nums">{show(r.then, r.pct)}</td>
+              <td className="py-1.5 print:py-0.5 px-3 text-right tabular-nums font-bold">{show(r.now, r.pct)}</td>
+              <td className="py-1.5 print:py-0.5 pl-3 text-right tabular-nums"><Delta now={r.now} before={r.then} higherIsBetter={r.higherIsBetter} pct={r.pct} /></td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+/** Every check snapshot for the home, newest first, with the change from the check before. */
+function CheckHistory({ checks }: { checks: Check[] }) {
+  const newestFirst = [...checks].reverse();
+  const cell = 'p-2 print:px-1 print:py-0.5';
+  return (
+    <div className="overflow-x-auto">
+      <table className="w-full text-left text-sm print:text-[8.5px] min-w-[760px] print:min-w-0">
+        <thead className="border-y border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-900/50">
+          <tr className="text-[11px] print:text-[7.5px] uppercase text-slate-500">
+            <th className={`${cell} font-bold`}>Date</th>
+            <th className={`${cell} font-bold`}>Taken by</th>
+            <th className={`${cell} font-bold`}>Note</th>
+            <th className={`${cell} font-bold text-right`}>Compliance</th>
+            <th className={`${cell} font-bold text-right`}>Change</th>
+            <th className={`${cell} font-bold text-center`}>Expired</th>
+            <th className={`${cell} font-bold text-center`}>Never done</th>
+            <th className={`${cell} font-bold text-center`}>Expiring</th>
+            <th className={`${cell} font-bold text-center`}>Oliver McGowan</th>
+          </tr>
+        </thead>
+        <tbody className="divide-y divide-slate-200 dark:divide-slate-700">
+          {newestFirst.map((c, i) => {
+            const before = newestFirst[i + 1];
+            return (
+              <tr key={c.id} className="align-top print:break-inside-avoid">
+                <td className={`${cell} whitespace-nowrap`}>{checkDateTime(c.takenAt)}</td>
+                <td className={cell}>{c.takenBy || <span className="text-slate-400">–</span>}</td>
+                <td className={`${cell} text-slate-600 dark:text-slate-300`}>{c.note || <span className="text-slate-400">–</span>}</td>
+                <td className={`${cell} text-right font-black tabular-nums ${band(c.compliancePct).text}`}>{pctText(c.compliancePct)}</td>
+                <td className={`${cell} text-right tabular-nums`}>{before ? <Delta now={c.compliancePct} before={before.compliancePct} higherIsBetter pct /> : <span className="text-slate-400">first</span>}</td>
+                <td className={`${cell} text-center tabular-nums`}>{c.expired}</td>
+                <td className={`${cell} text-center tabular-nums`}>{c.missing}</td>
+                <td className={`${cell} text-center tabular-nums`}>{c.expiring}</td>
+                <td className={`${cell} text-center tabular-nums`}>{pctText(c.ldaPct)}</td>
+              </tr>
+            );
+          })}
+        </tbody>
+      </table>
     </div>
   );
 }
@@ -234,11 +330,12 @@ async function downloadExcel(detail: HomeDetail, generated: Generated) {
     ['Hours lost – absences', Math.round(detail.hours.lostAbsence * 10) / 10],
     ['Hours lost – late arrivals', Math.round(detail.hours.lostLate * 10) / 10],
     [],
-    head(['Month', 'Compliance', 'Oliver McGowan']),
-    ...detail.trend.map((t) => [
-      t.period,
-      { value: pctCell(t.compliancePct), type: Number, format: '0.0%' },
-      { value: pctCell(t.ldaPct), type: Number, format: '0.0%' },
+    head(['Check snapshot', 'Compliance', 'Oliver McGowan', 'Expired', 'Never completed', 'Expiring', 'Taken by', 'Note']),
+    ...[...detail.checks].reverse().map((c) => [
+      checkDateTime(c.takenAt),
+      { value: pctCell(c.compliancePct), type: Number, format: '0.0%' },
+      { value: pctCell(c.ldaPct), type: Number, format: '0.0%' },
+      c.expired, c.missing, c.expiring, c.takenBy || '', c.note || '',
     ]),
   ];
 
@@ -260,7 +357,7 @@ async function downloadExcel(detail: HomeDetail, generated: Generated) {
 
   const safeName = detail.locationName.replace(/[^\w\- ]+/g, '').trim() || 'Home';
   await writeXlsxFile([
-    { data: summary, sheet: 'Summary', columns: [{ width: 46 }, { width: 40 }, { width: 16 }] },
+    { data: summary, sheet: 'Summary', columns: [{ width: 46 }, { width: 40 }, { width: 16 }, { width: 10 }, { width: 16 }, { width: 10 }, { width: 22 }, { width: 40 }] },
     { data: courses, sheet: 'By course', columns: [{ width: 40 }, { width: 20 }, ...Array(8).fill({ width: 13 })], stickyRowsCount: 1 },
     { data: people, sheet: 'By person', columns: [{ width: 28 }, { width: 12 }, { width: 40 }, { width: 16 }, { width: 26 }, { width: 14 }], stickyRowsCount: 1 },
   ]).toFile(`Compliance report - ${safeName} - ${ukToday()}.xlsx`);
@@ -280,6 +377,8 @@ export default function ComplianceReportPage() {
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [snapshotting, setSnapshotting] = useState(false);
+  const [snapshotOpen, setSnapshotOpen] = useState(false);
+  const [snapshotNote, setSnapshotNote] = useState('');
   const [exporting, setExporting] = useState(false);
   const [onlyActions, setOnlyActions] = useState(true);
 
@@ -333,15 +432,23 @@ export default function ComplianceReportPage() {
     void load();
   }, [load]);
 
-  const saveSnapshot = async () => {
-    if (!window.confirm("Save this month's compliance figures for every home? If this month already has a snapshot it will be replaced.")) return;
+  const takeSnapshot = async () => {
+    if (!homeId) return;
     setSnapshotting(true);
     setNotice(null);
+    setError(null);
     try {
-      const response = await fetch('/api/reports/compliance/snapshot', { method: 'POST' });
+      const response = await fetch('/api/reports/compliance/snapshot', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ locationId: homeId, note: snapshotNote }),
+      });
       const body = await response.json().catch(() => ({}));
       if (!response.ok) throw new Error(body.error || 'Snapshot failed.');
-      setNotice(`Saved ${body.saved} home${body.saved === 1 ? '' : 's'} for ${monthLabel(body.period)}.`);
+      setSnapshotOpen(false);
+      setSnapshotNote('');
+      await load();
+      setNotice(`Snapshot saved (${pctText(body.snapshot?.compliancePct ?? null)}). It's now the starting point for the next check.`);
     } catch (snapError) {
       setError(snapError instanceof Error ? snapError.message : 'Snapshot failed.');
     } finally {
@@ -418,11 +525,6 @@ export default function ComplianceReportPage() {
                 ))}
               </div>
               <div className="flex-1" />
-              {overview.canSnapshot && (
-                <UniformButton variant="secondary" size="sm" onClick={() => void saveSnapshot()} disabled={snapshotting}>
-                  {snapshotting ? 'Saving…' : "📸 Save this month's snapshot"}
-                </UniformButton>
-              )}
               <UniformButton variant="secondary" size="sm" onClick={() => window.print()}>🖨️ Download PDF</UniformButton>
             </div>
 
@@ -485,6 +587,9 @@ export default function ComplianceReportPage() {
               <span className="print:hidden"><RegulatorBadge regulator={d.regulator} /></span>
               <div className="flex-1" />
               <div className="flex gap-2 print:hidden">
+                {detail.canSnapshot && (
+                  <UniformButton variant="secondary" size="sm" onClick={() => setSnapshotOpen((v) => !v)} disabled={snapshotting}>📸 Take snapshot</UniformButton>
+                )}
                 <UniformButton variant="secondary" size="sm" onClick={() => window.print()}>🖨️ Download PDF</UniformButton>
                 <UniformButton variant="primary" size="sm" disabled={exporting} onClick={async () => {
                   setExporting(true);
@@ -494,6 +599,27 @@ export default function ComplianceReportPage() {
                 </UniformButton>
               </div>
             </div>
+
+            {snapshotOpen && detail.canSnapshot && (
+              <div className={`${card} p-4 mb-4 print:hidden`}>
+                <p className="text-sm font-bold mb-1">Take a snapshot of {d.locationName} as it is now</p>
+                <p className="text-xs text-slate-500 mb-3">Saves today&rsquo;s figures to this home&rsquo;s check history, with your name. Earlier snapshots are kept, and the next check will be compared with this one.</p>
+                <div className="flex flex-wrap gap-2">
+                  <input
+                    type="text"
+                    value={snapshotNote}
+                    onChange={(e) => setSnapshotNote(e.target.value)}
+                    onKeyDown={(e) => { if (e.key === 'Enter' && !snapshotting) void takeSnapshot(); }}
+                    maxLength={500}
+                    placeholder="Note (optional), e.g. Quarterly site check"
+                    aria-label="Snapshot note"
+                    className={`${select} flex-1 min-w-[240px]`}
+                  />
+                  <UniformButton variant="primary" size="sm" onClick={() => void takeSnapshot()} disabled={snapshotting}>{snapshotting ? 'Saving…' : 'Save snapshot'}</UniformButton>
+                  <UniformButton variant="secondary" size="sm" onClick={() => setSnapshotOpen(false)} disabled={snapshotting}>Cancel</UniformButton>
+                </div>
+              </div>
+            )}
 
             <div className="grid grid-cols-2 md:grid-cols-4 print:grid-cols-4 gap-4 print:gap-2 mb-4 print:mb-2">
               <Tile label="Compliance" value={pctText(d.compliancePct)} tone={band(d.compliancePct).text} sub={<>{band(d.compliancePct).label} · {d.staffCount} staff<br /><Change now={d.compliancePct} before={d.previous} /></>} />
@@ -506,10 +632,24 @@ export default function ComplianceReportPage() {
               <Tile label="Hours lost" value={formatHours(d.hours.lostAbsence + d.hours.lostLate)} sub={<>{formatHours(d.hours.lostAbsence)} absences · {formatHours(d.hours.lostLate)} late{d.hours.sessionsWithoutTimes > 0 && <span className="text-amber-600"> · {d.hours.sessionsWithoutTimes} session(s) without times not counted</span>}</>} />
             </div>
 
+            {d.checks.length > 0 && (
+              <section className={`${card} p-5 print:p-2 mb-6 print:mb-3 print:break-inside-avoid`}>
+                <h3 className="text-sm print:text-[10px] font-black uppercase mb-3 print:mb-1">Since the last check</h3>
+                <SinceLastCheck detail={d} last={d.checks[d.checks.length - 1]} />
+              </section>
+            )}
+
             <section className={`${card} p-5 print:p-2 mb-6 print:mb-3 print:break-inside-avoid`}>
-              <h3 className="text-sm print:text-[10px] font-black uppercase mb-3 print:mb-1">Compliance by month</h3>
-              <TrendChart points={d.trend} />
+              <h3 className="text-sm print:text-[10px] font-black uppercase mb-3 print:mb-1">Compliance at each check</h3>
+              <TrendChart points={d.checks} />
             </section>
+
+            {d.checks.length > 0 && (
+              <section className={`${card} mb-6 print:mb-3`}>
+                <h3 className="text-sm print:text-[10px] font-black uppercase p-4 pb-2 print:p-2 print:pb-1">Check history</h3>
+                <CheckHistory checks={d.checks} />
+              </section>
+            )}
 
             <section className={`${card} mb-6 print:mb-3 overflow-x-auto`}>
               <h3 className="text-sm print:text-[10px] font-black uppercase p-4 pb-2 print:p-2 print:pb-1">By course</h3>

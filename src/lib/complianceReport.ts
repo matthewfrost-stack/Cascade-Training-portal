@@ -29,7 +29,8 @@ export type HomeSummary = {
   ldaPct: number | null;
   ldaApplies: boolean;
   hours: HoursSummary;
-  previous: { period: string; compliancePct: number | null } | null;
+  /** The most recent check snapshot, to show the change since then. */
+  previous: { takenAt: string; compliancePct: number | null } | null;
 };
 
 export type CourseRow = { name: string; category: string; counts: StateCounts; required: number; compliancePct: number | null; isLda: boolean };
@@ -38,12 +39,27 @@ export type PersonAction = { course: string; state: 'expired' | 'missing' | 'exp
 
 export type PersonRow = { name: string; counts: StateCounts; required: number; compliancePct: number | null; actions: PersonAction[] };
 
-export type SnapshotPoint = { period: string; compliancePct: number | null; ldaPct: number | null };
+/** Figures saved when the compliance team checked a home. */
+export type CheckSnapshot = {
+  id: string;
+  takenAt: string;
+  takenBy: string | null;
+  note: string | null;
+  compliancePct: number | null;
+  ldaPct: number | null;
+  required: number;
+  expired: number;
+  missing: number;
+  expiring: number;
+  allocated: number;
+  staffCount: number;
+};
 
 export type HomeDetail = HomeSummary & {
   courses: CourseRow[];
   people: PersonRow[];
-  trend: SnapshotPoint[];
+  /** Check snapshots, oldest first (up to the last 24). */
+  checks: CheckSnapshot[];
   period: { from: string; to: string };
 };
 
@@ -107,22 +123,55 @@ export async function hoursByHome(service: ServiceClient, from: string, to: stri
   return result;
 }
 
-async function previousSnapshots(service: ServiceClient, locationIds: string[], beforePeriod: string) {
-  const latest = new Map<string, { period: string; compliancePct: number | null }>();
+const pctOrNull = (value: unknown) => (value === null || value === undefined ? null : Number(value));
+
+/** The latest check snapshot for each home. */
+async function latestChecks(service: ServiceClient, locationIds: string[]) {
+  const latest = new Map<string, { takenAt: string; compliancePct: number | null }>();
   if (locationIds.length === 0) return latest;
   const { data, error } = await service
     .from('compliance_snapshots')
-    .select('location_id, period, compliance_pct')
+    .select('location_id, taken_at, compliance_pct')
     .in('location_id', locationIds)
-    .lt('period', beforePeriod)
-    .order('period', { ascending: false });
+    .order('taken_at', { ascending: false });
   if (error) return latest; // table not created yet: no comparison
   for (const row of data || []) {
-    if (!latest.has(row.location_id)) {
-      latest.set(row.location_id, { period: row.period, compliancePct: row.compliance_pct === null ? null : Number(row.compliance_pct) });
-    }
+    if (!latest.has(row.location_id)) latest.set(row.location_id, { takenAt: row.taken_at, compliancePct: pctOrNull(row.compliance_pct) });
   }
   return latest;
+}
+
+type SnapshotRow = {
+  id: string; taken_at: string; taken_by_name?: string | null; note?: string | null;
+  compliance_pct: unknown; lda_pct: unknown; required: number; expired: number; missing: number; expiring: number; allocated: number; staff_count: number;
+};
+
+function toCheck(row: SnapshotRow): CheckSnapshot {
+  return {
+    id: row.id,
+    takenAt: row.taken_at,
+    takenBy: row.taken_by_name ?? null,
+    note: row.note ?? null,
+    compliancePct: pctOrNull(row.compliance_pct),
+    ldaPct: pctOrNull(row.lda_pct),
+    required: row.required,
+    expired: row.expired,
+    missing: row.missing,
+    expiring: row.expiring,
+    allocated: row.allocated,
+    staffCount: row.staff_count,
+  };
+}
+
+/** Check snapshots for one home, oldest first. Works before the per-check migration (no name/note yet). */
+async function checksForHome(service: ServiceClient, locationId: string): Promise<CheckSnapshot[]> {
+  const base = 'id, taken_at, compliance_pct, lda_pct, required, expired, missing, expiring, allocated, staff_count';
+  const query = (columns: string) =>
+    service.from('compliance_snapshots').select(columns).eq('location_id', locationId).order('taken_at', { ascending: false }).limit(24);
+  let result = await query(`${base}, taken_by_name, note`);
+  if (result.error) result = await query(base);
+  if (result.error) return [];
+  return ((result.data || []) as unknown as SnapshotRow[]).map(toCheck).reverse();
 }
 
 function summarise(home: HomeEvaluation, hours: HoursSummary | undefined, previous: HomeSummary['previous']): HomeSummary {
@@ -153,7 +202,7 @@ export async function buildOverview(service: ServiceClient, locationIds: string[
   const homes = await evaluateHomes(service, { onlyLocationIds: locationIds ?? undefined });
   const [hours, previous] = await Promise.all([
     hoursByHome(service, period.from, period.to),
-    previousSnapshots(service, homes.map((h) => h.locationId), ukToday().slice(0, 7)),
+    latestChecks(service, homes.map((h) => h.locationId)),
   ]);
   return homes
     .map((home) => summarise(home, hours.get(home.locationName.trim().toLowerCase()), previous.get(home.locationId) || null))
@@ -164,11 +213,12 @@ export async function buildHomeDetail(service: ServiceClient, locationId: string
   const [home] = await evaluateHomes(service, { onlyLocationIds: [locationId] });
   if (!home) return null;
 
-  const [hours, previous, trendResult] = await Promise.all([
+  const [hours, checks] = await Promise.all([
     hoursByHome(service, period.from, period.to),
-    previousSnapshots(service, [locationId], ukToday().slice(0, 7)),
-    service.from('compliance_snapshots').select('period, compliance_pct, lda_pct').eq('location_id', locationId).order('period', { ascending: false }).limit(13),
+    checksForHome(service, locationId),
   ]);
+  const last = checks[checks.length - 1];
+  const previous = last ? { takenAt: last.takenAt, compliancePct: last.compliancePct } : null;
 
   const byCourse = new Map<string, Cell[]>();
   const byPerson = new Map<string, Cell[]>();
@@ -202,51 +252,47 @@ export async function buildHomeDetail(service: ServiceClient, locationId: string
     })
     .sort((a, b) => (a.compliancePct ?? 101) - (b.compliancePct ?? 101) || a.name.localeCompare(b.name));
 
-  const trend: SnapshotPoint[] = (trendResult.error ? [] : trendResult.data || [])
-    .map((row) => ({
-      period: row.period,
-      compliancePct: row.compliance_pct === null ? null : Number(row.compliance_pct),
-      ldaPct: row.lda_pct === null ? null : Number(row.lda_pct),
-    }))
-    .reverse();
-
   return {
-    ...summarise(home, hours.get(home.locationName.trim().toLowerCase()), previous.get(locationId) || null),
+    ...summarise(home, hours.get(home.locationName.trim().toLowerCase()), previous),
     courses,
     people,
-    trend,
+    checks,
     period,
   };
 }
 
-/** Saves this month's figures for every home (replacing this month's row if it exists). */
-export async function saveSnapshots(service: ServiceClient): Promise<{ period: string; saved: number }> {
-  const period = ukToday().slice(0, 7);
-  const homes = await evaluateHomes(service);
-  const rows = homes.map((home) => {
-    const counts = countStates(home.cells);
-    return {
-      location_id: home.locationId,
-      period,
-      taken_at: new Date().toISOString(),
-      compliance_pct: compliancePercent(counts),
-      required: requiredCount(counts),
-      in_date: counts.in_date + counts.expiring,
-      expiring: counts.expiring,
-      expired: counts.expired,
-      missing: counts.missing,
-      allocated: counts.allocated,
-      staff_count: home.people.length,
-      lda_pct: ldaSummary(home).pct,
-    };
-  });
-  if (rows.length === 0) return { period, saved: 0 };
-  const { error } = await service.from('compliance_snapshots').upsert(rows, { onConflict: 'location_id,period' });
+/** Saves one home's figures now, as a check snapshot (earlier snapshots are kept). */
+export async function saveCheckSnapshot(
+  service: ServiceClient,
+  locationId: string,
+  by: { userId: string; name: string; note: string | null },
+): Promise<CheckSnapshot> {
+  const [home] = await evaluateHomes(service, { onlyLocationIds: [locationId] });
+  if (!home) throw new Error('Home not found.');
+  const counts = countStates(home.cells);
+  const row = {
+    location_id: home.locationId,
+    period: ukToday().slice(0, 7),
+    taken_at: new Date().toISOString(),
+    taken_by: by.userId,
+    taken_by_name: by.name,
+    note: by.note,
+    compliance_pct: compliancePercent(counts),
+    required: requiredCount(counts),
+    in_date: counts.in_date + counts.expiring,
+    expiring: counts.expiring,
+    expired: counts.expired,
+    missing: counts.missing,
+    allocated: counts.allocated,
+    staff_count: home.people.length,
+    lda_pct: ldaSummary(home).pct,
+  };
+  const { data, error } = await service.from('compliance_snapshots').insert(row).select('id, taken_at, taken_by_name, note, compliance_pct, lda_pct, required, expired, missing, expiring, allocated, staff_count').single();
   if (error) {
-    if (error.code === '42P01' || /compliance_snapshots/.test(error.message || '')) {
-      throw new Error('Snapshots are not switched on yet. Run the migration 20261117180000_add_compliance_snapshots.sql in the Supabase SQL Editor.');
+    if (error.code === '42P01' || error.code === 'PGRST204' || error.code === '23505' || /compliance_snapshots|taken_by|note/.test(error.message || '')) {
+      throw new Error('Check snapshots are not switched on yet. Run the migrations 20261117180000_add_compliance_snapshots.sql and 20261118090000_compliance_snapshots_per_check.sql in the Supabase SQL Editor.');
     }
     throw new Error(error.message);
   }
-  return { period, saved: rows.length };
+  return toCheck(data as SnapshotRow);
 }
