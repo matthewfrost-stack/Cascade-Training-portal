@@ -346,6 +346,10 @@ Always-on workspace constraints that apply to every agent invocation.
 
 ## 11. Current Development Status
 
+### Feedback forms – Phase 4, part 4: admin screen (2026-11-18)
+- `/automation-control` is now the **Feedback & Emails** page (admin card renamed; replaces `FeedbackManagerModal`, removed). Tabs: **Questions** (edit/reorder/add/remove, answer types, 1/10 meanings, options, min picks, positive words; live preview using `FeedbackQuestionFields`; "Standard questions" reset), **Emails** (feedback email and booking reminders, each with its own switch, timings and texts; confirm before switching on), **Send now** (sessions of the last 14 days with signed-in counts; test mode on by default, to the logged-in admin; live send needs confirmation).
+- `GET|PUT /api/feedback/settings` (admin): saves questions to `feedback_settings.default_form` (cleaned with `normaliseQuestions`), email settings to `feedback_automation_settings` (old texts' literal `\n` shown as line breaks). Email sends also fixed: bookings→profiles embed named (`profiles:profile_id`) — the unnamed one was ambiguous and every send returned 500.
+
 ### Feedback forms – Phase 4, part 3: emails (2026-11-18)
 - `/api/automations/feedback-emails` (cron every 10 min via `cron.yml`, or admin): **two switches** on `feedback_automation_settings`: `is_enabled` = feedback email only (to people signed in on the register, link `/feedback?event=<id>`), new `reminders_enabled` = booking reminders (staff N days before + list to each home's manager Google Group from `locations.manager_email`; homes without one are skipped; the guessed `{home}managers@` addresses are no longer used). Both OFF.
 - Emails are due from their target time for up to 12 h (was a ±5 min window that a late GitHub run would miss). Test-mode sends go to one address, send one sample of each kind and do **not** mark the session as sent (they used to, which would have blocked the real email). Sending for one session (`POST { eventId }`) always needs an admin.
