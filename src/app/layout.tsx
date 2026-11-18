@@ -36,12 +36,15 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
       <body className="font-sans antialiased bg-white text-slate-900 dark:bg-[#0f172a] dark:text-white min-h-screen overflow-x-hidden">
         <NavDrawerProvider>
           <CurrentUserProfileProvider>
-            <SessionTimeout />
-            <UpdateNotification />
-            <FixedHeader />
-            <SlideOutNav />
+            {/* App chrome (header, menus, pop-ups) is left out when printing / saving as PDF. */}
+            <div className="print:hidden">
+              <SessionTimeout />
+              <UpdateNotification />
+              <FixedHeader />
+              <SlideOutNav />
+            </div>
             {/* Main content area with top padding for fixed header and left padding for side emoji rail */}
-            <div id="app-scroll" className="min-h-screen pt-14 pl-16">
+            <div id="app-scroll" className="min-h-screen pt-14 pl-16 print:min-h-0 print:p-0">
               {children}
             </div>
           </CurrentUserProfileProvider>

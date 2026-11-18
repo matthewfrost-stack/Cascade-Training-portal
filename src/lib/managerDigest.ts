@@ -4,27 +4,16 @@ import { escapeHtml } from '@/lib/email';
 /**
  * Monthly "training due" email for each home's managers.
  *
- * It follows the Training Matrix exactly: every person linked to the home,
- * against every course on that home's matrix ("X" and "X (Careskills)" are one
- * course). Each cell is judged the way MatrixLayout colours it:
- *   - N/A or Not yet due            -> left out
- *   - Allocated / awaiting / booked -> Allocated
- *   - No completion date            -> Never completed (the matrix's red "Missing")
- *   - One-off course, completed     -> left out
- *   - No expiry date, or expired    -> Expired
- *   - Expires within LOOKAHEAD_DAYS -> Expiring
- * The expiry rule (one-off or not) comes from the course on the home's
- * matrix, not from whichever copy of the course the record was saved under.
+ * The state of every matrix cell comes from evaluateHomes() in
+ * src/lib/compliance.ts, shared with the compliance report, so the email,
+ * the report and the Training Matrix always agree.
  */
 
-export const LOOKAHEAD_DAYS = 60;
-const TIME_ZONE = 'Europe/London';
+import { evaluateHomes, LOOKAHEAD_DAYS, ukToday, MissingMigrationError, type Cell } from '@/lib/compliance';
+
+export { LOOKAHEAD_DAYS, ukToday, MissingMigrationError };
 
 type ServiceClient = ReturnType<typeof createServiceClient>;
-type One<T> = T | T[] | null | undefined;
-const first = <T,>(value: One<T>): T | undefined => (Array.isArray(value) ? value[0] : value ?? undefined);
-
-type CourseRef = { id: string; name?: string | null; expiry_months?: number | null; never_expires?: boolean | null };
 
 export type DigestItem = {
   course: string;
@@ -50,11 +39,6 @@ export type HomeDigest = {
 
 // ---------- dates ----------
 
-/** Today's date in the UK as YYYY-MM-DD. */
-export function ukToday(now: Date = new Date()): string {
-  return new Intl.DateTimeFormat('en-CA', { timeZone: TIME_ZONE, year: 'numeric', month: '2-digit', day: '2-digit' }).format(now);
-}
-
 /** The month a send belongs to, e.g. '2026-12'. */
 export function digestPeriod(now: Date = new Date()): string {
   return ukToday(now).slice(0, 7);
@@ -65,154 +49,23 @@ export function periodLabel(period: string): string {
   return new Date(Date.UTC(year, month - 1, 1)).toLocaleDateString('en-GB', { month: 'long', year: 'numeric', timeZone: 'UTC' });
 }
 
-function addDays(isoDate: string, days: number): string {
-  const d = new Date(`${isoDate}T00:00:00Z`);
-  d.setUTCDate(d.getUTCDate() + days);
-  return d.toISOString().slice(0, 10);
-}
-
 function formatShortDate(isoDate: string): string {
   const d = new Date(`${isoDate.slice(0, 10)}T00:00:00Z`);
   if (Number.isNaN(d.getTime())) return isoDate;
   return d.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric', timeZone: 'UTC' });
 }
 
-// ---------- course helpers (same rules as the matrix) ----------
-
-function canonicalCourseName(name?: string | null): string {
-  if (!name) return '';
-  return name.replace(/\s+\(Careskills\)\s*$/i, '').replace(/\s+/g, ' ').trim().toLowerCase();
-}
-
-function displayCourseName(name?: string | null): string {
-  return (name || 'Unknown course').replace(/\s+\(Careskills\)\s*$/i, '').replace(/\s+/g, ' ').trim();
-}
-
-function isOneOffCourse(course: Pick<CourseRef, 'expiry_months' | 'never_expires'> | undefined): boolean {
-  return Boolean(course?.never_expires || !course?.expiry_months || course?.expiry_months === 9999);
-}
-
-function isDeletedProfile(profile: { full_name?: string | null; is_deleted?: boolean | null } | undefined): boolean {
-  if (!profile) return true;
-  if (profile.is_deleted) return true;
-  const name = (profile.full_name || '').trim().toLowerCase();
-  return name === 'deleted user' || name.startsWith('deleted-') || name.includes('deleted-duplicate');
-}
-
-async function fetchAll<T>(
-  build: (from: number, to: number) => PromiseLike<{ data: T[] | null; error: { message?: string } | null }>
-): Promise<T[]> {
-  const pageSize = 1000;
-  const rows: T[] = [];
-  for (let from = 0; ; from += pageSize) {
-    const { data, error } = await build(from, from + pageSize - 1);
-    if (error) throw new Error(error.message || 'Database query failed');
-    rows.push(...(data || []));
-    if (!data || data.length < pageSize) break;
-  }
-  return rows;
-}
-
-/** Runs `task` for each item with at most `limit` running at once. */
-async function mapLimited<T, R>(items: T[], limit: number, task: (item: T) => Promise<R>): Promise<R[]> {
-  const results: R[] = new Array(items.length);
-  let next = 0;
-  const workers = Array.from({ length: Math.min(limit, items.length) }, async () => {
-    while (next < items.length) {
-      const index = next++;
-      results[index] = await task(items[index]);
-    }
-  });
-  await Promise.all(workers);
-  return results;
-}
-
 // ---------- data ----------
 
-type LocationRow = { id: string; name: string; manager_email?: string | null };
-type StaffLocationRow = { staff_id: string; location_id: string; profiles: One<{ full_name?: string | null; is_deleted?: boolean | null }> };
-type LocationCourseRow = { location_id: string; training_course_id: string };
-type MatrixRow = {
-  staff_id: string;
-  course_id: string;
-  completion_date: string | null;
-  expiry_date: string | null;
-  status: string | null;
-};
-type EventRow = { id: string; event_date: string; courses: One<{ name?: string | null }> };
-type BookingRow = { profile_id: string; event_id: string };
-
-export class MissingMigrationError extends Error {}
-
-export async function loadLocations(service: ServiceClient): Promise<LocationRow[]> {
-  const { data, error } = await service.from('locations').select('id, name, manager_email').order('name');
-  if (error) {
-    if (error.code === '42703' || /manager_email/.test(error.message || '')) {
-      throw new MissingMigrationError(
-        'The database has not been updated yet. Run the migration 20261117090000_add_location_manager_email_and_digest_log.sql in the Supabase SQL Editor.'
-      );
-    }
-    throw new Error(error.message);
-  }
-  // Deduplicate by id, as the Location Manager does.
-  return Array.from(new Map((data || []).map((row) => [row.id, row as LocationRow])).values());
-}
-
-/** Builds the digest for every home (or just `onlyLocationId`). */
+/** Builds the digest for every home (or just `onlyLocationId`), from the shared cell rules. */
 export async function buildHomeDigests(
   service: ServiceClient,
   options: { onlyLocationId?: string; now?: Date } = {}
 ): Promise<HomeDigest[]> {
-  const today = ukToday(options.now);
-  const horizon = addDays(today, LOOKAHEAD_DAYS);
-
-  let locations = await loadLocations(service);
-  if (options.onlyLocationId) locations = locations.filter((loc) => loc.id === options.onlyLocationId);
-  if (locations.length === 0) return [];
-  const locationIds = locations.map((loc) => loc.id);
-
-  const [staffLinks, courseLinks, allCourses, upcomingEvents] = await Promise.all([
-    fetchAll<StaffLocationRow>((from, to) =>
-      service.from('staff_locations').select('staff_id, location_id, profiles(full_name, is_deleted)').in('location_id', locationIds).range(from, to)),
-    fetchAll<LocationCourseRow>((from, to) =>
-      service.from('location_training_courses').select('location_id, training_course_id').in('location_id', locationIds).range(from, to)),
-    fetchAll<CourseRef>((from, to) =>
-      service.from('training_courses').select('id, name, expiry_months, never_expires').range(from, to)),
-    fetchAll<EventRow>((from, to) =>
-      service.from('training_events').select('id, event_date, courses(name)').gte('event_date', today).range(from, to)),
-  ]);
-
-  // Every matrix record for each home (one home at a time keeps each query small).
-  const matrixByLocation = new Map<string, MatrixRow[]>();
-  await mapLimited(locationIds, 6, async (locationId) => {
-    const rows = await fetchAll<MatrixRow>((from, to) =>
-      service
-        .from('staff_training_matrix')
-        .select('staff_id, course_id, completion_date, expiry_date, status')
-        .eq('completed_at_location_id', locationId)
-        .range(from, to));
-    matrixByLocation.set(locationId, rows);
+  const homes = await evaluateHomes(service, {
+    onlyLocationIds: options.onlyLocationId ? [options.onlyLocationId] : undefined,
+    now: options.now,
   });
-
-  const courseById = new Map(allCourses.map((course) => [course.id, course]));
-
-  // Earliest upcoming booking per person + course name.
-  const eventById = new Map(upcomingEvents.map((event) => [event.id, event]));
-  const bookedOn = new Map<string, string>();
-  const eventIds = upcomingEvents.map((event) => event.id);
-  for (let i = 0; i < eventIds.length; i += 200) {
-    const chunk = eventIds.slice(i, i + 200);
-    const bookings = await fetchAll<BookingRow>((from, to) =>
-      service.from('bookings').select('profile_id, event_id').in('event_id', chunk).range(from, to));
-    for (const booking of bookings) {
-      const event = eventById.get(booking.event_id);
-      const courseName = canonicalCourseName(first(event?.courses)?.name);
-      if (!event || !courseName || !booking.profile_id) continue;
-      const key = `${booking.profile_id}::${courseName}`;
-      const existing = bookedOn.get(key);
-      if (!existing || event.event_date < existing) bookedOn.set(key, event.event_date);
-    }
-  }
 
   const finish = (bucket: Map<string, DigestPerson>): DigestPerson[] =>
     Array.from(bucket.values())
@@ -223,85 +76,23 @@ export async function buildHomeDigests(
       .sort((a, b) => a.name.localeCompare(b.name));
   const countItems = (people: DigestPerson[]) => people.reduce((sum, person) => sum + person.items.length, 0);
 
-  return locations.map((loc) => {
-    // Columns on this home's matrix, one per course name.
-    const columns = new Map<string, CourseRef>();
-    for (const link of courseLinks) {
-      if (link.location_id !== loc.id) continue;
-      const course = courseById.get(link.training_course_id);
-      const key = canonicalCourseName(course?.name);
-      if (!course || !key) continue;
-      // Prefer the non-Careskills copy as the column's course, as the matrix does.
-      const existing = columns.get(key);
-      if (!existing || (/\(careskills\)/i.test(existing.name || '') && !/\(careskills\)/i.test(course.name || ''))) {
-        columns.set(key, course);
-      }
-    }
-
-    // Records for this home, grouped by person + course name.
-    const recordsByCell = new Map<string, MatrixRow[]>();
-    for (const row of matrixByLocation.get(loc.id) || []) {
-      const key = `${row.staff_id}::${canonicalCourseName(courseById.get(row.course_id)?.name)}`;
-      const list = recordsByCell.get(key) || [];
-      list.push(row);
-      recordsByCell.set(key, list);
-    }
-
-    // People on this home's matrix.
-    const people = new Map<string, string>();
-    for (const link of staffLinks) {
-      if (link.location_id !== loc.id) continue;
-      const profile = first(link.profiles);
-      if (isDeletedProfile(profile)) continue;
-      people.set(link.staff_id, (profile?.full_name || 'Unknown').trim());
-    }
-
+  return homes.map((home) => {
+    const names = new Map(home.people.map((p) => [p.staffId, p.name]));
+    const courseNames = new Map(home.columns.map((c) => [c.key, c.name]));
     const buckets = { expired: new Map<string, DigestPerson>(), missing: new Map<string, DigestPerson>(), expiring: new Map<string, DigestPerson>(), allocated: new Map<string, DigestPerson>() };
-    const addTo = (bucket: Map<string, DigestPerson>, staffId: string, item: DigestItem) => {
-      const person = bucket.get(staffId) || { name: people.get(staffId) || 'Unknown', items: [] };
+    const addTo = (bucket: Map<string, DigestPerson>, cell: Cell, item: DigestItem) => {
+      const person = bucket.get(cell.staffId) || { name: names.get(cell.staffId) || 'Unknown', items: [] };
       person.items.push(item);
-      bucket.set(staffId, person);
+      bucket.set(cell.staffId, person);
     };
 
-    for (const [staffId] of people) {
-      for (const [courseKey, column] of columns) {
-        const records = recordsByCell.get(`${staffId}::${courseKey}`) || [];
-        const statuses = records.map((r) => (r.status || '').toLowerCase());
-        const course = displayCourseName(column.name);
-        const booking = bookedOn.get(`${staffId}::${courseKey}`);
-
-        if (statuses.includes('na') || statuses.includes('not_yet_due')) continue;
-
-        // Latest completion and latest expiry across "X" and "X (Careskills)".
-        const completed = records.filter((r) => r.completion_date);
-        const latestExpiry = completed
-          .map((r) => r.expiry_date?.slice(0, 10))
-          .filter((d): d is string => Boolean(d))
-          .sort()
-          .pop();
-
-        if (statuses.some((s) => s === 'allocated' || s === 'awaiting' || s === 'booked')) {
-          // Already renewed under the other copy of the course? Then it's in date.
-          if (latestExpiry && latestExpiry > horizon && !isOneOffCourse(column)) continue;
-          addTo(buckets.allocated, staffId, { course, bookedOn: booking });
-          continue;
-        }
-
-        if (completed.length === 0) {
-          addTo(buckets.missing, staffId, { course, bookedOn: booking });
-          continue;
-        }
-
-        if (isOneOffCourse(column)) continue;
-
-        if (!latestExpiry) {
-          addTo(buckets.expired, staffId, { course, noExpiryDate: true, bookedOn: booking });
-        } else if (latestExpiry <= today) { // the matrix counts 'expires today' as expired
-          addTo(buckets.expired, staffId, { course, date: latestExpiry, bookedOn: booking });
-        } else if (latestExpiry < horizon) {
-          addTo(buckets.expiring, staffId, { course, date: latestExpiry, bookedOn: booking });
-        }
-      }
+    for (const cell of home.cells) {
+      const course = courseNames.get(cell.courseKey) || cell.courseKey;
+      const booked = cell.bookedOn ? { bookedOn: cell.bookedOn } : {};
+      if (cell.state === 'expired') addTo(buckets.expired, cell, cell.noExpiryDate ? { course, noExpiryDate: true, ...booked } : { course, date: cell.expiry, ...booked });
+      else if (cell.state === 'missing') addTo(buckets.missing, cell, { course, ...booked });
+      else if (cell.state === 'expiring') addTo(buckets.expiring, cell, { course, date: cell.expiry, ...booked });
+      else if (cell.state === 'allocated') addTo(buckets.allocated, cell, { course, ...booked });
     }
 
     const expired = finish(buckets.expired);
@@ -309,9 +100,9 @@ export async function buildHomeDigests(
     const expiring = finish(buckets.expiring);
     const allocated = finish(buckets.allocated);
     return {
-      locationId: loc.id,
-      locationName: loc.name,
-      managerEmail: loc.manager_email?.trim() || null,
+      locationId: home.locationId,
+      locationName: home.locationName,
+      managerEmail: home.managerEmail,
       expired,
       missing,
       expiring,
