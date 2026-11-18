@@ -347,6 +347,13 @@ Always-on workspace constraints that apply to every agent invocation.
 
 ## 11. Current Development Status
 
+### Feedback forms – Phase 4, part 1: the form (2026-11-18)
+- Staff can now open `/feedback` (proxy allowed list); before, they were redirected to the booking calendar. Logged-out visitors are sent to `/login?next=…` and returned to the link after signing in (`src/proxy.ts`, `src/app/login/page.tsx`; only same-site paths).
+- One form for every course. Questions come from `feedback_settings` key `default_form` (`config.fields`, what the builder edits) via `normaliseQuestions` in **`src/lib/feedbackForm.ts`** (also reads the older builder types; falls back to `DEFAULT_QUESTIONS`). Types: before_after, scale (1–10 buttons), choice, words, text. `feedback_form_config` is no longer used.
+- `GET|POST /api/feedback` (any logged-in role): course/date from the session, never the link; validation shared with the page (`validateAnswers`). Name optional: anonymous responses store no name or id. `feedback_submissions` (event, person; unique; server-only) records who has responded, unlinked from the answers, so nobody answers twice. Answers in `course_feedback.responses`; standard answers are also copied to the old columns.
+- Shared question renderer `src/app/components/FeedbackQuestionFields.tsx` (for the admin preview later).
+- Migration `20261118120000_feedback_form_v2.sql`: `is_anonymous`, `respondent_id`, old NOT NULLs dropped, `feedback_submissions`, and **security**: `course_feedback` was readable by any logged-in user (`USING true`) → admins only; browser inserts removed.
+
 ### Compliance check snapshots (2026-11-18)
 - Snapshots are now taken **per home by the compliance team** (admins + schedulers, homes in their scope) with "📸 Take snapshot" on a home's report page, plus an optional note. Every snapshot is kept (several a month is fine), with who took it (`taken_by`, `taken_by_name`) and `note`.
 - A home's page shows **Since the last check** (then vs now vs change for compliance, expired, never completed, expiring, allocated, Oliver McGowan), a **Compliance at each check** chart and a **Check history** table (change from the previous check). The overview's "▲/▼ since last check" uses each home's latest snapshot. Excel Summary lists the checks.
