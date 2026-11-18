@@ -72,6 +72,15 @@ export async function PUT(request: NextRequest) {
 
     const { error } = await service.from('staff_qualifications').upsert(row, { onConflict: 'profile_id,qualification' });
     if (error) throw error;
+    // The start date (and qualifications on entry) belong to the person, shared with the Care Certificate.
+    const { error: profileError } = await service
+      .from('profiles')
+      .update({ start_date: row.start_date, qualifications_on_entry: text(r.qualificationsOnEntry, 500) })
+      .eq('id', profileId);
+    if (profileError) {
+      if (/start_date|qualifications_on_entry/.test(profileError.message || '')) throw new DiplomaNotReady();
+      throw profileError;
+    }
     return NextResponse.json({ ok: true });
   } catch (error) {
     if (error instanceof DiplomaNotReady) return NextResponse.json({ error: error.message }, { status: 503 });

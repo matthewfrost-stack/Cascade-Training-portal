@@ -13,6 +13,8 @@ interface StaffMember {
   role_tier: 'staff' | 'scheduler' | 'manager' | 'admin';
   password?: string;
   managed_houses?: string[];
+  start_date?: string;
+  qualifications_on_entry?: string;
   // Bulk uploads set this to false so importing a CSV doesn't fire a setup
   // email at every person at once. Admins set those passwords via Reset Password.
   send_invite?: boolean;
@@ -256,6 +258,9 @@ export async function POST(request: NextRequest) {
               location: normalizedLocationName,
               role_tier: staff.role_tier,
               managed_houses: staff.managed_houses ?? [],
+              // Only sent when filled in, so creating staff works before the start-date migration.
+              ...(staff.start_date && /^\d{4}-\d{2}-\d{2}$/.test(staff.start_date) ? { start_date: staff.start_date } : {}),
+              ...(staff.qualifications_on_entry?.trim() ? { qualifications_on_entry: staff.qualifications_on_entry.trim().slice(0, 500) } : {}),
               password_needs_change: needsPasswordChange,
               is_deleted: false,
               deleted_at: null,

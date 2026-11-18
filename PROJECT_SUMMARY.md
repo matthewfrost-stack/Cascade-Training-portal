@@ -346,6 +346,11 @@ Always-on workspace constraints that apply to every agent invocation.
 
 ## 11. Current Development Status
 
+### Staff start date + qualifications on entry (2026-11-18)
+- `profiles.start_date` and `profiles.qualifications_on_entry` — one start date per person drives every "within X of starting" rule (Level 3 Diploma 2 years at children's homes; Care Certificate 12 weeks, next). Entered in Add/Edit Staff (`AddStaffModal`, `/api/add-staff`), the trackers (saved to the profile) and, later, a spreadsheet upload. Level 3 tracker now reads the profile date (falls back to `staff_qualifications.start_date`).
+- `staff_qualifications.qualification` also allows `CARE_CERTIFICATE` (for "already holds an equivalent" / "not required"; completion comes from the Training Matrix).
+- Migration `20261118190000_staff_start_date.sql` (copies dates already typed into the Level 3 tracker).
+
 ### Level 3 Diploma tracker – part 2: tracker page (2026-11-18)
 - `/reports/diploma` (dashboard tile "Level 3 Diploma"; `DIPLOMA_TRACKER` permission: admin, scheduler, manager; managers see their own homes). Headline tiles (qualified %, overdue, due within 6 months, start date needed), filters (home, where they stand, name), one table per children's home with an inline edit panel (start date, status, provider, enrolled/completed dates, equivalent, notes; shows the resulting band before saving), Excel download.
 - `GET|PUT /api/diploma` — people per home come from `staff_locations` (same as the compliance report); saving checks the person is at a children's home in the caller's scope. Server assembly in `src/lib/diplomaTracker.ts`.

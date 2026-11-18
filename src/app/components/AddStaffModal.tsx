@@ -16,6 +16,8 @@ interface StaffMember {
   location?: string | null;
   role_tier?: 'staff' | 'manager' | 'scheduler' | 'admin' | null;
   managed_houses?: string[] | null;
+  start_date?: string | null;
+  qualifications_on_entry?: string | null;
 }
 interface LocationCourseLink {
   training_course_id: string;
@@ -56,7 +58,9 @@ export default function AddStaffModal({ onClose, onRefresh }: { onClose: () => v
     home_house: '', 
     role_tier: 'staff' as 'staff' | 'manager' | 'scheduler' | 'admin',
     managed_houses: [] as string[],
-    password: ''
+    password: '',
+    start_date: '',
+    qualifications_on_entry: ''
   });
 
   const isUuid = (value: string): boolean =>
@@ -175,7 +179,11 @@ export default function AddStaffModal({ onClose, onRefresh }: { onClose: () => v
           email: formData.email,
           location: locationName,
           role_tier: formData.role_tier,
-          managed_houses: formData.managed_houses
+          managed_houses: formData.managed_houses,
+          // Start date / qualifications on entry (only once the database has these columns).
+          ...(currentStaff && 'start_date' in currentStaff
+            ? { start_date: formData.start_date || null, qualifications_on_entry: formData.qualifications_on_entry.trim() || null }
+            : {}),
         };
         debugLog('Updating staff with ID:', editingId, 'data:', updateData);
         const { error, data } = await supabase.from('profiles').update(updateData).eq('id', editingId).select();
@@ -321,7 +329,9 @@ export default function AddStaffModal({ onClose, onRefresh }: { onClose: () => v
           location: locationName,
           location_id: resolveLocationId(formData.home_house) || formData.home_house,
           role_tier: formData.role_tier,
-          ...(formData.password && { password: formData.password })
+          ...(formData.password && { password: formData.password }),
+          ...(formData.start_date && { start_date: formData.start_date }),
+          ...(formData.qualifications_on_entry.trim() && { qualifications_on_entry: formData.qualifications_on_entry.trim() })
         };
 
         const response = await fetch('/api/add-staff', {
@@ -347,7 +357,7 @@ export default function AddStaffModal({ onClose, onRefresh }: { onClose: () => v
         }
       }
       
-      setFormData({ full_name: '', email: '', home_house: '', role_tier: 'staff', managed_houses: [], password: '' });
+      setFormData({ full_name: '', email: '', home_house: '', role_tier: 'staff', managed_houses: [], password: '', start_date: '', qualifications_on_entry: '' });
       fetchInitialData();
       onRefresh();
     } catch (error: unknown) {
@@ -613,7 +623,9 @@ Charlie Scheduler,charlie@example.com,Banks House,manager`;
       home_house: locationId,
       role_tier: staff.role_tier || 'staff',
       managed_houses: staff.managed_houses || [],
-      password: ''
+      password: '',
+      start_date: staff.start_date?.slice(0, 10) || '',
+      qualifications_on_entry: staff.qualifications_on_entry || ''
     });
   };
 
@@ -836,6 +848,32 @@ Charlie Scheduler,charlie@example.com,Banks House,manager`;
                   value={formData.email} 
                   onChange={e => setFormData({...formData, email: e.target.value})} 
                 />
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label style={{ color: isDark ? '#94a3b8' : '#64748b' }} className="text-[10px] font-black uppercase mb-1 block">Start date</label>
+                  <input
+                    type="date"
+                    style={{ backgroundColor: isDark ? '#0f172a' : '#f1f5f9', color: isDark ? '#f1f5f9' : '#1e293b', borderColor: isDark ? '#334155' : '#cbd5e1' }}
+                    className="w-full p-3 border rounded-xl outline-none focus:ring-2 focus:ring-emerald-500"
+                    value={formData.start_date}
+                    onChange={e => setFormData({...formData, start_date: e.target.value})}
+                  />
+                  <p style={{ color: isDark ? '#94a3b8' : '#64748b' }} className="text-[11px] mt-1">Starts the Care Certificate (12 weeks) and Level 3 Diploma (2 years) deadlines.</p>
+                </div>
+                <div>
+                  <label style={{ color: isDark ? '#94a3b8' : '#64748b' }} className="text-[10px] font-black uppercase mb-1 block">Qualifications on entry</label>
+                  <input
+                    type="text"
+                    maxLength={500}
+                    placeholder="e.g. NVQ 3 Health & Social Care"
+                    style={{ backgroundColor: isDark ? '#0f172a' : '#f1f5f9', color: isDark ? '#f1f5f9' : '#1e293b', borderColor: isDark ? '#334155' : '#cbd5e1' }}
+                    className="w-full p-3 border rounded-xl outline-none focus:ring-2 focus:ring-emerald-500"
+                    value={formData.qualifications_on_entry}
+                    onChange={e => setFormData({...formData, qualifications_on_entry: e.target.value})}
+                  />
+                </div>
               </div>
 
               <div>

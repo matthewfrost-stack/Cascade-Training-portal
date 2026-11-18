@@ -63,9 +63,9 @@ function Tile({ label, value, sub, tone }: { label: string; value: string; sub?:
 
 // ---------- edit panel ----------
 
-type Draft = { status: DiplomaStatus; startDate: string; enrolledOn: string; provider: string; completedOn: string; equivalent: string; notes: string };
+type Draft = { status: DiplomaStatus; startDate: string; qualificationsOnEntry: string; enrolledOn: string; provider: string; completedOn: string; equivalent: string; notes: string };
 const toDraft = (p: DiplomaPerson): Draft => ({
-  status: p.status, startDate: p.startDate || '', enrolledOn: p.enrolledOn || '', provider: p.provider || '',
+  status: p.status, startDate: p.startDate || '', qualificationsOnEntry: p.qualificationsOnEntry || '', enrolledOn: p.enrolledOn || '', provider: p.provider || '',
   completedOn: p.completedOn || '', equivalent: p.equivalent || '', notes: p.notes || '',
 });
 
@@ -86,7 +86,7 @@ function EditPanel({ person, today, onSaved, onCancel }: { person: DiplomaPerson
       const body = await response.json().catch(() => ({}));
       if (!response.ok) throw new Error(body.error || 'Could not save.');
       onSaved({
-        ...person, status: d.status, startDate: d.startDate || null, dueDate: due, enrolledOn: d.enrolledOn || null, provider: d.provider.trim() || null,
+        ...person, status: d.status, startDate: d.startDate || null, qualificationsOnEntry: d.qualificationsOnEntry.trim() || null, dueDate: due, enrolledOn: d.enrolledOn || null, provider: d.provider.trim() || null,
         completedOn: d.completedOn || null, equivalent: d.equivalent.trim() || null, notes: d.notes.trim() || null, band: preview, updatedAt: new Date().toISOString(),
       });
     } catch (e) {
@@ -101,9 +101,13 @@ function EditPanel({ person, today, onSaved, onCancel }: { person: DiplomaPerson
     <div className="bg-slate-50 dark:bg-slate-900/50 rounded-xl p-4 space-y-3">
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
         <div>
-          <label className={smallLabel} htmlFor={id('start')}>Start date in role</label>
+          <label className={smallLabel} htmlFor={id('start')}>Start date</label>
           <input id={id('start')} type="date" className={input} value={d.startDate} onChange={(e) => set('startDate', e.target.value)} />
-          <p className="text-[11px] text-slate-500 mt-1">{due ? `Deadline: ${day(due)}` : 'The 2-year deadline counts from this date.'}</p>
+          <p className="text-[11px] text-slate-500 mt-1">{due ? `Deadline: ${day(due)}. ` : ''}Saved on their staff record (also used for the Care Certificate).</p>
+        </div>
+        <div>
+          <label className={smallLabel} htmlFor={id('entry')}>Qualifications on entry</label>
+          <input id={id('entry')} className={input} value={d.qualificationsOnEntry} maxLength={500} placeholder="What they arrived with" onChange={(e) => set('qualificationsOnEntry', e.target.value)} />
         </div>
         <div>
           <label className={smallLabel} htmlFor={id('status')}>Status</label>
@@ -154,14 +158,14 @@ function EditPanel({ person, today, onSaved, onCancel }: { person: DiplomaPerson
 async function downloadExcel(homes: DiplomaHome[], today: string) {
   const { default: writeXlsxFile } = await import('write-excel-file/browser');
   const bold = { fontWeight: 'bold' as const };
-  const head = ['Home', 'Name', 'Status', 'Where they stand', 'Start date', 'Deadline', 'Time left', 'Provider', 'Enrolled on', 'Completed on', 'Equivalent', 'Notes'];
+  const head = ['Home', 'Name', 'Qualifications on entry', 'Status', 'Where they stand', 'Start date', 'Deadline', 'Time left', 'Provider', 'Enrolled on', 'Completed on', 'Equivalent', 'Notes'];
   const rows = homes.flatMap((h) => h.people.map((p) => [
-    h.locationName, p.name, STATUS_LABELS[p.status], BAND_LABELS[p.band], day(p.startDate), day(p.dueDate), timeLeft(p.dueDate, today),
+    h.locationName, p.name, p.qualificationsOnEntry || '', STATUS_LABELS[p.status], BAND_LABELS[p.band], day(p.startDate), day(p.dueDate), timeLeft(p.dueDate, today),
     p.provider || '', day(p.enrolledOn), day(p.completedOn), p.equivalent || '', p.notes || '',
   ]));
   await writeXlsxFile([head.map((value) => ({ value, ...bold })), ...rows], {
     sheet: 'Level 3 Diploma',
-    columns: [{ width: 24 }, { width: 26 }, { width: 18 }, { width: 22 }, { width: 13 }, { width: 13 }, { width: 18 }, { width: 24 }, { width: 13 }, { width: 13 }, { width: 30 }, { width: 40 }],
+    columns: [{ width: 24 }, { width: 26 }, { width: 30 }, { width: 18 }, { width: 22 }, { width: 13 }, { width: 13 }, { width: 18 }, { width: 24 }, { width: 13 }, { width: 13 }, { width: 30 }, { width: 40 }],
     stickyRowsCount: 1,
   }).toFile(`Level 3 Diploma tracker - ${today}.xlsx`);
 }
@@ -299,7 +303,7 @@ export default function DiplomaTrackerPage() {
                             </td></tr>
                           ) : (
                             <tr key={key} className="align-top">
-                              <td className="p-3 font-bold">{p.name}</td>
+                              <td className="p-3 font-bold">{p.name}{p.qualificationsOnEntry && <div className="text-[11px] font-normal text-slate-500" title="Qualifications on entry">On entry: {p.qualificationsOnEntry}</div>}</td>
                               <td className="p-3"><Pill band={p.band} /></td>
                               <td className="p-3">{STATUS_LABELS[p.status]}{p.status === 'equivalent' && p.equivalent && <div className="text-[11px] text-slate-500">{p.equivalent}</div>}{p.status === 'completed' && p.completedOn && <div className="text-[11px] text-slate-500">{day(p.completedOn)}</div>}</td>
                               <td className="p-3 tabular-nums whitespace-nowrap">{day(p.startDate)}</td>

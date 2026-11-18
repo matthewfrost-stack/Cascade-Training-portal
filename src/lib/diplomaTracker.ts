@@ -11,7 +11,9 @@ export type DiplomaPerson = {
   profileId: string;
   name: string;
   status: DiplomaStatus;
+  /** From the person's staff record (shared with the Care Certificate). */
   startDate: string | null;
+  qualificationsOnEntry: string | null;
   dueDate: string | null;
   enrolledOn: string | null;
   provider: string | null;
@@ -31,7 +33,7 @@ type QualRow = {
 
 export class DiplomaNotReady extends Error {
   constructor() {
-    super('The Level 3 Diploma tracker needs the database update first. Run the migration 20261118170000_level3_diploma_tracker.sql in the Supabase SQL Editor.');
+    super('The Level 3 Diploma tracker needs the database update first. Run the migrations 20261118170000_level3_diploma_tracker.sql and 20261118190000_staff_start_date.sql in the Supabase SQL Editor.');
   }
 }
 
@@ -53,9 +55,21 @@ export async function buildDiplomaHomes(service: ServiceClient, onlyLocationIds:
   if (homes.length === 0) return [];
   const today = ukToday();
 
-  type LinkRow = { staff_id: string; location_id: string; profiles: One<{ full_name?: string | null; is_deleted?: boolean | null }> };
-  const links = await fetchAll<LinkRow>((from, to) =>
-    service.from('staff_locations').select('staff_id, location_id, profiles(full_name, is_deleted)').in('location_id', homes.map((h) => h.id)).range(from, to));
+  type LinkRow = {
+    staff_id: string; location_id: string;
+    profiles: One<{ full_name?: string | null; is_deleted?: boolean | null; start_date?: string | null; qualifications_on_entry?: string | null }>;
+  };
+  let links: LinkRow[];
+  try {
+    links = await fetchAll<LinkRow>((from, to) =>
+      service.from('staff_locations')
+        .select('staff_id, location_id, profiles(full_name, is_deleted, start_date, qualifications_on_entry)')
+        .in('location_id', homes.map((h) => h.id))
+        .range(from, to));
+  } catch (error) {
+    if (/start_date|qualifications_on_entry/.test(error instanceof Error ? error.message : '')) throw new DiplomaNotReady();
+    throw error;
+  }
 
   const staffIds = Array.from(new Set(links.map((l) => l.staff_id)));
   const records = new Map<string, QualRow>();
@@ -73,22 +87,27 @@ export async function buildDiplomaHomes(service: ServiceClient, onlyLocationIds:
   }
 
   return homes.map((home) => {
-    const seen = new Map<string, string>();
+    const seen = new Map<string, { name: string; startDate: string | null; onEntry: string | null }>();
     for (const link of links) {
       if (link.location_id !== home.id) continue;
       const profile = Array.isArray(link.profiles) ? link.profiles[0] : link.profiles ?? undefined;
       if (isDeletedProfile(profile)) continue;
-      seen.set(link.staff_id, (profile?.full_name || 'Unknown').trim());
+      seen.set(link.staff_id, {
+        name: (profile?.full_name || 'Unknown').trim(),
+        startDate: profile?.start_date?.slice(0, 10) || null,
+        onEntry: profile?.qualifications_on_entry?.trim() || null,
+      });
     }
-    const people: DiplomaPerson[] = Array.from(seen, ([profileId, name]) => {
+    const people: DiplomaPerson[] = Array.from(seen, ([profileId, person]) => {
       const r = records.get(profileId);
       const status: DiplomaStatus = r?.status || 'not_started';
-      const startDate = r?.start_date?.slice(0, 10) || null;
+      const startDate = person.startDate || r?.start_date?.slice(0, 10) || null;
       return {
         profileId,
-        name,
+        name: person.name,
         status,
         startDate,
+        qualificationsOnEntry: person.onEntry,
         dueDate: dueDate(startDate),
         enrolledOn: r?.enrolled_on?.slice(0, 10) || null,
         provider: r?.provider || null,
