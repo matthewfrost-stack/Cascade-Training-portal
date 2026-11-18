@@ -169,7 +169,7 @@ export default function LandingPage() {
           {hasPermission(userRole, 'QUALIFICATIONS', 'canView') && (
             <TileButton
               title="NVQ & Diploma Tracker"
-              description="Follow learner enquiries, applications, progress, and completions by location."
+              description="Learner enquiries through to completion, and the Level 3 Diploma tracker for children's homes."
               emoji="🎓"
               accent="amber"
               actionText="Open App"

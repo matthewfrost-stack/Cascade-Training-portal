@@ -346,6 +346,36 @@ Always-on workspace constraints that apply to every agent invocation.
 
 ## 11. Current Development Status
 
+### Care Certificate tracker (2026-11-18)
+- **"📘 Care Certificate – all homes"** tab on `/apps/nvq-diploma` (`?tab=care`, `src/app/components/CareCertificateTracker.tsx`). Everyone at every home the user can see (admins all; managers/schedulers their homes). Deadline = `profiles.start_date` + 12 weeks (`src/lib/careCertificate.ts`), or an agreed **extension** (`extended_to` + required `extension_reason`, must be after the normal deadline). Bands: overdue / start date needed / due within 2 weeks / within 12 weeks / completed / not required.
+- Completion is read from the Training Matrix: any course named "Care Certificate…" except the assessor tutorial (`careCertCourses`). Manual statuses: **completed** elsewhere (date + certificate; also **written to the matrix** at each of the person's homes in the user's scope whose matrix has the course, never replacing a later date, history source `qualification_tracker`), **equivalent** (what + date + certificate), **not required** (note).
+- `GET|PUT /api/care-certificate`; server assembly `src/lib/careCertificateTracker.ts`. Excel download.
+
+### Qualification evidence – certificates (2026-11-18)
+- Marking someone **Completed** or **Holds an equivalent** needs the date (completed on / achieved on) **and an uploaded certificate**; **Not required** needs a note. Enforced in the UI and `PUT /api/diploma`.
+- Certificates live in the **private** Storage bucket `qualification-certificates` (`<schema>/<profileId>/<qualification>/…`, PDF/images, 10 MB). `/api/qualification-certificates`: POST → one-time signed upload URL (browser uploads direct; Vercel caps bodies ~4.5 MB), PATCH → records it on `staff_qualifications` (replaces and deletes the old file), GET → 2-minute signed link. Access via `canManagePerson` (`src/lib/qualificationAccess.ts`): admins all; others only people at their homes (children's homes for Level 3). Client helper `src/lib/certificateUpload.ts`.
+- `staff_qualifications` + `achieved_on`, `certificate_path`, `certificate_name`, `extended_to`, `extension_reason` (extensions used by the Care Certificate next). Migration `20261118210000_qualification_evidence.sql`.
+- **Care Certificate never expires** on every matrix (`20261118200000_care_certificate_never_expires.sql`: same as the header's "Never expires": never_expires, expiry_months 9999, expiry dates cleared). Matrix history label `qualification_tracker` added for tracker writes.
+
+### Level 3 Diploma moved into the NVQ & Diploma Tracker (2026-11-18)
+- The tracker is now the **"🎓 Level 3 Diploma – children's homes"** tab on `/apps/nvq-diploma` (component `src/app/components/Level3DiplomaTracker.tsx`; `?tab=level3`). Its own dashboard tile and the `DIPLOMA_TRACKER` permission were removed; `/reports/diploma` redirects to the tab. Access is unchanged and matches the enquiries tab: admins see every home, managers/schedulers only the homes assigned to or managed by them (`getScopedLocations`). Qualifications on entry will come from another system later (free-text field for now).
+
+### Staff start date + qualifications on entry (2026-11-18)
+- `profiles.start_date` and `profiles.qualifications_on_entry` — one start date per person drives every "within X of starting" rule (Level 3 Diploma 2 years at children's homes; Care Certificate 12 weeks, next). Entered in Add/Edit Staff (`AddStaffModal`, `/api/add-staff`), the trackers (saved to the profile) and, later, a spreadsheet upload. Level 3 tracker now reads the profile date (falls back to `staff_qualifications.start_date`).
+- `staff_qualifications.qualification` also allows `CARE_CERTIFICATE` (for "already holds an equivalent" / "not required"; completion comes from the Training Matrix).
+- Migration `20261118190000_staff_start_date.sql` (copies dates already typed into the Level 3 tracker).
+
+### Level 3 Diploma tracker – part 2: tracker page (2026-11-18)
+- `/reports/diploma` (dashboard tile "Level 3 Diploma"; `DIPLOMA_TRACKER` permission: admin, scheduler, manager; managers see their own homes). Headline tiles (qualified %, overdue, due within 6 months, start date needed), filters (home, where they stand, name), one table per children's home with an inline edit panel (start date, status, provider, enrolled/completed dates, equivalent, notes; shows the resulting band before saving), Excel download.
+- `GET|PUT /api/diploma` — people per home come from `staff_locations` (same as the compliance report); saving checks the person is at a children's home in the caller's scope. Server assembly in `src/lib/diplomaTracker.ts`.
+
+### Level 3 Diploma tracker – part 1: data and rules (2026-11-18)
+- Scope: **Level 3 Diploma in Residential Childcare** at Ofsted **children's homes** (Reg 32: within 2 years of starting). Schools and CQC homes are excluded; Level 5 (registered managers) later — the table already allows it.
+- `locations.diploma_required` — "Children's home – Level 3 Diploma required" tick box in Manage Venues (only shown for Ofsted). Pre-ticked once by the migration for Ofsted sites whose name has no "school".
+- `staff_qualifications` (one row per person per qualification; `start_date` = start of the 2-year clock; status not_started/enrolled/in_progress/completed/equivalent/not_required; enrolled_on, provider, completed_on, equivalent, notes). Server-only.
+- Rules in **`src/lib/diploma.ts`**: due = start + 2 years; bands overdue / start date needed / due within 6 months / not enrolled yet (3 months after start, an internal nudge) / on track / qualified / not required; `diplomaSummary` for homes.
+- Migration `20261118170000_level3_diploma_tracker.sql` (public + dev). Next: part 2 tracker page + CSV upload, part 3 compliance report.
+
 ### Feedback forms – Phase 4, part 4: admin screen (2026-11-18)
 - `/automation-control` is now the **Feedback & Emails** page (admin card renamed; replaces `FeedbackManagerModal`, removed). Tabs: **Questions** (edit/reorder/add/remove, answer types, 1/10 meanings, options, min picks, positive words; live preview using `FeedbackQuestionFields`; "Standard questions" reset), **Emails** (feedback email and booking reminders, each with its own switch, timings and texts; confirm before switching on), **Send now** (sessions of the last 14 days with signed-in counts; test mode on by default, to the logged-in admin; live send needs confirmation).
 - `GET|PUT /api/feedback/settings` (admin): saves questions to `feedback_settings.default_form` (cleaned with `normaliseQuestions`), email settings to `feedback_automation_settings` (old texts' literal `\n` shown as line breaks). Email sends also fixed: bookings→profiles embed named (`profiles:profile_id`) — the unnamed one was ambiguous and every send returned 500.

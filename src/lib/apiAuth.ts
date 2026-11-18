@@ -10,6 +10,11 @@ export type RoleTier = 'staff' | 'manager' | 'scheduler' | 'admin';
 const isDev = process.env.NEXT_PUBLIC_VERCEL_ENV !== 'production';
 const schema = isDev ? 'dev' : 'public';
 
+/** 'dev' on preview/development, 'public' on live. */
+export function currentSchema(): 'dev' | 'public' {
+  return schema;
+}
+
 /**
  * Where a training matrix change came from. Recorded in the matrix history by
  * a database trigger (see migration 20261117150000_add_training_matrix_history).
@@ -23,7 +28,8 @@ export type MatrixChangeSource =
   | 'restored'
   | 'removed_from_home'
   | 'course_removed'
-  | 'history_restore';
+  | 'history_restore'
+  | 'qualification_tracker';
 
 /**
  * Server-side Supabase client using the service key.

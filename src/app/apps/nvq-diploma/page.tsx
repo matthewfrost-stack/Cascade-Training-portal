@@ -4,6 +4,8 @@ import { useEffect, useMemo, useState } from 'react';
 import MainHeader from '@/app/components/MainHeader';
 import QualificationTimeline, { type QualificationTimelineEvent } from '@/app/components/QualificationTimeline';
 import UniformButton from '@/app/components/UniformButton';
+import Level3DiplomaTracker from '@/app/components/Level3DiplomaTracker';
+import CareCertificateTracker from '@/app/components/CareCertificateTracker';
 import { hasPermission } from '@/lib/permissions';
 import { useCurrentUserProfile } from '@/lib/useCurrentUserProfile';
 
@@ -91,6 +93,15 @@ export default function NvqDiplomaPage() {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [tab, setTab] = useState<'enquiries' | 'level3' | 'care'>('enquiries');
+  useEffect(() => {
+    const wanted = new URLSearchParams(window.location.search).get('tab');
+    if (wanted === 'level3' || wanted === 'care') setTab(wanted);
+  }, []);
+  const chooseTab = (next: 'enquiries' | 'level3' | 'care') => {
+    setTab(next);
+    window.history.replaceState(null, '', next === 'enquiries' ? '/apps/nvq-diploma' : `/apps/nvq-diploma?tab=${next}`);
+  };
 
   async function loadLeads() {
     setLoading(true);
@@ -207,6 +218,15 @@ export default function NvqDiplomaPage() {
     <main className="min-h-screen bg-slate-50 p-4 transition-colors dark:bg-slate-950 md:p-8">
       <div className="mx-auto max-w-7xl">
         <MainHeader title="NVQ & Diploma Tracker" backPath="/" showThemeToggle={false} />
+        <div role="tablist" className="mb-6 flex gap-1 overflow-x-auto border-b border-slate-200 dark:border-slate-800">
+          {([['enquiries', 'Enquiries & learners'], ['care', '📘 Care Certificate – all homes'], ['level3', '🎓 Level 3 Diploma – children’s homes']] as const).map(([key, label]) => (
+            <button key={key} type="button" role="tab" aria-selected={tab === key} onClick={() => chooseTab(key)}
+              className={`-mb-px whitespace-nowrap border-b-2 px-4 py-2.5 text-sm font-bold ${tab === key ? 'border-blue-600 text-blue-700 dark:text-blue-300' : 'border-transparent text-slate-500 hover:text-slate-800 dark:hover:text-slate-200'}`}>
+              {label}
+            </button>
+          ))}
+        </div>
+        {tab === 'level3' ? <Level3DiplomaTracker /> : tab === 'care' ? <CareCertificateTracker /> : (<>
         <div className="mb-6 flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
           <div><p className="text-sm font-semibold text-slate-500 dark:text-slate-400">Record each learner journey from first enquiry through course completion.</p></div>
           {canEdit && <UniformButton onClick={() => setShowForm((value) => !value)}>{showForm ? 'Close enquiry form' : 'New enquiry'}</UniformButton>}
@@ -237,6 +257,7 @@ export default function NvqDiplomaPage() {
         <section className="mb-6 rounded-3xl border border-slate-200 bg-white p-4 shadow-sm dark:border-slate-800 dark:bg-slate-900"><div className="grid gap-2 sm:gap-3 md:grid-cols-2 lg:grid-cols-4"><input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Search learner or qualification" className="h-11 rounded-xl border border-slate-200 bg-white px-3 text-sm text-slate-900 outline-none focus:ring-2 focus:ring-blue-500 dark:border-slate-700 dark:bg-slate-950 dark:text-white" /><select value={filterType} onChange={(event) => setFilterType(event.target.value)} className="h-11 rounded-xl border border-slate-200 bg-white px-3 text-sm font-semibold text-slate-900 dark:border-slate-700 dark:bg-slate-950 dark:text-white"><option value="all">All types</option><option value="nvq">NVQ</option><option value="diploma">Diploma</option></select><select value={filterStage} onChange={(event) => setFilterStage(event.target.value)} className="h-11 rounded-xl border border-slate-200 bg-white px-3 text-sm font-semibold text-slate-900 dark:border-slate-700 dark:bg-slate-950 dark:text-white"><option value="all">All stages</option>{stages.map((stage) => <option key={stage} value={stage}>{stageLabels[stage]}</option>)}</select><select value={filterLocation} onChange={(event) => setFilterLocation(event.target.value)} className="h-11 rounded-xl border border-slate-200 bg-white px-3 text-sm font-semibold text-slate-900 dark:border-slate-700 dark:bg-slate-950 dark:text-white"><option value="all">All locations</option>{locations.map((location) => <option key={location.id} value={location.id}>{location.name}</option>)}</select></div></section>
 
         {loading ? <div className="rounded-3xl border border-slate-200 bg-white p-8 sm:p-12 text-center font-bold text-slate-500 dark:border-slate-800 dark:bg-slate-900 dark:text-slate-400">Loading qualification tracker…</div> : filteredLeads.length === 0 ? <div className="rounded-3xl border border-dashed border-slate-300 bg-white p-8 sm:p-12 text-center font-bold text-slate-500 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-400">No enquiries match the current filters.</div> : <div className="space-y-3 sm:space-y-4">{filteredLeads.map((lead) => { const expanded = expandedId === lead.id; const events = Array.isArray(lead.qualification_lead_timeline) ? lead.qualification_lead_timeline : []; const isDeleting = deletingId === lead.id; return <article key={lead.id} className="overflow-hidden rounded-2xl sm:rounded-3xl border border-slate-200 bg-white shadow-sm dark:border-slate-800 dark:bg-slate-900"><div className="p-4 sm:p-5 md:p-6"><div className="flex flex-col gap-3 sm:gap-4"><div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between"><div className="min-w-0 flex-1"><div className="flex flex-wrap items-center gap-1.5 sm:gap-2"><span className={`rounded-full px-2 py-0.5 text-[9px] sm:text-[10px] font-black uppercase ${lead.qualification_type === 'nvq' ? 'bg-purple-100 text-purple-800 dark:bg-purple-950 dark:text-purple-200' : 'bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-200'}`}>{lead.qualification_type}</span><span className="text-xs font-bold text-slate-500 dark:text-slate-400 truncate">{locationName(lead)}</span></div><h2 className="mt-2 text-lg sm:text-xl font-black text-slate-900 dark:text-white line-clamp-2">{lead.full_name}</h2><p className="mt-1 font-semibold text-slate-600 dark:text-slate-300 text-sm sm:text-base line-clamp-2">{lead.qualification_name}</p>{(lead.email || lead.phone) && <p className="mt-2 text-xs sm:text-sm text-slate-500 dark:text-slate-400 line-clamp-1">{[lead.email, lead.phone].filter(Boolean).join(' · ')}</p>}</div><div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:gap-2"><select value={lead.stage} disabled={!canEdit || isDeleting} onChange={(event) => void updateStage(lead, event.target.value)} className="h-10 rounded-xl border border-slate-200 bg-white px-2.5 text-xs font-black uppercase text-slate-900 dark:border-slate-700 dark:bg-slate-950 dark:text-white">{stages.map((stage) => <option key={stage} value={stage}>{stageLabels[stage]}</option>)}</select><UniformButton variant="secondary" size="sm" onClick={() => setExpandedId(expanded ? null : lead.id)} disabled={isDeleting}>{expanded ? 'Hide' : 'Timeline'} ({events.length})</UniformButton></div></div><div className="grid grid-cols-2 gap-2 sm:gap-3 border-t border-slate-100 pt-3 text-xs dark:border-slate-800 sm:grid-cols-3"><div><span className="font-black uppercase tracking-wide text-slate-500 text-[9px] sm:text-[10px]">Enquiry</span><p className="mt-1 font-bold text-slate-800 dark:text-slate-200">{dateLabel(lead.enquiry_date)}</p></div><div><span className="font-black uppercase tracking-wide text-slate-500 text-[9px] sm:text-[10px]">Target</span><p className="mt-1 font-bold text-slate-800 dark:text-slate-200">{dateLabel(lead.target_completion_date)}</p></div><div><span className="font-black uppercase tracking-wide text-slate-500 text-[9px] sm:text-[10px]">Completed</span><p className="mt-1 font-bold text-slate-800 dark:text-slate-200">{dateLabel(lead.completion_date)}</p></div></div>{lead.notes && <p className="mt-3 rounded-lg sm:rounded-xl bg-slate-50 p-2 sm:p-3 text-xs sm:text-sm text-slate-600 dark:bg-slate-950/60 dark:text-slate-300">{lead.notes}</p>}{canEdit && <div className="mt-3 flex flex-col gap-2 sm:flex-row sm:justify-end"><button type="button" onClick={() => void deleteLead(lead.id)} disabled={isDeleting} className="px-3 py-2 text-xs font-black uppercase rounded-lg border border-red-300 bg-red-50 text-red-700 hover:bg-red-100 disabled:opacity-50 dark:border-red-900 dark:bg-red-950/30 dark:text-red-300 dark:hover:bg-red-950/50 transition-colors">{isDeleting ? 'Removing…' : '🗑️ Remove'}</button></div>}</div></div>{expanded && <div className="border-t border-slate-200 bg-slate-50/70 p-4 dark:border-slate-800 dark:bg-slate-950/40 sm:p-5 md:p-6"><QualificationTimeline events={events} onAdd={(event) => addTimelineEvent(lead.id, event)} saving={saving} /></div>}</article>; })}</div>}
+        </>)}
       </div>
     </main>
   );
