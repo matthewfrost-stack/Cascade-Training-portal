@@ -84,7 +84,7 @@ function isOneOffCourse(course: { expiry_months?: number | null; never_expires?:
   return Boolean(course?.never_expires || !course?.expiry_months || course?.expiry_months === 9999);
 }
 
-function isDeletedProfile(profile: { full_name?: string | null; is_deleted?: boolean | null } | undefined): boolean {
+export function isDeletedProfile(profile: { full_name?: string | null; is_deleted?: boolean | null } | undefined): boolean {
   if (!profile) return true;
   if (profile.is_deleted) return true;
   const name = (profile.full_name || '').trim().toLowerCase();

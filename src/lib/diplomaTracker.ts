@@ -1,0 +1,104 @@
+import type { createServiceClient } from '@/lib/apiAuth';
+import { fetchAll, isDeletedProfile, ukToday } from '@/lib/compliance';
+import { diplomaBand, dueDate, type DiplomaBand, type DiplomaStatus } from '@/lib/diploma';
+
+type ServiceClient = ReturnType<typeof createServiceClient>;
+type One<T> = T | T[] | null;
+
+export const L3 = 'L3_RESIDENTIAL_CHILDCARE';
+
+export type DiplomaPerson = {
+  profileId: string;
+  name: string;
+  status: DiplomaStatus;
+  startDate: string | null;
+  dueDate: string | null;
+  enrolledOn: string | null;
+  provider: string | null;
+  completedOn: string | null;
+  equivalent: string | null;
+  notes: string | null;
+  band: DiplomaBand;
+  updatedAt: string | null;
+};
+
+export type DiplomaHome = { locationId: string; locationName: string; people: DiplomaPerson[] };
+
+type QualRow = {
+  profile_id: string; status: DiplomaStatus; start_date: string | null; enrolled_on: string | null; provider: string | null;
+  completed_on: string | null; equivalent: string | null; notes: string | null; updated_at: string | null;
+};
+
+export class DiplomaNotReady extends Error {
+  constructor() {
+    super('The Level 3 Diploma tracker needs the database update first. Run the migration 20261118170000_level3_diploma_tracker.sql in the Supabase SQL Editor.');
+  }
+}
+
+/** Children's homes (diploma_required) the caller can see; `null` = all. */
+export async function diplomaHomes(service: ServiceClient, onlyLocationIds: string[] | null): Promise<{ id: string; name: string }[]> {
+  const { data, error } = await service.from('locations').select('id, name, diploma_required').eq('diploma_required', true).order('name');
+  if (error) {
+    if (error.code === '42703' || /diploma_required/.test(error.message || '')) throw new DiplomaNotReady();
+    throw new Error(error.message);
+  }
+  const wanted = onlyLocationIds ? new Set(onlyLocationIds) : null;
+  const unique = Array.from(new Map((data || []).map((row) => [row.id, row])).values());
+  return unique.filter((row) => !wanted || wanted.has(row.id)).map((row) => ({ id: row.id, name: row.name }));
+}
+
+/** Everyone at each children's home (same people as the compliance report) with their Level 3 record. */
+export async function buildDiplomaHomes(service: ServiceClient, onlyLocationIds: string[] | null): Promise<DiplomaHome[]> {
+  const homes = await diplomaHomes(service, onlyLocationIds);
+  if (homes.length === 0) return [];
+  const today = ukToday();
+
+  type LinkRow = { staff_id: string; location_id: string; profiles: One<{ full_name?: string | null; is_deleted?: boolean | null }> };
+  const links = await fetchAll<LinkRow>((from, to) =>
+    service.from('staff_locations').select('staff_id, location_id, profiles(full_name, is_deleted)').in('location_id', homes.map((h) => h.id)).range(from, to));
+
+  const staffIds = Array.from(new Set(links.map((l) => l.staff_id)));
+  const records = new Map<string, QualRow>();
+  for (let i = 0; i < staffIds.length; i += 200) {
+    const { data, error } = await service
+      .from('staff_qualifications')
+      .select('profile_id, status, start_date, enrolled_on, provider, completed_on, equivalent, notes, updated_at')
+      .eq('qualification', L3)
+      .in('profile_id', staffIds.slice(i, i + 200));
+    if (error) {
+      if (error.code === '42P01' || /staff_qualifications/.test(error.message || '')) throw new DiplomaNotReady();
+      throw new Error(error.message);
+    }
+    for (const row of (data || []) as QualRow[]) records.set(row.profile_id, row);
+  }
+
+  return homes.map((home) => {
+    const seen = new Map<string, string>();
+    for (const link of links) {
+      if (link.location_id !== home.id) continue;
+      const profile = Array.isArray(link.profiles) ? link.profiles[0] : link.profiles ?? undefined;
+      if (isDeletedProfile(profile)) continue;
+      seen.set(link.staff_id, (profile?.full_name || 'Unknown').trim());
+    }
+    const people: DiplomaPerson[] = Array.from(seen, ([profileId, name]) => {
+      const r = records.get(profileId);
+      const status: DiplomaStatus = r?.status || 'not_started';
+      const startDate = r?.start_date?.slice(0, 10) || null;
+      return {
+        profileId,
+        name,
+        status,
+        startDate,
+        dueDate: dueDate(startDate),
+        enrolledOn: r?.enrolled_on?.slice(0, 10) || null,
+        provider: r?.provider || null,
+        completedOn: r?.completed_on?.slice(0, 10) || null,
+        equivalent: r?.equivalent || null,
+        notes: r?.notes || null,
+        band: diplomaBand({ status, startDate }, today),
+        updatedAt: r?.updated_at || null,
+      };
+    }).sort((a, b) => a.name.localeCompare(b.name));
+    return { locationId: home.id, locationName: home.name, people };
+  });
+}

@@ -346,6 +346,10 @@ Always-on workspace constraints that apply to every agent invocation.
 
 ## 11. Current Development Status
 
+### Level 3 Diploma tracker – part 2: tracker page (2026-11-18)
+- `/reports/diploma` (dashboard tile "Level 3 Diploma"; `DIPLOMA_TRACKER` permission: admin, scheduler, manager; managers see their own homes). Headline tiles (qualified %, overdue, due within 6 months, start date needed), filters (home, where they stand, name), one table per children's home with an inline edit panel (start date, status, provider, enrolled/completed dates, equivalent, notes; shows the resulting band before saving), Excel download.
+- `GET|PUT /api/diploma` — people per home come from `staff_locations` (same as the compliance report); saving checks the person is at a children's home in the caller's scope. Server assembly in `src/lib/diplomaTracker.ts`.
+
 ### Level 3 Diploma tracker – part 1: data and rules (2026-11-18)
 - Scope: **Level 3 Diploma in Residential Childcare** at Ofsted **children's homes** (Reg 32: within 2 years of starting). Schools and CQC homes are excluded; Level 5 (registered managers) later — the table already allows it.
 - `locations.diploma_required` — "Children's home – Level 3 Diploma required" tick box in Manage Venues (only shown for Ofsted). Pre-ticked once by the migration for Ofsted sites whose name has no "school".

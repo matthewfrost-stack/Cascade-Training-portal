@@ -27,6 +27,10 @@ export const PERMISSIONS = {
     canView: ['admin', 'scheduler', 'manager'],
     canSnapshot: ['admin'],
   },
+  DIPLOMA_TRACKER: {
+    canView: ['admin', 'scheduler', 'manager'],
+    canEdit: ['admin', 'scheduler', 'manager'],
+  },
   QUALIFICATIONS: {
     canView: ['admin', 'scheduler', 'manager'],
     canCreate: ['admin', 'scheduler', 'manager'],

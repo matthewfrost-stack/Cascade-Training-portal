@@ -64,6 +64,11 @@ test.describe('unauthenticated API protection', () => {
     expect([401, 403]).toContain(res.status());
   });
 
+  test('/api/diploma is protected', async ({ request }) => {
+    const res = await request.get('/api/diploma');
+    expect([401, 403]).toContain(res.status());
+  });
+
   test('/api/feedback is protected', async ({ request }) => {
     const res = await request.get('/api/feedback');
     expect([401, 403]).toContain(res.status());
