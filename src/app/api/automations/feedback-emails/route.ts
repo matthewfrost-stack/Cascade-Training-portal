@@ -175,10 +175,13 @@ async function handleRequest(req: Request) {
       const body = (await req.json().catch(() => ({}))) as { eventId?: string };
       eventId = typeof body.eventId === 'string' ? body.eventId : null;
     }
+    let adminEmail: string | null = null;
     if (!hasCronSecret || eventId) {
       // Sending for one session is always a deliberate admin action.
       const authz = await requireRole(['admin']);
       if ('error' in authz) return authz.error;
+      const { data: me } = await authz.service.from('profiles').select('email').eq('id', authz.userId).maybeSingle();
+      adminEmail = me?.email?.trim() || null;
     }
 
     const service = createServiceClient();
@@ -209,9 +212,17 @@ async function handleRequest(req: Request) {
       events = (data || []) as AutomationEvent[];
     }
 
-    const options = getEmailSendOptionsFromHeaders(req.headers.get('x-email-test-mode'), req.headers.get('x-test-email-address'));
-    const test = isTestSend(options);
-    const baseUrl = process.env.NEXT_PUBLIC_APP_URL || 'https://cascade-training.vercel.app';
+    const headerOptions = getEmailSendOptionsFromHeaders(req.headers.get('x-email-test-mode'), req.headers.get('x-test-email-address'));
+    const test = isTestSend(headerOptions);
+    // Test sends from an admin go to that admin unless another address was typed in.
+    const options = test && adminEmail && !headerOptions?.testEmailAddress?.trim()
+      ? { ...headerOptions, testMode: true, testEmailAddress: adminEmail }
+      : headerOptions;
+    // Links point at the site that sent them: live for live, the dev site for dev
+    // (a dev session doesn't exist on live, so a live link from dev can't open).
+    const baseUrl = process.env.NEXT_PUBLIC_VERCEL_ENV === 'production'
+      ? process.env.NEXT_PUBLIC_APP_URL || 'https://cascade-training.vercel.app'
+      : new URL(req.url).origin;
     const groups = remindersOn ? await managerGroups(service) : new Map<string, string>();
     let sent = 0;
     let processed = 0;

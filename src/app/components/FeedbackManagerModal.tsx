@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { supabase } from '@/lib/supabase';
 import Icon from './Icon';
+import { useCurrentUserProfile } from '@/lib/useCurrentUserProfile';
 
 type FeedbackField = {
   id: string;
@@ -66,7 +67,12 @@ export default function FeedbackManagerModal({ onClose }: { onClose: () => void 
   const [recentEvents, setRecentEvents] = useState<FeedbackEvent[]>([]);
   // Testing Mode State
   const [isTestMode, setIsTestMode] = useState(true);
-  const [testEmail, setTestEmail] = useState('training@cascade-care.com');
+  const [testEmail, setTestEmail] = useState('');
+  // Test emails go to the person using the screen by default.
+  const { profile: me } = useCurrentUserProfile();
+  useEffect(() => {
+    if (me?.email) setTestEmail((current) => current || me.email || '');
+  }, [me?.email]);
   const [manualLoading, setManualLoading] = useState(false);
 
   useEffect(() => {
