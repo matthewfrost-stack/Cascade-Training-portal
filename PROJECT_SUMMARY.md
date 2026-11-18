@@ -346,6 +346,13 @@ Always-on workspace constraints that apply to every agent invocation.
 
 ## 11. Current Development Status
 
+### Level 3 Diploma tracker – part 1: data and rules (2026-11-18)
+- Scope: **Level 3 Diploma in Residential Childcare** at Ofsted **children's homes** (Reg 32: within 2 years of starting). Schools and CQC homes are excluded; Level 5 (registered managers) later — the table already allows it.
+- `locations.diploma_required` — "Children's home – Level 3 Diploma required" tick box in Manage Venues (only shown for Ofsted). Pre-ticked once by the migration for Ofsted sites whose name has no "school".
+- `staff_qualifications` (one row per person per qualification; `start_date` = start of the 2-year clock; status not_started/enrolled/in_progress/completed/equivalent/not_required; enrolled_on, provider, completed_on, equivalent, notes). Server-only.
+- Rules in **`src/lib/diploma.ts`**: due = start + 2 years; bands overdue / start date needed / due within 6 months / not enrolled yet (3 months after start, an internal nudge) / on track / qualified / not required; `diplomaSummary` for homes.
+- Migration `20261118170000_level3_diploma_tracker.sql` (public + dev). Next: part 2 tracker page + CSV upload, part 3 compliance report.
+
 ### Feedback forms – Phase 4, part 4: admin screen (2026-11-18)
 - `/automation-control` is now the **Feedback & Emails** page (admin card renamed; replaces `FeedbackManagerModal`, removed). Tabs: **Questions** (edit/reorder/add/remove, answer types, 1/10 meanings, options, min picks, positive words; live preview using `FeedbackQuestionFields`; "Standard questions" reset), **Emails** (feedback email and booking reminders, each with its own switch, timings and texts; confirm before switching on), **Send now** (sessions of the last 14 days with signed-in counts; test mode on by default, to the logged-in admin; live send needs confirmation).
 - `GET|PUT /api/feedback/settings` (admin): saves questions to `feedback_settings.default_form` (cleaned with `normaliseQuestions`), email settings to `feedback_automation_settings` (old texts' literal `\n` shown as line breaks). Email sends also fixed: bookings→profiles embed named (`profiles:profile_id`) — the unnamed one was ambiguous and every send returned 500.

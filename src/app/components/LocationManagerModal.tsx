@@ -5,7 +5,7 @@ import { supabase } from '@/lib/supabase';
 import Icon from './Icon';
 
 type Regulator = '' | 'CQC' | 'Ofsted';
-interface ManagedLocation { id: string; name: string; accessible_office_regions?: string[] | null; manager_email?: string | null; regulator?: Regulator | null }
+interface ManagedLocation { id: string; name: string; accessible_office_regions?: string[] | null; manager_email?: string | null; regulator?: Regulator | null; diploma_required?: boolean | null }
 
 const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
@@ -25,11 +25,13 @@ export default function LocationManagerModal({ onClose }: { onClose: () => void 
   const [newLocationAccessible, setNewLocationAccessible] = useState<string[]>(['Hull']);
   const [newLocationManagerEmail, setNewLocationManagerEmail] = useState('');
   const [newLocationRegulator, setNewLocationRegulator] = useState<Regulator>('');
+  const [newLocationDiploma, setNewLocationDiploma] = useState(false);
   const [editingLocationId, setEditingLocationId] = useState<string | null>(null);
   const [editingLocationName, setEditingLocationName] = useState('');
   const [editingLocationAccessible, setEditingLocationAccessible] = useState<string[]>(['Hull']);
   const [editingLocationManagerEmail, setEditingLocationManagerEmail] = useState('');
   const [editingLocationRegulator, setEditingLocationRegulator] = useState<Regulator>('');
+  const [editingLocationDiploma, setEditingLocationDiploma] = useState(false);
   const [newVenueName, setNewVenueName] = useState('');
   const [newVenueOffice, setNewVenueOffice] = useState('Hull');
   const [editingVenueId, setEditingVenueId] = useState<string | null>(null);
@@ -84,12 +86,14 @@ export default function LocationManagerModal({ onClose }: { onClose: () => void 
         accessible_office_regions: newLocationAccessible,
         ...(managerEmail.value ? { manager_email: managerEmail.value } : {}),
         ...(newLocationRegulator ? { regulator: newLocationRegulator } : {}),
+        ...(newLocationRegulator === 'Ofsted' && newLocationDiploma ? { diploma_required: true } : {}),
       }]);
       if (error) throw error;
       setNewLocationName('');
       setNewLocationAccessible(['Hull']);
       setNewLocationManagerEmail('');
       setNewLocationRegulator('');
+      setNewLocationDiploma(false);
       fetchData();
     } catch (error: unknown) {
       alert(error instanceof Error ? error.message : 'Unable to add location');
@@ -132,6 +136,7 @@ export default function LocationManagerModal({ onClose }: { onClose: () => void 
     setEditingLocationAccessible(loc.accessible_office_regions || ['Hull']);
     setEditingLocationManagerEmail(loc.manager_email || '');
     setEditingLocationRegulator(loc.regulator || '');
+    setEditingLocationDiploma(loc.diploma_required === true);
   };
 
   const handleSaveLocation = async (e: React.FormEvent) => {
@@ -146,9 +151,11 @@ export default function LocationManagerModal({ onClose }: { onClose: () => void 
         accessible_office_regions: editingLocationAccessible,
         manager_email: managerEmail.value,
         regulator: editingLocationRegulator || null,
+        // Only Ofsted children's homes need the Level 3 Diploma.
+        diploma_required: editingLocationRegulator === 'Ofsted' && editingLocationDiploma,
       }).eq('id', editingLocationId);
       if (error) {
-        if (error.code === 'PGRST204' || /manager_email|regulator/.test(error.message || '')) {
+        if (error.code === 'PGRST204' || /manager_email|regulator|diploma_required/.test(error.message || '')) {
           throw new Error('These fields need a database update first. Run the latest Supabase migration.');
         }
         throw error;
@@ -280,6 +287,15 @@ export default function LocationManagerModal({ onClose }: { onClose: () => void 
                       <option value="CQC">CQC (adult care)</option>
                       <option value="Ofsted">Ofsted (children&rsquo;s home)</option>
                     </select>
+                    {editingLocationRegulator === 'Ofsted' && (
+                      <label className="flex items-start gap-2 mt-3">
+                        <input type="checkbox" checked={editingLocationDiploma} onChange={(e) => setEditingLocationDiploma(e.target.checked)} className="w-4 h-4 rounded mt-0.5" />
+                        <span style={{ color: isDark ? '#cbd5e1' : '#1e293b' }} className="text-sm font-bold">
+                          Children&rsquo;s home &ndash; Level 3 Diploma required
+                          <span style={{ color: isDark ? '#94a3b8' : '#64748b' }} className="block text-[11px] font-normal">Staff must hold the Level 3 Diploma in Residential Childcare within 2 years of starting. Leave unticked for schools.</span>
+                        </span>
+                      </label>
+                    )}
                   </div>
 
                   <div>
@@ -377,6 +393,15 @@ export default function LocationManagerModal({ onClose }: { onClose: () => void 
                       <option value="CQC">CQC (adult care)</option>
                       <option value="Ofsted">Ofsted (children&rsquo;s home)</option>
                     </select>
+                    {newLocationRegulator === 'Ofsted' && (
+                      <label className="flex items-start gap-2 mt-3">
+                        <input type="checkbox" checked={newLocationDiploma} onChange={(e) => setNewLocationDiploma(e.target.checked)} className="w-4 h-4 rounded mt-0.5" />
+                        <span style={{ color: isDark ? '#cbd5e1' : '#1e293b' }} className="text-sm font-bold">
+                          Children&rsquo;s home &ndash; Level 3 Diploma required
+                          <span style={{ color: isDark ? '#94a3b8' : '#64748b' }} className="block text-[11px] font-normal">Staff must hold the Level 3 Diploma in Residential Childcare within 2 years of starting. Leave unticked for schools.</span>
+                        </span>
+                      </label>
+                    )}
                   </div>
 
                   <div>
@@ -438,6 +463,7 @@ export default function LocationManagerModal({ onClose }: { onClose: () => void 
                       <p style={{ color: isDark ? '#94a3b8' : '#64748b' }} className="text-[9px] font-bold mt-1">Can Access: {loc.accessible_office_regions?.join(', ') || 'Hull'}</p>
                       <p style={{ color: loc.manager_email ? (isDark ? '#94a3b8' : '#64748b') : '#d97706' }} className="text-[9px] font-bold mt-0.5">{loc.manager_email ? `📧 ${loc.manager_email}` : '📧 No managers\' email set'}</p>
                       <p style={{ color: loc.regulator ? (isDark ? '#94a3b8' : '#64748b') : '#d97706' }} className="text-[9px] font-bold mt-0.5">{loc.regulator ? `🏛️ Regulated by ${loc.regulator}` : '🏛️ Regulator not set'}</p>
+                      {loc.diploma_required && <p style={{ color: isDark ? '#94a3b8' : '#64748b' }} className="text-[9px] font-bold mt-0.5">🎓 Level 3 Diploma required</p>}
                     </div>
                     <div className="flex gap-2">
                       <button 
