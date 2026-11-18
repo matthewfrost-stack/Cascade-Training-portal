@@ -346,6 +346,9 @@ Always-on workspace constraints that apply to every agent invocation.
 
 ## 11. Current Development Status
 
+### Level 3 Diploma moved into the NVQ & Diploma Tracker (2026-11-18)
+- The tracker is now the **"🎓 Level 3 Diploma – children's homes"** tab on `/apps/nvq-diploma` (component `src/app/components/Level3DiplomaTracker.tsx`; `?tab=level3`). Its own dashboard tile and the `DIPLOMA_TRACKER` permission were removed; `/reports/diploma` redirects to the tab. Access is unchanged and matches the enquiries tab: admins see every home, managers/schedulers only the homes assigned to or managed by them (`getScopedLocations`). Qualifications on entry will come from another system later (free-text field for now).
+
 ### Staff start date + qualifications on entry (2026-11-18)
 - `profiles.start_date` and `profiles.qualifications_on_entry` — one start date per person drives every "within X of starting" rule (Level 3 Diploma 2 years at children's homes; Care Certificate 12 weeks, next). Entered in Add/Edit Staff (`AddStaffModal`, `/api/add-staff`), the trackers (saved to the profile) and, later, a spreadsheet upload. Level 3 tracker now reads the profile date (falls back to `staff_qualifications.start_date`).
 - `staff_qualifications.qualification` also allows `CARE_CERTIFICATE` (for "already holds an equivalent" / "not required"; completion comes from the Training Matrix).

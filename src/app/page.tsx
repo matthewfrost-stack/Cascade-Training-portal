@@ -146,17 +146,6 @@ export default function LandingPage() {
             />
           )}
 
-          {hasPermission(userRole, 'DIPLOMA_TRACKER', 'canView') && (
-            <TileButton
-              title="Level 3 Diploma"
-              description="Children's homes: who holds the Level 3 Diploma in Residential Childcare, who's working towards it, and who is close to the 2-year deadline."
-              emoji="🎓"
-              accent="purple"
-              actionText="Open Tracker"
-              onClick={() => router.push('/reports/diploma')}
-            />
-          )}
-
           {/* Course Expiry Checker Card */}
           <TileButton
             title="Course Expiry Checker"
@@ -180,7 +169,7 @@ export default function LandingPage() {
           {hasPermission(userRole, 'QUALIFICATIONS', 'canView') && (
             <TileButton
               title="NVQ & Diploma Tracker"
-              description="Follow learner enquiries, applications, progress, and completions by location."
+              description="Learner enquiries through to completion, and the Level 3 Diploma tracker for children's homes."
               emoji="🎓"
               accent="amber"
               actionText="Open App"
