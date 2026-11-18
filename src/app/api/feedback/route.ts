@@ -73,12 +73,29 @@ function legacyColumns(answers: FeedbackAnswers) {
 export async function GET(request: NextRequest) {
   const authz = await requireRole(['staff', 'manager', 'scheduler', 'admin']);
   if ('error' in authz) return authz.error;
-  const { service, userId } = authz;
+  const { service, userId, role } = authz;
 
   const eventId = new URL(request.url).searchParams.get('event') || '';
   try {
     const questions = await loadQuestions(service);
-    if (!eventId) return NextResponse.json({ questions, event: null, answered: false });
+    if (!eventId) {
+      // Admins / schedulers without a link: recent sessions to open the form for (testing / handing out).
+      if (role !== 'admin' && role !== 'scheduler') return NextResponse.json({ questions, event: null, answered: false });
+      const today = new Date().toISOString().slice(0, 10);
+      const from = new Date(Date.now() - 60 * 86400000).toISOString().slice(0, 10);
+      const { data } = await service
+        .from('training_events')
+        .select('id, event_date, start_time, courses(name)')
+        .gte('event_date', from)
+        .lte('event_date', today)
+        .order('event_date', { ascending: false })
+        .limit(40);
+      const recentEvents = ((data || []) as EventRow[]).map((row) => {
+        const course = Array.isArray(row.courses) ? row.courses[0] : row.courses;
+        return { id: row.id, date: row.event_date, startTime: row.start_time, courseName: course?.name || 'Training session' };
+      });
+      return NextResponse.json({ questions, event: null, answered: false, recentEvents });
+    }
     if (!UUID.test(eventId)) return NextResponse.json({ error: 'This feedback link is not valid.' }, { status: 400 });
 
     const event = await loadEvent(service, eventId);

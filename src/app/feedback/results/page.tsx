@@ -207,7 +207,10 @@ export default function FeedbackResultsPage() {
                 {courseOptions.map(c => <option key={c} value={c}>{c}</option>)}
               </select>
             </div>
-            <UniformButton onClick={fetchFeedback} className="ml-auto">
+            <UniformButton variant="secondary" onClick={() => router.push('/feedback')} className="ml-auto">
+              📝 Open the form
+            </UniformButton>
+            <UniformButton onClick={fetchFeedback}>
               Refresh
             </UniformButton>
           </div>

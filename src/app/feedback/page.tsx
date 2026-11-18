@@ -10,6 +10,7 @@ type FormResponse = {
   event: { id: string; courseName: string; date: string } | null;
   answered: boolean;
   myName?: string;
+  recentEvents?: { id: string; date: string; startTime: string | null; courseName: string }[];
   error?: string;
 };
 
@@ -39,7 +40,6 @@ function FeedbackForm() {
   const [submitted, setSubmitted] = useState(false);
 
   useEffect(() => {
-    if (!eventId) return;
     let cancelled = false;
     (async () => {
       try {
@@ -89,11 +89,43 @@ function FeedbackForm() {
     }
   };
 
-  if (!eventId) {
-    return <Panel icon="✉️" title="Training feedback">Please open the feedback link from the email you were sent after your training session.</Panel>;
-  }
   if (loadError) return <Panel icon="⚠️" title="Feedback form unavailable">{loadError}</Panel>;
   if (!form) return <Panel icon="⏳" title="Loading…">Getting your feedback form ready.</Panel>;
+  if (!eventId) {
+    if (!form.recentEvents) {
+      return <Panel icon="✉️" title="Training feedback">Please open the feedback link from the email you were sent after your training session.</Panel>;
+    }
+    return (
+      <div className="min-h-screen bg-slate-900 py-6 sm:py-10 px-4">
+        <div className="max-w-2xl mx-auto bg-slate-800 rounded-2xl overflow-hidden shadow-2xl">
+          <div className="bg-blue-700 px-6 py-6">
+            <h1 className="text-xl font-black text-white uppercase tracking-tight">Open the feedback form</h1>
+            <p className="text-blue-100 text-sm mt-1">Staff get a link to this form by email. Pick a recent session to open the same form yourself, or copy its link.</p>
+          </div>
+          <div className="p-4 sm:p-6">
+            <p className="text-xs text-amber-300 bg-amber-500/10 rounded-lg px-3 py-2 mb-4">Anything you send is saved as a real response. Test responses can be deleted from Feedback Results.</p>
+            {form.recentEvents.length === 0 && <p className="text-slate-400 text-sm">No sessions in the last 60 days.</p>}
+            <ul className="divide-y divide-slate-700">
+              {form.recentEvents.map((ev) => {
+                const link = `/feedback?event=${ev.id}`;
+                return (
+                  <li key={ev.id} className="py-3 flex flex-wrap items-center gap-3">
+                    <div className="flex-1 min-w-[180px]">
+                      <p className="text-sm font-bold text-white">{ev.courseName}</p>
+                      <p className="text-xs text-slate-400">{longDate(ev.date)}{ev.startTime ? ` · ${ev.startTime.slice(0, 5)}` : ''}</p>
+                    </div>
+                    <button type="button" onClick={() => void navigator.clipboard?.writeText(`${window.location.origin}${link}`)}
+                      className="px-3 py-2 rounded-lg text-xs font-bold bg-slate-700 text-slate-200 hover:bg-slate-600">Copy link</button>
+                    <a href={link} className="px-3 py-2 rounded-lg text-xs font-bold bg-blue-600 text-white hover:bg-blue-700">Open form</a>
+                  </li>
+                );
+              })}
+            </ul>
+          </div>
+        </div>
+      </div>
+    );
+  }
   if (submitted) return <Panel icon="✅" title="Thank you!">Your feedback has been sent{anonymous ? ' anonymously' : ''}. It helps us improve our training.</Panel>;
   if (form.answered) return <Panel icon="✅" title="Already done">You have already given feedback for this session. Thank you!</Panel>;
   if (!form.event) return <Panel icon="⚠️" title="Feedback form unavailable">We could not find this training session.</Panel>;
