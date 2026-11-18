@@ -108,8 +108,10 @@ export function formatEventTime(time?: string | null) {
 }
 
 export function applyTemplate(template: string, values: Record<string, string>) {
+  // Older saved texts hold the two characters "\n" instead of real line breaks.
+  const text = template.replace(/\\r\\n|\\n/g, '\n');
   return Object.entries(values).reduce(
     (result, [key, value]) => result.replace(new RegExp(`{{${key}}}`, 'g'), value),
-    template
+    text
   );
 }
