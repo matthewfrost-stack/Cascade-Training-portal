@@ -216,7 +216,9 @@ export default function FeedbackManagerModal({ onClose }: { onClose: () => void 
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || 'Failed to send emails');
       
-      setMessage({ type: 'success', text: `Successfully sent ${data.count} feedback emails!` });
+      setMessage(data.count > 0
+        ? { type: 'success', text: data.testMode ? `Test email sent to ${testEmail} (one sample; the session is not marked as sent).` : `Sent ${data.count} feedback email${data.count === 1 ? '' : 's'}.` }
+        : { type: 'error', text: data.message || 'No emails were sent.' });
       // Refresh events to show sent status
       fetchData();
     } catch (err: unknown) {

@@ -178,6 +178,11 @@ function resolveRecipients(to: string[], options?: EmailSendOptions) {
   return { recipients: clean, testMode: false };
 }
 
+/** True when these options (or the EMAIL_TEST_MODE setting) send everything to the test address. */
+export function isTestSend(options?: EmailSendOptions): boolean {
+  return typeof options?.testMode === 'boolean' ? options.testMode : EMAIL_TEST_MODE;
+}
+
 export function getEmailSendOptionsFromHeaders(headerValue: string | null, emailHeaderValue: string | null): EmailSendOptions | undefined {
   const hasModeHeader = headerValue !== null;
   const hasEmailHeader = emailHeaderValue !== null;

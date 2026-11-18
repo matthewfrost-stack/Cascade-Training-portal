@@ -262,7 +262,6 @@ All routes are Next.js Route Handlers (server-side). Authentication is checked s
 | `/api/archive/remove-location-course` | admin/scheduler | Remove a course from a location |
 | `/api/cleanup-orphaned-profiles` | admin | Remove profile rows with no matching auth user |
 | `/api/send-password-reset` | admin | Send a password reset email to a staff member |
-| `/api/schedule-feedback-emails` | admin | Schedule and trigger feedback email sends |
 | `/api/test-email` | admin/scheduler | Send a test email to verify SMTP configuration |
 | `/api/debug-email-config` | admin | Inspect email configuration (masked values) |
 | `/api/debug-profiles` | admin | Inspect profile data for debugging |
@@ -346,6 +345,11 @@ Always-on workspace constraints that apply to every agent invocation.
 ---
 
 ## 11. Current Development Status
+
+### Feedback forms – Phase 4, part 3: emails (2026-11-18)
+- `/api/automations/feedback-emails` (cron every 10 min via `cron.yml`, or admin): **two switches** on `feedback_automation_settings`: `is_enabled` = feedback email only (to people signed in on the register, link `/feedback?event=<id>`), new `reminders_enabled` = booking reminders (staff N days before + list to each home's manager Google Group from `locations.manager_email`; homes without one are skipped; the guessed `{home}managers@` addresses are no longer used). Both OFF.
+- Emails are due from their target time for up to 12 h (was a ±5 min window that a late GitHub run would miss). Test-mode sends go to one address, send one sample of each kind and do **not** mark the session as sent (they used to, which would have blocked the real email). Sending for one session (`POST { eventId }`) always needs an admin.
+- Removed the unused `/api/schedule-feedback-emails` (wrong time zone). `isTestSend()` added to `src/lib/email.ts`. Migration `20261118150000_feedback_reminders_switch.sql`.
 
 ### Feedback forms – Phase 4, part 2: results (2026-11-18)
 - `/feedback/results` rebuilt: reads/deletes via **`GET|DELETE /api/feedback/results`** (admin only; was the browser client, and delete silently failed because there was no DELETE policy). Filters: period (by session date) + course. Each current question is summarised automatically (`summariseQuestion` in `src/lib/feedbackForm.ts`: before→after averages, 1–10 average, option/word counts with positive/negative colours, comments). Anonymous responses show as "Anonymous". Response rate = feedback_submissions ÷ bookings signed in (`attended_at`), per course and overall. Excel: Responses + Response rates sheets. Deleting a named response also clears its `feedback_submissions` row so the person can answer again. Older rows are read via `answersFromRow` (original columns).

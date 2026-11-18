@@ -59,8 +59,18 @@ test.describe('unauthenticated redirects', () => {
 });
 
 test.describe('unauthenticated API protection', () => {
-  test('/api/schedule-feedback-emails is protected', async ({ request }) => {
-    const res = await request.get('/api/schedule-feedback-emails');
+  test('/api/feedback/results is protected', async ({ request }) => {
+    const res = await request.get('/api/feedback/results');
+    expect([401, 403]).toContain(res.status());
+  });
+
+  test('/api/feedback is protected', async ({ request }) => {
+    const res = await request.get('/api/feedback');
+    expect([401, 403]).toContain(res.status());
+  });
+
+  test('/api/automations/feedback-emails is protected', async ({ request }) => {
+    const res = await request.post('/api/automations/feedback-emails', { data: { eventId: '00000000-0000-0000-0000-000000000000' } });
     expect([401, 403]).toContain(res.status());
   });
 
