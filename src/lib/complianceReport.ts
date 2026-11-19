@@ -13,6 +13,10 @@ import {
   type StateCounts,
 } from '@/lib/compliance';
 import { bookingHours } from '@/lib/trainingHours';
+import { BAND_LABELS, BAND_ORDER } from '@/lib/diploma';
+import { buildDiplomaHomes, DiplomaNotReady } from '@/lib/diplomaTracker';
+import { CC_BAND_LABELS, CC_BAND_ORDER } from '@/lib/careCertificate';
+import { buildCareCertHomes, CareCertNotReady } from '@/lib/careCertificateTracker';
 
 type ServiceClient = ReturnType<typeof createServiceClient>;
 
@@ -31,6 +35,27 @@ export type HomeSummary = {
   hours: HoursSummary;
   /** The most recent check snapshot, to show the change since then. */
   previous: { takenAt: string; compliancePct: number | null } | null;
+  /** Level 3 Diploma (children's homes only; null elsewhere or before the tracker migrations). */
+  diploma: QualSummary | null;
+  /** Care Certificate (every home; null before the tracker migrations). */
+  careCert: QualSummary | null;
+};
+
+/** How serious a qualification status is, for colouring. */
+export type QualTone = 'bad' | 'warn' | 'ok' | 'done' | 'muted';
+
+/**
+ * One qualification at one home: how many people are in each status (no
+ * percentage), and who needs action. Same rules as the tracker tabs.
+ */
+export type QualSummary = {
+  bands: { key: string; label: string; count: number; tone: QualTone }[];
+  /** People needing action (overdue, start date needed, due soon, not enrolled). */
+  needsAction: number;
+  overdue: number;
+  noStartDate: number;
+  /** Filled on the one-home view only. */
+  actions: { name: string; band: string; label: string; tone: QualTone; due: string | null; extendedTo?: string | null }[];
 };
 
 export type CourseRow = { name: string; category: string; counts: StateCounts; required: number; compliancePct: number | null; isLda: boolean };
@@ -174,7 +199,12 @@ async function checksForHome(service: ServiceClient, locationId: string): Promis
   return ((result.data || []) as unknown as SnapshotRow[]).map(toCheck).reverse();
 }
 
-function summarise(home: HomeEvaluation, hours: HoursSummary | undefined, previous: HomeSummary['previous']): HomeSummary {
+function summarise(
+  home: HomeEvaluation,
+  hours: HoursSummary | undefined,
+  previous: HomeSummary['previous'],
+  quals: Qualifications = { diploma: new Map(), careCert: new Map() },
+): HomeSummary {
   const counts = countStates(home.cells);
   const lda = ldaSummary(home);
   return {
@@ -189,6 +219,62 @@ function summarise(home: HomeEvaluation, hours: HoursSummary | undefined, previo
     ldaApplies: lda.applies,
     hours: hours || { delivered: 0, lostAbsence: 0, lostLate: 0, sessionsWithoutTimes: 0 },
     previous,
+    diploma: quals.diploma.get(home.locationId) || null,
+    careCert: quals.careCert.get(home.locationId) || null,
+  };
+}
+
+// ---------- Level 3 Diploma & Care Certificate ----------
+
+type Qualifications = { diploma: Map<string, QualSummary>; careCert: Map<string, QualSummary> };
+
+const TONE: Record<string, QualTone> = {
+  overdue: 'bad', no_start_date: 'warn', due_soon: 'warn', not_enrolled: 'warn', on_track: 'ok', done: 'done', not_required: 'muted',
+};
+const ACTION_BANDS = new Set(['overdue', 'no_start_date', 'due_soon', 'not_enrolled']);
+
+function summariseQualification(
+  people: { name: string; band: string; dueDate: string | null; extendedTo?: string | null }[],
+  order: readonly string[],
+  labels: Record<string, string>,
+  withActions: boolean,
+): QualSummary {
+  const counts = new Map(order.map((b) => [b, 0]));
+  for (const p of people) counts.set(p.band, (counts.get(p.band) || 0) + 1);
+  const rank = new Map(order.map((b, i) => [b, i]));
+  const needing = people.filter((p) => ACTION_BANDS.has(p.band));
+  return {
+    bands: order.map((key) => ({ key, label: labels[key] || key, count: counts.get(key) || 0, tone: TONE[key] || 'muted' })),
+    needsAction: needing.length,
+    overdue: counts.get('overdue') || 0,
+    noStartDate: counts.get('no_start_date') || 0,
+    actions: withActions
+      ? needing
+        .map((p) => ({ name: p.name, band: p.band, label: labels[p.band] || p.band, tone: TONE[p.band] || 'muted', due: p.dueDate, ...(p.extendedTo ? { extendedTo: p.extendedTo } : {}) }))
+        .sort((a, b) => (rank.get(a.band) ?? 99) - (rank.get(b.band) ?? 99) || (a.due || '9999').localeCompare(b.due || '9999') || a.name.localeCompare(b.name))
+      : [],
+  };
+}
+
+/**
+ * Level 3 Diploma and Care Certificate summaries per home, from the tracker
+ * code. If a tracker's tables aren't there yet, that part is simply left out
+ * so the training report still works.
+ */
+async function qualificationsByHome(service: ServiceClient, locationIds: string[] | null, withActions: boolean): Promise<Qualifications> {
+  const [diplomaHomes, careCertHomes] = await Promise.all([
+    buildDiplomaHomes(service, locationIds).catch((error) => {
+      if (error instanceof DiplomaNotReady) return [];
+      throw error;
+    }),
+    buildCareCertHomes(service, locationIds).catch((error) => {
+      if (error instanceof CareCertNotReady) return [];
+      throw error;
+    }),
+  ]);
+  return {
+    diploma: new Map(diplomaHomes.map((h) => [h.locationId, summariseQualification(h.people, BAND_ORDER, BAND_LABELS, withActions)])),
+    careCert: new Map(careCertHomes.map((h) => [h.locationId, summariseQualification(h.people, CC_BAND_ORDER, CC_BAND_LABELS, withActions)])),
   };
 }
 
@@ -200,12 +286,13 @@ export function defaultPeriod(): { from: string; to: string } {
 
 export async function buildOverview(service: ServiceClient, locationIds: string[] | null, period = defaultPeriod()): Promise<HomeSummary[]> {
   const homes = await evaluateHomes(service, { onlyLocationIds: locationIds ?? undefined });
-  const [hours, previous] = await Promise.all([
+  const [hours, previous, quals] = await Promise.all([
     hoursByHome(service, period.from, period.to),
     latestChecks(service, homes.map((h) => h.locationId)),
+    qualificationsByHome(service, homes.map((h) => h.locationId), false),
   ]);
   return homes
-    .map((home) => summarise(home, hours.get(home.locationName.trim().toLowerCase()), previous.get(home.locationId) || null))
+    .map((home) => summarise(home, hours.get(home.locationName.trim().toLowerCase()), previous.get(home.locationId) || null, quals))
     .sort((a, b) => (a.compliancePct ?? 101) - (b.compliancePct ?? 101) || a.locationName.localeCompare(b.locationName));
 }
 
@@ -213,9 +300,10 @@ export async function buildHomeDetail(service: ServiceClient, locationId: string
   const [home] = await evaluateHomes(service, { onlyLocationIds: [locationId] });
   if (!home) return null;
 
-  const [hours, checks] = await Promise.all([
+  const [hours, checks, quals] = await Promise.all([
     hoursByHome(service, period.from, period.to),
     checksForHome(service, locationId),
+    qualificationsByHome(service, [locationId], true),
   ]);
   const last = checks[checks.length - 1];
   const previous = last ? { takenAt: last.takenAt, compliancePct: last.compliancePct } : null;
@@ -253,7 +341,7 @@ export async function buildHomeDetail(service: ServiceClient, locationId: string
     .sort((a, b) => (a.compliancePct ?? 101) - (b.compliancePct ?? 101) || a.name.localeCompare(b.name));
 
   return {
-    ...summarise(home, hours.get(home.locationName.trim().toLowerCase()), previous),
+    ...summarise(home, hours.get(home.locationName.trim().toLowerCase()), previous, quals),
     courses,
     people,
     checks,

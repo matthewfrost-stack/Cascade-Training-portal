@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation';
 import BackButton from '@/app/components/BackButton';
 import UniformButton from '@/app/components/UniformButton';
 import { formatHours } from '@/lib/trainingHours';
-import type { HomeDetail, HomeSummary, PersonAction } from '@/lib/complianceReport';
+import type { HomeDetail, HomeSummary, PersonAction, QualSummary, QualTone } from '@/lib/complianceReport';
 
 type Generated = { at: string; by: string };
 type OverviewResponse = { generated: Generated; period: { from: string; to: string }; homes: HomeSummary[]; error?: string };
@@ -303,6 +303,73 @@ function PrintPeople({ people }: { people: HomeDetail['people'] }) {
   );
 }
 
+// ---------- Level 3 Diploma & Care Certificate ----------
+
+const QUAL_TONE: Record<QualTone, string> = {
+  bad: 'bg-red-500/10 text-red-700 dark:text-red-300 border-red-500/30',
+  warn: 'bg-amber-500/10 text-amber-800 dark:text-amber-300 border-amber-500/30',
+  ok: 'bg-blue-500/10 text-blue-700 dark:text-blue-300 border-blue-500/30',
+  done: 'bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 border-emerald-500/30',
+  muted: 'bg-slate-500/10 text-slate-600 dark:text-slate-300 border-slate-500/30',
+};
+
+/** Overview cell: overdue count, then what else needs looking at. */
+function QualCell({ q }: { q: QualSummary | null }) {
+  if (!q) return <span className="text-slate-400">–</span>;
+  const others = q.needsAction - q.overdue;
+  return (
+    <div className="leading-tight">
+      {q.overdue > 0
+        ? <span className="font-black text-red-600 dark:text-red-400 tabular-nums">{q.overdue} overdue</span>
+        : <span className="font-bold text-emerald-600 dark:text-emerald-400">None overdue</span>}
+      {others > 0 && <div className="text-[11px] print:text-[7.5px] text-amber-700 dark:text-amber-300">{others} other{others === 1 ? '' : 's'} to check</div>}
+    </div>
+  );
+}
+
+/** One qualification on a home's page: count per status, then who needs action. */
+function QualificationBlock({ title, rule, q }: { title: string; rule: string; q: QualSummary }) {
+  return (
+    <div className="print:break-inside-avoid">
+      <h4 className="text-sm print:text-[9.5px] font-black">{title}</h4>
+      <p className="text-xs print:text-[8px] text-slate-500 mb-2 print:mb-1">{rule}</p>
+      <div className="flex flex-wrap gap-2 print:gap-1 mb-3 print:mb-1">
+        {q.bands.map((b) => (
+          <div key={b.key} className={`rounded-lg border px-3 py-1.5 print:px-1.5 print:py-0.5 ${QUAL_TONE[b.tone]} ${b.count === 0 ? 'opacity-50' : ''}`}>
+            <span className="text-lg print:text-[11px] font-black tabular-nums mr-1.5">{b.count}</span>
+            <span className="text-[11px] print:text-[7.5px] font-bold uppercase">{b.label}</span>
+          </div>
+        ))}
+      </div>
+      {q.actions.length === 0 ? (
+        <p className="text-xs print:text-[8px] font-bold text-emerald-600 dark:text-emerald-400">✓ Nobody needs action.</p>
+      ) : (
+        <table className="w-full text-left text-sm print:text-[8.5px]">
+          <thead className="border-y border-slate-200 dark:border-slate-700">
+            <tr className="text-[11px] print:text-[7.5px] uppercase text-slate-500">
+              <th className="py-1.5 print:py-0.5 pr-3 font-bold">Name</th>
+              <th className="py-1.5 print:py-0.5 px-3 font-bold">Status</th>
+              <th className="py-1.5 print:py-0.5 pl-3 font-bold">Deadline</th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-slate-100 dark:divide-slate-700/60">
+            {q.actions.map((a) => (
+              <tr key={`${a.name}-${a.band}`} className="print:break-inside-avoid">
+                <td className="py-1.5 print:py-0.5 pr-3 font-bold">{a.name}</td>
+                <td className="py-1.5 print:py-0.5 px-3"><span className={`text-[11px] print:text-[7.5px] px-2 py-0.5 rounded-md border ${QUAL_TONE[a.tone]}`}>{a.label}</span></td>
+                <td className="py-1.5 print:py-0.5 pl-3 tabular-nums">{a.due ? day(a.due) : <span className="text-slate-400">–</span>}{a.extendedTo && <span className="text-slate-500"> (extended)</span>}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      )}
+    </div>
+  );
+}
+
+const DIPLOMA_RULE = 'Children’s homes: within 2 years of the start date. From the Level 3 Diploma tracker.';
+const CARE_CERT_RULE = 'Every home: within 12 weeks of the start date (or an agreed extension). From the Care Certificate tracker and the Training Matrix.';
+
 // ---------- Excel ----------
 
 async function downloadExcel(detail: HomeDetail, generated: Generated) {
@@ -355,11 +422,25 @@ async function downloadExcel(detail: HomeDetail, generated: Generated) {
         : p.actions.map((a) => [p.name, { value: pctCell(p.compliancePct), type: Number, format: '0.0%' }, a.course, ACTION_LABEL[a.state], describeAction(a), a.bookedOn ? day(a.bookedOn) : ''])),
   ];
 
+  const qualRows = (title: string, q: QualSummary | null) => q ? [
+    [{ value: title, ...bold }],
+    ...q.bands.map((b) => [b.label, b.count]),
+    [],
+    head(['Name', 'Status', 'Deadline']),
+    ...(q.actions.length ? q.actions.map((a) => [a.name, a.label, a.due ? `${day(a.due)}${a.extendedTo ? ' (extended)' : ''}` : '']) : [['Nobody needs action', '', '']]),
+    [],
+  ] : [];
+  const qualifications = [
+    ...qualRows('Level 3 Diploma (children’s homes, 2 years from start)', detail.diploma),
+    ...qualRows('Care Certificate (12 weeks from start, or agreed extension)', detail.careCert),
+  ];
+
   const safeName = detail.locationName.replace(/[^\w\- ]+/g, '').trim() || 'Home';
   await writeXlsxFile([
     { data: summary, sheet: 'Summary', columns: [{ width: 46 }, { width: 40 }, { width: 16 }, { width: 10 }, { width: 16 }, { width: 10 }, { width: 22 }, { width: 40 }] },
     { data: courses, sheet: 'By course', columns: [{ width: 40 }, { width: 20 }, ...Array(8).fill({ width: 13 })], stickyRowsCount: 1 },
     { data: people, sheet: 'By person', columns: [{ width: 28 }, { width: 12 }, { width: 40 }, { width: 16 }, { width: 26 }, { width: 14 }], stickyRowsCount: 1 },
+    ...(qualifications.length ? [{ data: qualifications, sheet: 'Qualifications', columns: [{ width: 34 }, { width: 22 }, { width: 22 }] }] : []),
   ]).toFile(`Compliance report - ${safeName} - ${ukToday()}.xlsx`);
 }
 
@@ -536,7 +617,7 @@ export default function ComplianceReportPage() {
             </div>
 
             <div className={`${card} overflow-x-auto`}>
-              <table className="w-full text-left min-w-[900px] print:min-w-0">
+              <table className="w-full text-left min-w-[1120px] print:min-w-0">
                 <thead className="border-b border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-900/50">
                   <tr>
                     <th className={th}>Home</th>
@@ -546,13 +627,15 @@ export default function ComplianceReportPage() {
                     <th className={`${th} text-center`}>Expiring</th>
                     <th className={`${th} text-center`}>Allocated</th>
                     <th className={`${th} text-center`}>Oliver McGowan</th>
+                    <th className={th}>Level 3 Diploma</th>
+                    <th className={th}>Care Certificate</th>
                     <th className={`${th} text-center`}>Hours delivered</th>
                     <th className={`${th} text-center`}>Hours lost</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-200 dark:divide-slate-700">
                   {homes.length === 0 && (
-                    <tr><td colSpan={9} className="p-8 text-center text-slate-500">No homes match this filter.</td></tr>
+                    <tr><td colSpan={11} className="p-8 text-center text-slate-500">No homes match this filter.</td></tr>
                   )}
                   {homes.map((h) => (
                     <tr key={h.locationId} className="print:break-inside-avoid hover:bg-slate-50 dark:hover:bg-slate-700/40 cursor-pointer" onClick={() => openHome(h.locationId)}>
@@ -566,6 +649,8 @@ export default function ComplianceReportPage() {
                       <td className="p-3 print:px-1.5 print:py-1 print:text-[9.5px] text-center tabular-nums">{h.counts.expiring}</td>
                       <td className="p-3 print:px-1.5 print:py-1 print:text-[9.5px] text-center tabular-nums">{h.counts.allocated}</td>
                       <td className="p-3 print:px-1.5 print:py-1 print:text-[9.5px] text-center tabular-nums">{h.ldaApplies ? pctText(h.ldaPct) : <span className="text-slate-400">–</span>}</td>
+                      <td className="p-3 print:px-1.5 print:py-1 print:text-[9.5px] text-sm"><QualCell q={h.diploma} /></td>
+                      <td className="p-3 print:px-1.5 print:py-1 print:text-[9.5px] text-sm"><QualCell q={h.careCert} /></td>
                       <td className="p-3 print:px-1.5 print:py-1 print:text-[9.5px] text-center tabular-nums">{formatHours(h.hours.delivered)}</td>
                       <td className="p-3 print:px-1.5 print:py-1 print:text-[9.5px] text-center tabular-nums">{formatHours(h.hours.lostAbsence + h.hours.lostLate)}</td>
                     </tr>
@@ -575,6 +660,7 @@ export default function ComplianceReportPage() {
             </div>
             <p className="text-xs print:text-[8px] text-slate-500 mt-3 print:mt-2">
               Compliance = training in date (including expiring soon) ÷ training that applies. N/A and &ldquo;Not yet due&rdquo; are left out. Lowest compliance is listed first. Hours come from booked face-to-face sessions, matched to homes by each person&rsquo;s location.
+              Level 3 Diploma (children&rsquo;s homes only, 2 years from start) and Care Certificate (12 weeks from start) show people overdue; &ldquo;to check&rdquo; is due soon, start date needed or not enrolled. They are not part of the compliance %.
             </p>
           </>
         )}
@@ -631,6 +717,16 @@ export default function ComplianceReportPage() {
               <Tile label="Hours delivered" value={formatHours(d.hours.delivered)} sub={PERIOD_LABELS[periodKey]} />
               <Tile label="Hours lost" value={formatHours(d.hours.lostAbsence + d.hours.lostLate)} sub={<>{formatHours(d.hours.lostAbsence)} absences · {formatHours(d.hours.lostLate)} late{d.hours.sessionsWithoutTimes > 0 && <span className="text-amber-600"> · {d.hours.sessionsWithoutTimes} session(s) without times not counted</span>}</>} />
             </div>
+
+            {(d.diploma || d.careCert) && (
+              <section className={`${card} p-5 print:p-2 mb-6 print:mb-3`}>
+                <h3 className="text-sm print:text-[10px] font-black uppercase mb-3 print:mb-1">Qualifications</h3>
+                <div className={`grid gap-6 print:gap-2 ${d.diploma && d.careCert ? 'lg:grid-cols-2 print:grid-cols-2' : ''}`}>
+                  {d.diploma && <QualificationBlock title="🎓 Level 3 Diploma" rule={DIPLOMA_RULE} q={d.diploma} />}
+                  {d.careCert && <QualificationBlock title="📘 Care Certificate" rule={CARE_CERT_RULE} q={d.careCert} />}
+                </div>
+              </section>
+            )}
 
             {d.checks.length > 0 && (
               <section className={`${card} p-5 print:p-2 mb-6 print:mb-3 print:break-inside-avoid`}>
