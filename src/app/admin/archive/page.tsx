@@ -24,6 +24,7 @@ export default function ArchivePage() {
   const [openDates, setOpenDates] = useState<Record<string, boolean>>({});
   const [restoringId, setRestoringId] = useState<string | null>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [query, setQuery] = useState('');
 
   // Role via the shared hook (/api/profile with cookie fallback) instead of a
   // client supabase.auth.getUser(), which returned null when the browser
@@ -94,6 +95,7 @@ export default function ArchivePage() {
       if (!response.ok || !result?.success) {
         throw new Error(result?.error || 'Failed to restore item');
       }
+      if (result?.login?.message) alert(`Restored. ${result.login.message}`);
       await loadItems();
     } catch (error: unknown) {
       alert(`Restore failed: ${error instanceof Error ? error.message : String(error)}`);
@@ -152,7 +154,15 @@ export default function ArchivePage() {
     return `${y}-${m}-${d}`;
   }
 
-  const groupedItems = items.reduce<Record<string, ArchiveItem[]>>((acc, item) => {
+  const search = query.trim().toLowerCase();
+  const matches = (item: ArchiveItem) => {
+    if (!search) return true;
+    const email = (item?.snapshot as { profile?: { email?: string } })?.profile?.email || '';
+    return [itemTitle(item), item.entity_type, item.location_name || '', email].some((text) => text.toLowerCase().includes(search));
+  };
+  const shownItems = search ? items.filter(matches) : items;
+
+  const groupedItems = shownItems.reduce<Record<string, ArchiveItem[]>>((acc, item) => {
     const key = dayKey(item.deleted_at);
     if (!acc[key]) acc[key] = [];
     acc[key].push(item);
@@ -179,14 +189,36 @@ export default function ArchivePage() {
           </button>
         </div>
 
-        {items.length === 0 ? (
+        {items.length > 0 && (
+          <div className="mb-4">
+            <input
+              type="search"
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              placeholder="Search by name, type or home…"
+              aria-label="Search the archive"
+              className={`w-full rounded-lg border px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-blue-500 ${isDark ? 'border-gray-700 bg-gray-800 text-white placeholder-gray-500' : 'border-gray-300 bg-white text-gray-900 placeholder-gray-400'}`}
+            />
+            {search && (
+              <p className={`mt-2 text-xs ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>
+                {shownItems.length} of {items.length} item{items.length === 1 ? '' : 's'} match &ldquo;{query.trim()}&rdquo;
+              </p>
+            )}
+          </div>
+        )}
+
+        {items.length > 0 && search && shownItems.length === 0 ? (
+          <div className={`rounded-lg border p-6 text-center ${isDark ? 'border-gray-700 text-gray-300' : 'border-gray-200 text-gray-600'}`}>
+            Nothing in the archive matches your search.
+          </div>
+        ) : items.length === 0 ? (
           <div className={`rounded-lg border p-6 text-center ${isDark ? 'border-gray-700 text-gray-300' : 'border-gray-200 text-gray-600'}`}>
             No archived items to restore.
           </div>
         ) : (
           <div className="space-y-3">
             {groupedDates.map((dateKey, index) => {
-              const isOpen = openDates[dateKey] ?? index === 0;
+              const isOpen = search ? true : (openDates[dateKey] ?? index === 0);
               const dayItems = groupedItems[dateKey];
               const formattedDate = new Date(`${dateKey}T00:00:00`).toLocaleDateString('en-GB', {
                 weekday: 'short',

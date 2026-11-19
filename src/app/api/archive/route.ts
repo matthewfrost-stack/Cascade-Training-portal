@@ -55,6 +55,8 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: 'Archive item not found' }, { status: 404 });
   }
 
+  let login: LoginRestore | null = null;
+
   if (item.entity_type === 'location_training_course') {
     const snapshot = item.snapshot || {};
     const link = snapshot.location_training_course || {};
@@ -131,6 +133,8 @@ export async function POST(request: NextRequest) {
     if (restoreProfileError) {
       return NextResponse.json({ error: restoreProfileError.message, code: restoreProfileError.code }, { status: 400 });
     }
+
+    login = await unlockLogin(service, item.entity_id, profile.email || null);
   } else if (item.entity_type === 'booking') {
     const snapshot = item.snapshot || {};
     const booking = snapshot.booking || {};
@@ -176,7 +180,40 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: markError.message, code: markError.code }, { status: 400 });
   }
 
-  return NextResponse.json({ success: true });
+  return NextResponse.json({ success: true, ...(login ? { login } : {}) });
+}
+
+type LoginRestore = { restored: boolean; message: string };
+
+/**
+ * Deleting a person locks their login (email swapped for a deleted-…@system.local
+ * placeholder, random password, sign-in banned). Restoring the profile undoes
+ * that: original email back, ban lifted. The password stays random, so they
+ * set a new one through Reset Password. Logins are shared by live and dev.
+ */
+async function unlockLogin(service: ReturnType<typeof createServiceClient>, userId: string, email: string | null): Promise<LoginRestore> {
+  const { data, error } = await service.auth.admin.getUserById(userId);
+  if (error || !data?.user) return { restored: false, message: 'No login was found for this person, so only the profile was restored.' };
+  const user = data.user;
+  const locked = (user.email || '').startsWith('deleted-') || user.user_metadata?.soft_deleted === true
+    || (user.banned_until ? new Date(user.banned_until) > new Date() : false);
+  if (!locked) return { restored: true, message: 'Their login was already active.' };
+
+  const restoreEmail = email && !email.startsWith('deleted-') ? email.trim().toLowerCase() : null;
+  const metadata = { ...(user.user_metadata || {}) };
+  delete metadata.soft_deleted;
+  delete metadata.deleted_at;
+  const { error: updateError } = await service.auth.admin.updateUserById(userId, {
+    ...(restoreEmail ? { email: restoreEmail, email_confirm: true } : {}),
+    ban_duration: 'none',
+    user_metadata: metadata,
+  });
+  if (updateError) {
+    console.error('Could not unlock login on restore:', updateError);
+    return { restored: false, message: `The profile was restored, but the login could not be unlocked: ${updateError.message}` };
+  }
+  if (!restoreEmail) return { restored: true, message: 'Login unlocked, but no email was saved for them. Add their email in Edit Staff.' };
+  return { restored: true, message: `Login unlocked for ${restoreEmail}. Use Reset Password to give them a new password.` };
 }
 
 export async function DELETE(request: NextRequest) {
