@@ -346,6 +346,16 @@ Always-on workspace constraints that apply to every agent invocation.
 
 ## 11. Current Development Status
 
+### Archive: search + restore unlocks the login (2026-11-19)
+- `/admin/archive` has a **search box** (name, type, home, email). While searching, every matching day group is open and a "N of M match" count shows.
+- **Restoring a deleted person now unlocks their login** (`unlockLogin` in `src/app/api/archive/route.ts`): deleting staff swaps the login email for `deleted-…@system.local`, sets a random password and bans sign-in; restore puts the saved email back and lifts the ban. The password stays random, so use Reset Password afterwards; the page shows a message saying so. Logins are shared by live and dev.
+
+### Compliance report: Level 3 Diploma and Care Certificate (2026-11-19)
+- `/reports/compliance` now shows the two qualification trackers **separately from the training compliance %** (no percentage; status counts only). Overview table: "Level 3 Diploma" (children's homes with `diploma_required`; "–" elsewhere) and "Care Certificate" (every home) columns = number overdue plus "N others to check" (start date needed, due soon, not enrolled). Each home's page: a **Qualifications** section with a count per status and the list of people needing action with their deadline (extensions marked); included in the PDF and as a **Qualifications** sheet in the Excel download.
+- Built in `src/lib/complianceReport.ts` (`QualSummary`, `qualificationsByHome`) from `buildDiplomaHomes` / `buildCareCertHomes`, so the rules are exactly the tracker tabs'. If the tracker tables are missing the report still loads without them. Not saved in check snapshots (possible later).
+- Agreed rule: every person with a start date is counted (no cut-off date); long-serving staff who did the Care Certificate elsewhere or hold an equivalent are marked in the tracker (equivalent / not required).
+- Data: staff start dates bulk-filled on 19 Nov from the user's "Start Dates" sheet (SQL, blanks only).
+
 ### Care Certificate tracker (2026-11-18)
 - **"📘 Care Certificate – all homes"** tab on `/apps/nvq-diploma` (`?tab=care`, `src/app/components/CareCertificateTracker.tsx`). Everyone at every home the user can see (admins all; managers/schedulers their homes). Deadline = `profiles.start_date` + 12 weeks (`src/lib/careCertificate.ts`), or an agreed **extension** (`extended_to` + required `extension_reason`, must be after the normal deadline). Bands: overdue / start date needed / due within 2 weeks / within 12 weeks / completed / not required.
 - Completion is read from the Training Matrix: any course named "Care Certificate…" except the assessor tutorial (`careCertCourses`). Manual statuses: **completed** elsewhere (date + certificate; also **written to the matrix** at each of the person's homes in the user's scope whose matrix has the course, never replacing a later date, history source `qualification_tracker`), **equivalent** (what + date + certificate), **not required** (note).
@@ -516,4 +526,4 @@ Edit `src/lib/permissions.ts` — all permission gates read from here.
 
 ---
 
-*Last updated: 2026-11-18*
+*Last updated: 2026-11-19*
