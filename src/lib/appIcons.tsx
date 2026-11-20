@@ -1,7 +1,9 @@
 import type { LucideIcon } from 'lucide-react';
 import {
   Archive,
+  Award,
   BookOpen,
+  BookOpenCheck,
   CalendarClock,
   CalendarDays,
   ChartColumn,
@@ -9,9 +11,11 @@ import {
   GraduationCap,
   Grid3x3,
   House,
+  Inbox,
   ListChecks,
   Mail,
   MapPin,
+  Medal,
   Settings,
   Star,
   TrendingUp,
@@ -27,7 +31,8 @@ import {
 export type AppIconName =
   | 'home' | 'matrix' | 'reports' | 'calendar' | 'qualifications' | 'expiry' | 'admin'
   | 'compliance' | 'hub' | 'feedback'
-  | 'staff' | 'archive' | 'duplicates' | 'venues' | 'courses' | 'checklist' | 'emails' | 'sync';
+  | 'staff' | 'archive' | 'duplicates' | 'venues' | 'courses' | 'checklist' | 'emails' | 'sync'
+  | 'enquiries' | 'careCertificate' | 'level3' | 'level5';
 
 const ICONS: Record<AppIconName, { icon: LucideIcon; bg: string }> = {
   home: { icon: House, bg: 'bg-slate-600' },
@@ -50,6 +55,11 @@ const ICONS: Record<AppIconName, { icon: LucideIcon; bg: string }> = {
   checklist: { icon: ListChecks, bg: 'bg-indigo-600' },
   emails: { icon: Mail, bg: 'bg-cyan-600' },
   sync: { icon: Upload, bg: 'bg-blue-700' },
+  // Qualifications Tracker tabs
+  enquiries: { icon: Inbox, bg: 'bg-slate-600' },
+  careCertificate: { icon: BookOpenCheck, bg: 'bg-sky-600' },
+  level3: { icon: Award, bg: 'bg-amber-500' },
+  level5: { icon: Medal, bg: 'bg-purple-600' },
 };
 
 const SIZES = {
