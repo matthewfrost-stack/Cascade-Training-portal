@@ -3,7 +3,7 @@
 import React from 'react';
 import Icon from '@/app/components/Icon';
 
-type Accent = 'blue' | 'purple' | 'emerald' | 'amber' | 'indigo' | 'cyan' | 'slate';
+type Accent = 'blue' | 'purple' | 'emerald' | 'amber' | 'indigo' | 'cyan' | 'slate' | 'rose';
 type Size = 'sm' | 'md';
 
 const accentStyles: Record<Accent, { border: string; text: string }> = {
@@ -30,6 +30,10 @@ const accentStyles: Record<Accent, { border: string; text: string }> = {
   cyan: {
     border: 'hover:border-cyan-500 hover:bg-cyan-50/50 dark:hover:border-cyan-400 dark:hover:bg-cyan-950/30 focus-visible:ring-cyan-500/40',
     text: 'text-cyan-600 dark:text-cyan-400',
+  },
+  rose: {
+    border: 'hover:border-rose-500 hover:bg-rose-50/50 dark:hover:border-rose-400 dark:hover:bg-rose-950/30 focus-visible:ring-rose-500/40',
+    text: 'text-rose-600 dark:text-rose-400',
   },
   slate: {
     border: 'hover:border-slate-500 hover:bg-slate-50/50 dark:hover:border-slate-300 dark:hover:bg-slate-900/40 focus-visible:ring-slate-500/40',

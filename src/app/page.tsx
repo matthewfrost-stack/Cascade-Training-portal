@@ -162,7 +162,7 @@ export default function LandingPage() {
             title="Course Expiry Checker"
             description="Track staff training certifications, expiry dates, and manage course compliance across your organization."
             icon={<AppIcon name="expiry" size="lg" />}
-            accent="blue"
+            accent="rose"
             actionText="Open App"
             onClick={() => router.push('/apps/expiry-checker')}
           />
