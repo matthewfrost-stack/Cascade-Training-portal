@@ -74,11 +74,29 @@ export default function LocationManagerModal({ onClose }: { onClose: () => void 
     setVenues(venueData || []);
   }
 
+  /**
+   * Level 3 safety check before saving a home. Asks first if an Ofsted home that
+   * isn't a school is left without the Level 3 tick, or if the save would take a
+   * home off the Level 3 tracker. Returns false if the user cancels.
+   */
+  const confirmLevel3 = (name: string, regulator: string, ticked: boolean, wasTicked: boolean) => {
+    const willBeTicked = regulator === 'Ofsted' && ticked;
+    const label = name.trim() || 'This home';
+    if (wasTicked && !willBeTicked) {
+      return confirm(`This takes ${label} off the Level 3 Diploma tracker, so its staff will no longer be listed there. Continue?`);
+    }
+    if (regulator === 'Ofsted' && !ticked && !/school/i.test(name)) {
+      return confirm(`${label} is an Ofsted home but isn't ticked for the Level 3 Diploma, so its staff won't appear on the Level 3 tracker. Save anyway?`);
+    }
+    return true;
+  };
+
   const handleAddLocation = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!newLocationName.trim()) return;
     const managerEmail = cleanManagerEmail(newLocationManagerEmail);
     if (managerEmail.error) { alert(managerEmail.error); return; }
+    if (!confirmLevel3(newLocationName, newLocationRegulator, newLocationDiploma, false)) return;
     setLoading(true);
     try {
       const { error } = await supabase.from('locations').insert([{ 
@@ -144,6 +162,8 @@ export default function LocationManagerModal({ onClose }: { onClose: () => void 
     if (!editingLocationId || !editingLocationName.trim()) return;
     const managerEmail = cleanManagerEmail(editingLocationManagerEmail);
     if (managerEmail.error) { alert(managerEmail.error); return; }
+    const wasTicked = locations.find((l) => l.id === editingLocationId)?.diploma_required === true;
+    if (!confirmLevel3(editingLocationName, editingLocationRegulator, editingLocationDiploma, wasTicked)) return;
     setLoading(true);
     try {
       const { error } = await supabase.from('locations').update({

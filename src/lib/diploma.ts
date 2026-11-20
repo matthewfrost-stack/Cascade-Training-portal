@@ -3,6 +3,8 @@
  *
  * Children's Homes Regulations (Reg 32): staff working with children must hold
  * the Level 3 Diploma (or an equivalent) within 2 years of starting in the role.
+ * The clock starts at the company start date, or at "started at a children's home"
+ * for someone who moved from another (e.g. CQC) site — see `clockStart`.
  * Only homes with `locations.diploma_required` are tracked (schools are not
  * children's homes). Records live in `staff_qualifications`.
  */
@@ -44,6 +46,11 @@ export type DiplomaRecord = {
   startDate: string | null; // YYYY-MM-DD
   completedOn?: string | null;
 };
+
+/** When the 2-year clock starts: the children's-home start if they moved in, else their start date. */
+export function clockStart(startDate: string | null, homeStartDate?: string | null): string | null {
+  return homeStartDate || startDate;
+}
 
 /** Adds whole months to a YYYY-MM-DD date (end-of-month safe). */
 export function addMonths(date: string, months: number): string {

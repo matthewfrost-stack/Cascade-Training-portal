@@ -8,6 +8,7 @@ import {
   STATUS_LABELS,
   daysUntil,
   diplomaBand,
+  clockStart,
   diplomaSummary,
   dueDate,
   type DiplomaBand,
@@ -62,9 +63,9 @@ function Tile({ label, value, sub, tone }: { label: string; value: string; sub?:
 
 // ---------- edit panel ----------
 
-type Draft = { status: DiplomaStatus; startDate: string; qualificationsOnEntry: string; enrolledOn: string; provider: string; completedOn: string; equivalent: string; achievedOn: string; notes: string };
+type Draft = { status: DiplomaStatus; startDate: string; moved: boolean; homeStartDate: string; qualificationsOnEntry: string; enrolledOn: string; provider: string; completedOn: string; equivalent: string; achievedOn: string; notes: string };
 const toDraft = (p: DiplomaPerson): Draft => ({
-  status: p.status, startDate: p.startDate || '', qualificationsOnEntry: p.qualificationsOnEntry || '', enrolledOn: p.enrolledOn || '', provider: p.provider || '',
+  status: p.status, startDate: p.startDate || '', moved: !!p.homeStartDate, homeStartDate: p.homeStartDate || '', qualificationsOnEntry: p.qualificationsOnEntry || '', enrolledOn: p.enrolledOn || '', provider: p.provider || '',
   completedOn: p.completedOn || '', equivalent: p.equivalent || '', achievedOn: p.achievedOn || '', notes: p.notes || '',
 });
 
@@ -84,8 +85,10 @@ function EditPanel({ person, today, onSaved, onCancel }: { person: DiplomaPerson
     finally { setUploading(false); }
   };
   const set = <K extends keyof Draft>(k: K, v: Draft[K]) => setD((x) => ({ ...x, [k]: v }));
-  const preview = diplomaBand({ status: d.status, startDate: d.startDate || null }, today);
-  const due = dueDate(d.startDate || null);
+  const homeStart = d.moved ? d.homeStartDate || null : null;
+  const clock = clockStart(d.startDate || null, homeStart);
+  const preview = diplomaBand({ status: d.status, startDate: clock }, today);
+  const due = dueDate(clock);
 
   const save = async () => {
     if (d.status === 'completed' && !d.completedOn) { setError('Enter the date they completed it.'); return; }
@@ -93,14 +96,16 @@ function EditPanel({ person, today, onSaved, onCancel }: { person: DiplomaPerson
     if (d.status === 'equivalent' && !d.achievedOn) { setError('Enter the date they achieved it.'); return; }
     if (needsEvidence && !certificateName) { setError('Upload a copy of the certificate.'); return; }
     if (d.status === 'not_required' && !d.notes.trim()) { setError('Add a note saying why it isn’t required.'); return; }
+    if (d.moved && !d.homeStartDate) { setError('Enter the date they started at a children’s home, or untick “Moved from another site”.'); return; }
+    if (homeStart && d.startDate && homeStart < d.startDate) { setError('The children’s home date can’t be before their start date.'); return; }
     setSaving(true);
     setError('');
     try {
-      const response = await fetch('/api/diploma', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ profileId: person.profileId, record: d }) });
+      const response = await fetch('/api/diploma', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ profileId: person.profileId, record: { ...d, homeStartDate: homeStart || '' } }) });
       const body = await response.json().catch(() => ({}));
       if (!response.ok) throw new Error(body.error || 'Could not save.');
       onSaved({
-        ...person, status: d.status, startDate: d.startDate || null, qualificationsOnEntry: d.qualificationsOnEntry.trim() || null, dueDate: due, enrolledOn: d.enrolledOn || null, provider: d.provider.trim() || null,
+        ...person, status: d.status, startDate: d.startDate || null, homeStartDate: homeStart, qualificationsOnEntry: d.qualificationsOnEntry.trim() || null, dueDate: due, enrolledOn: d.enrolledOn || null, provider: d.provider.trim() || null,
         completedOn: d.completedOn || null, equivalent: d.equivalent.trim() || null, achievedOn: d.achievedOn || null, certificateName,
         notes: d.notes.trim() || null, band: preview, updatedAt: new Date().toISOString(),
       });
@@ -119,6 +124,20 @@ function EditPanel({ person, today, onSaved, onCancel }: { person: DiplomaPerson
           <label className={smallLabel} htmlFor={id('start')}>Start date</label>
           <input id={id('start')} type="date" className={input} value={d.startDate} onChange={(e) => set('startDate', e.target.value)} />
           <p className="text-[11px] text-slate-500 mt-1">{due ? `Deadline: ${day(due)}. ` : ''}Saved on their staff record (also used for the Care Certificate).</p>
+        </div>
+        <div>
+          <label className="flex items-center gap-2 text-[11px] font-bold uppercase tracking-wide text-slate-500 dark:text-slate-400 mb-1">
+            <input type="checkbox" className="w-3.5 h-3.5" checked={d.moved} onChange={(e) => set('moved', e.target.checked)} />
+            Moved from another site
+          </label>
+          {d.moved ? (
+            <>
+              <input id={id('homestart')} aria-label="Started at a children's home" type="date" className={input} min={d.startDate || undefined} value={d.homeStartDate} onChange={(e) => set('homeStartDate', e.target.value)} />
+              <p className="text-[11px] text-slate-500 mt-1">When they started at a children&rsquo;s home. The 2 years run from this date instead.</p>
+            </>
+          ) : (
+            <p className="text-[11px] text-slate-500">Tick if they worked at another site (e.g. CQC) before joining a children&rsquo;s home.</p>
+          )}
         </div>
         <div>
           <label className={smallLabel} htmlFor={id('entry')}>Qualifications on entry</label>
@@ -194,14 +213,14 @@ function EditPanel({ person, today, onSaved, onCancel }: { person: DiplomaPerson
 async function downloadExcel(homes: DiplomaHome[], today: string) {
   const { default: writeXlsxFile } = await import('write-excel-file/browser');
   const bold = { fontWeight: 'bold' as const };
-  const head = ['Home', 'Name', 'Qualifications on entry', 'Status', 'Where they stand', 'Start date', 'Deadline', 'Time left', 'Provider', 'Enrolled on', 'Completed on', 'Equivalent', 'Achieved on', 'Certificate on file', 'Notes'];
+  const head = ['Home', 'Name', 'Qualifications on entry', 'Status', 'Where they stand', 'Start date', 'Started at children’s home', 'Deadline', 'Time left', 'Provider', 'Enrolled on', 'Completed on', 'Equivalent', 'Achieved on', 'Certificate on file', 'Notes'];
   const rows = homes.flatMap((h) => h.people.map((p) => [
-    h.locationName, p.name, p.qualificationsOnEntry || '', STATUS_LABELS[p.status], BAND_LABELS[p.band], day(p.startDate), day(p.dueDate), timeLeft(p.dueDate, today),
+    h.locationName, p.name, p.qualificationsOnEntry || '', STATUS_LABELS[p.status], BAND_LABELS[p.band], day(p.startDate), p.homeStartDate ? day(p.homeStartDate) : '', day(p.dueDate), timeLeft(p.dueDate, today),
     p.provider || '', day(p.enrolledOn), day(p.completedOn), p.equivalent || '', day(p.achievedOn), p.certificateName ? 'Yes' : 'No', p.notes || '',
   ]));
   await writeXlsxFile([head.map((value) => ({ value, ...bold })), ...rows], {
     sheet: 'Level 3 Diploma',
-    columns: [{ width: 24 }, { width: 26 }, { width: 30 }, { width: 18 }, { width: 22 }, { width: 13 }, { width: 13 }, { width: 18 }, { width: 24 }, { width: 13 }, { width: 13 }, { width: 30 }, { width: 13 }, { width: 12 }, { width: 40 }],
+    columns: [{ width: 24 }, { width: 26 }, { width: 30 }, { width: 18 }, { width: 22 }, { width: 13 }, { width: 16 }, { width: 13 }, { width: 18 }, { width: 24 }, { width: 13 }, { width: 13 }, { width: 30 }, { width: 13 }, { width: 12 }, { width: 40 }],
     stickyRowsCount: 1,
   }).toFile(`Level 3 Diploma tracker - ${today}.xlsx`);
 }
@@ -341,7 +360,7 @@ export default function Level3DiplomaTracker() {
                               <td className="p-3 font-bold">{p.name}{p.qualificationsOnEntry && <div className="text-[11px] font-normal text-slate-500" title="Qualifications on entry">On entry: {p.qualificationsOnEntry}</div>}</td>
                               <td className="p-3"><Pill band={p.band} /></td>
                               <td className="p-3">{STATUS_LABELS[p.status]}{p.status === 'equivalent' && p.equivalent && <div className="text-[11px] text-slate-500">{p.equivalent}</div>}{p.status === 'completed' && p.completedOn && <div className="text-[11px] text-slate-500">{day(p.completedOn)}</div>}{p.status === 'equivalent' && p.achievedOn && <div className="text-[11px] text-slate-500">{day(p.achievedOn)}</div>}{p.certificateName && <button type="button" onClick={() => void openCertificate(p.profileId, 'L3_RESIDENTIAL_CHILDCARE')} className="block text-[11px] font-bold text-blue-600 dark:text-blue-300 hover:underline">📄 View certificate</button>}</td>
-                              <td className="p-3 tabular-nums whitespace-nowrap">{day(p.startDate)}</td>
+                              <td className="p-3 tabular-nums whitespace-nowrap">{day(p.startDate)}{p.homeStartDate && <div className="text-[11px] font-bold text-blue-600 dark:text-blue-300" title="Moved from another site – the 2 years run from this date">Moved in: {day(p.homeStartDate)}</div>}</td>
                               <td className="p-3 tabular-nums whitespace-nowrap">{p.band === 'done' || p.band === 'not_required' ? '–' : <>{day(p.dueDate)}<div className="text-[11px] text-slate-500">{timeLeft(p.dueDate, data.today)}</div></>}</td>
                               <td className="p-3">{p.provider || <span className="text-slate-400">–</span>}</td>
                               <td className="p-3 text-right"><UniformButton variant="secondary" size="sm" onClick={() => setEditing(key)}>Edit</UniformButton></td>
@@ -355,7 +374,7 @@ export default function Level3DiplomaTracker() {
               })}
             </div>
             <p className="text-xs text-slate-500 mt-4">
-              Deadline = start date + 2 years. &ldquo;Not enrolled yet&rdquo; is a prompt 3 months after starting (not a legal limit). Staff are listed by the homes they&rsquo;re linked to on the Training Matrix.
+              Deadline = start date + 2 years (or, for staff who moved from another site, the date they started at a children&rsquo;s home + 2 years). &ldquo;Not enrolled yet&rdquo; is a prompt 3 months after that (not a legal limit). Staff are listed by the homes they&rsquo;re linked to on the Training Matrix.
             </p>
           </>
         )}

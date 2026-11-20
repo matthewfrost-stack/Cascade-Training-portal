@@ -48,6 +48,7 @@ export async function PUT(request: NextRequest) {
     qualification: L3,
     status: r.status as DiplomaStatus,
     start_date: date(r.startDate),
+    home_start_date: date(r.homeStartDate),
     enrolled_on: date(r.enrolledOn),
     provider: text(r.provider),
     completed_on: date(r.completedOn),
@@ -62,6 +63,7 @@ export async function PUT(request: NextRequest) {
   if (row.status === 'equivalent' && !row.equivalent) return NextResponse.json({ error: 'Say which equivalent qualification they hold.' }, { status: 400 });
   if (row.status === 'equivalent' && !row.achieved_on) return NextResponse.json({ error: 'Enter the date they achieved it.' }, { status: 400 });
   if (row.status === 'not_required' && !row.notes) return NextResponse.json({ error: 'Add a note saying why it isn’t required.' }, { status: 400 });
+  if (row.home_start_date && row.start_date && row.home_start_date < row.start_date) return NextResponse.json({ error: 'The children’s home date can’t be before their start date.' }, { status: 400 });
 
   try {
     // Only people at a children's home this user can see.
@@ -78,7 +80,10 @@ export async function PUT(request: NextRequest) {
       if (!current?.certificate_path) return NextResponse.json({ error: 'Upload a copy of the certificate first.' }, { status: 400 });
     }
     const { error } = await service.from('staff_qualifications').upsert(row, { onConflict: 'profile_id,qualification' });
-    if (error) throw error;
+    if (error) {
+      if (/home_start_date/.test(error.message || '')) throw new DiplomaNotReady();
+      throw error;
+    }
     // The start date (and qualifications on entry) belong to the person, shared with the Care Certificate.
     const { error: profileError } = await service
       .from('profiles')
