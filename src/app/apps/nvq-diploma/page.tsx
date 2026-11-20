@@ -8,6 +8,7 @@ import Level3DiplomaTracker from '@/app/components/Level3DiplomaTracker';
 import CareCertificateTracker from '@/app/components/CareCertificateTracker';
 import Level5Tracker from '@/app/components/Level5Tracker';
 import { hasPermission } from '@/lib/permissions';
+import { AppIcon } from '@/lib/appIcons';
 import { useCurrentUserProfile } from '@/lib/useCurrentUserProfile';
 
 type Location = { id: string; name: string };
@@ -220,9 +221,10 @@ export default function NvqDiplomaPage() {
       <div className="mx-auto max-w-7xl">
         <MainHeader title="Qualifications Tracker" backPath="/" showThemeToggle={false} />
         <div role="tablist" className="mb-6 flex gap-1 overflow-x-auto border-b border-slate-200 dark:border-slate-800">
-          {([['enquiries', 'Enquiries & learners'], ['care', '📘 Care Certificate – all homes'], ['level3', '🎓 Level 3 Diploma – children’s homes'], ['level5', '🏅 Level 5 Diploma – RMs & Deputies']] as const).map(([key, label]) => (
+          {([['enquiries', 'enquiries', 'Enquiries & learners'], ['care', 'careCertificate', 'Care Certificate – all homes'], ['level3', 'level3', 'Level 3 Diploma – children’s homes'], ['level5', 'level5', 'Level 5 Diploma – RMs & Deputies']] as const).map(([key, icon, label]) => (
             <button key={key} type="button" role="tab" aria-selected={tab === key} onClick={() => chooseTab(key)}
-              className={`-mb-px whitespace-nowrap border-b-2 px-4 py-2.5 text-sm font-bold ${tab === key ? 'border-blue-600 text-blue-700 dark:text-blue-300' : 'border-transparent text-slate-500 hover:text-slate-800 dark:hover:text-slate-200'}`}>
+              className={`-mb-px inline-flex items-center gap-2 whitespace-nowrap border-b-2 px-4 py-2.5 text-sm font-bold ${tab === key ? 'border-blue-600 text-blue-700 dark:text-blue-300' : 'border-transparent text-slate-500 hover:text-slate-800 dark:hover:text-slate-200'}`}>
+              <AppIcon name={icon} size="xs" className={tab === key ? '' : 'opacity-75'} />
               {label}
             </button>
           ))}
