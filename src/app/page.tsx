@@ -141,7 +141,7 @@ export default function LandingPage() {
             title="Booking Calendar"
             description="Schedule training events, manage staff bookings, and track attendance for courses."
             icon={<AppIcon name="calendar" size="lg" />}
-            accent="emerald"
+            accent="blue"
             actionText="Open App"
             onClick={() => router.push('/apps/booking-calendar')}
           />
