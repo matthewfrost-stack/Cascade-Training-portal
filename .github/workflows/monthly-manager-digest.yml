@@ -2,6 +2,8 @@ name: Monthly Manager Training Email
 on:
   # PAUSED until the portal goes fully live. To switch on the monthly send,
   # remove the '#' from the two schedule lines below.
+  # Also set MANAGER_DIGEST_SCHEDULE_ON = true in src/lib/emailSwitches.ts so the
+  # Emails & Feedback page shows the monthly email as ON.
   # schedule:
   #   - cron: '0 7 1 * *'   # 07:00 UTC on the 1st of each month
   workflow_dispatch: # Allows a manual run from the GitHub Actions tab

@@ -5,11 +5,16 @@ import { useRouter } from 'next/navigation';
 import BackButton from '@/app/components/BackButton';
 import UniformButton from '@/app/components/UniformButton';
 import FeedbackQuestionFields from '@/app/components/FeedbackQuestionFields';
+import ManagerDigestModal from '@/app/components/ManagerDigestModal';
+import EmailTestAndLog from '@/app/components/EmailTestAndLog';
+import { MANAGER_DIGEST_SCHEDULE_ON } from '@/lib/emailSwitches';
+import { loadEmailTestSettings } from '@/lib/emailTestMode';
 import { useCurrentUserProfile } from '@/lib/useCurrentUserProfile';
 import type { FeedbackAnswer, FeedbackAnswers, FeedbackQuestion, QuestionType } from '@/lib/feedbackForm';
 import type { EmailSettings, SendNowSession } from '@/app/api/feedback/settings/route';
 
-type Tab = 'questions' | 'emails' | 'send';
+type Tab = 'questions' | 'emails' | 'send' | 'managers' | 'test';
+const TABS: Tab[] = ['questions', 'emails', 'send', 'managers', 'test'];
 type Loaded = { questions: FeedbackQuestion[]; defaultQuestions: FeedbackQuestion[]; emails: EmailSettings; sessions: SendNowSession[] };
 
 const TYPE_LABELS: Record<QuestionType, string> = {
@@ -363,6 +368,18 @@ export default function FeedbackAdminPage() {
   const [data, setData] = useState<Loaded | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [message, setMessage] = useState<{ type: 'ok' | 'error'; text: string } | null>(null);
+  const [testModeOn, setTestModeOn] = useState(false);
+
+  useEffect(() => {
+    const wanted = new URLSearchParams(window.location.search).get('tab') as Tab | null;
+    if (wanted && TABS.includes(wanted)) setTab(wanted);
+    setTestModeOn(loadEmailTestSettings().enabled);
+  }, []);
+  const chooseTab = (next: Tab) => {
+    setTab(next);
+    setMessage(null);
+    window.history.replaceState(null, '', next === 'questions' ? '/automation-control' : `/automation-control?tab=${next}`);
+  };
 
   const load = useCallback(async () => {
     try {
@@ -380,28 +397,49 @@ export default function FeedbackAdminPage() {
   useEffect(() => { void load(); }, [load]);
 
   const notify = (type: 'ok' | 'error', text: string) => { setMessage({ type, text }); window.scrollTo({ top: 0, behavior: 'smooth' }); };
-  const tabs: [Tab, string][] = [['questions', '📝 Questions'], ['emails', '✉️ Emails'], ['send', '📤 Send now']];
+  const tabs: [Tab, string][] = [
+    ['questions', '📝 Feedback questions'],
+    ['emails', '✉️ Feedback & reminder emails'],
+    ['send', '📤 Send feedback now'],
+    ['managers', '📬 Manager emails'],
+    ['test', '🧪 Test mode & sent emails'],
+  ];
+  const onOff = (on: boolean, label = on ? 'ON' : 'off') => (
+    <span className={`text-[11px] font-black uppercase px-2 py-0.5 rounded ${on ? 'bg-emerald-500/15 text-emerald-700 dark:text-emerald-300' : 'bg-slate-500/15 text-slate-600 dark:text-slate-300'}`}>{label}</span>
+  );
+  const overview: { label: string; detail: string; state: React.ReactNode; tab: Tab }[] = [
+    { label: 'Feedback email', detail: 'to staff signed in on a session', state: data ? onOff(data.emails.is_enabled) : '…', tab: 'emails' },
+    { label: 'Booking reminders', detail: 'to booked staff and their home’s managers', state: data ? onOff(data.emails.reminders_enabled) : '…', tab: 'emails' },
+    { label: 'Monthly manager email', detail: 'training due, per home, 1st of the month', state: onOff(MANAGER_DIGEST_SCHEDULE_ON, MANAGER_DIGEST_SCHEDULE_ON ? 'ON' : 'paused'), tab: 'managers' },
+    { label: 'Test mode', detail: 'emails sent by hand from this browser', state: onOff(testModeOn), tab: 'test' },
+  ];
 
   return (
     <main className="min-h-screen p-4 md:p-8 bg-slate-100 dark:bg-slate-900 text-slate-900 dark:text-slate-100">
       <div className="max-w-6xl mx-auto">
         <div className="flex flex-wrap justify-between items-center gap-4 mb-6">
           <BackButton to="/admin" />
-          <h1 className="text-2xl md:text-3xl font-black uppercase tracking-tighter">Feedback &amp; Emails</h1>
+          <h1 className="text-2xl md:text-3xl font-black uppercase tracking-tighter">Emails &amp; Feedback</h1>
           <UniformButton variant="secondary" size="sm" onClick={() => router.push('/feedback/results')}>⭐ Results</UniformButton>
         </div>
 
-        {data && (
-          <div className="flex flex-wrap gap-2 mb-6 text-xs">
-            <span className={`px-3 py-1.5 rounded-full font-bold ${data.emails.is_enabled ? 'bg-emerald-500/15 text-emerald-700 dark:text-emerald-300' : 'bg-slate-500/15 text-slate-600 dark:text-slate-300'}`}>Feedback email: {data.emails.is_enabled ? 'ON' : 'off'}</span>
-            <span className={`px-3 py-1.5 rounded-full font-bold ${data.emails.reminders_enabled ? 'bg-emerald-500/15 text-emerald-700 dark:text-emerald-300' : 'bg-slate-500/15 text-slate-600 dark:text-slate-300'}`}>Booking reminders: {data.emails.reminders_enabled ? 'ON' : 'off'}</span>
-            <span className="px-3 py-1.5 rounded-full font-bold bg-blue-500/15 text-blue-700 dark:text-blue-300">{data.questions.length} questions</span>
-          </div>
-        )}
+        <section className={`${card} p-4 mb-6`}>
+          <h2 className="text-xs font-black uppercase tracking-widest text-slate-500 dark:text-slate-400 mb-3">Every automatic email</h2>
+          <ul className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+            {overview.map((row) => (
+              <li key={row.label}>
+                <button type="button" onClick={() => chooseTab(row.tab)} className="w-full text-left rounded-xl border border-slate-200 dark:border-slate-700 p-3 hover:bg-slate-50 dark:hover:bg-slate-900/50">
+                  <div className="flex items-center justify-between gap-2"><span className="font-bold text-sm">{row.label}</span>{row.state}</div>
+                  <p className="text-[11px] text-slate-500 mt-1">{row.detail}</p>
+                </button>
+              </li>
+            ))}
+          </ul>
+        </section>
 
         <div role="tablist" className="flex gap-1 border-b border-slate-300 dark:border-slate-700 mb-6 overflow-x-auto">
           {tabs.map(([key, label]) => (
-            <button key={key} role="tab" aria-selected={tab === key} type="button" onClick={() => { setTab(key); setMessage(null); }}
+            <button key={key} role="tab" aria-selected={tab === key} type="button" onClick={() => chooseTab(key)}
               className={`px-4 py-2.5 text-sm font-bold border-b-2 -mb-px whitespace-nowrap ${tab === key ? 'border-blue-600 text-blue-700 dark:text-blue-300' : 'border-transparent text-slate-500 hover:text-slate-800 dark:hover:text-slate-200'}`}>
               {label}
             </button>
@@ -414,11 +452,13 @@ export default function FeedbackAdminPage() {
           </div>
         )}
         {error && <div className="mb-4 rounded-lg border border-red-300 bg-red-50 dark:bg-red-950/30 dark:border-red-900/50 p-3 text-sm text-red-700 dark:text-red-200">{error}</div>}
-        {!data && !error && <p className="text-center text-slate-500 py-16">Loading…</p>}
+        {!data && !error && (tab === 'questions' || tab === 'emails' || tab === 'send') && <p className="text-center text-slate-500 py-16">Loading…</p>}
 
         {data && tab === 'questions' && <QuestionsTab initial={data.questions} defaults={data.defaultQuestions} notify={notify} onSaved={(questions) => setData({ ...data, questions })} />}
         {data && tab === 'emails' && <EmailsTab initial={data.emails} notify={notify} onSaved={(emails) => setData({ ...data, emails })} />}
         {data && tab === 'send' && <SendTab sessions={data.sessions} notify={notify} reload={() => void load()} />}
+        {tab === 'managers' && <ManagerDigestModal inline />}
+        {tab === 'test' && <EmailTestAndLog onTestModeChange={setTestModeOn} />}
       </div>
     </main>
   );

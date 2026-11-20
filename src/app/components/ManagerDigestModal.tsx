@@ -1,5 +1,6 @@
 'use client';
 
+import { MANAGER_DIGEST_SCHEDULE_ON } from '@/lib/emailSwitches';
 import { useCallback, useEffect, useState } from 'react';
 import Icon from './Icon';
 import UniformButton from './UniformButton';
@@ -33,7 +34,8 @@ function monthLabel(period: string) {
   return new Date(Date.UTC(year, month - 1, 1)).toLocaleDateString('en-GB', { month: 'long', year: 'numeric', timeZone: 'UTC' });
 }
 
-export default function ManagerDigestModal({ onClose }: { onClose: () => void }) {
+/** The pop-up from Admin, or `inline` to show it inside the Emails & Feedback page. */
+export default function ManagerDigestModal({ onClose, inline = false }: { onClose?: () => void; inline?: boolean }) {
   const [isDark, setIsDark] = useState(true);
   const [status, setStatus] = useState<StatusResponse | null>(null);
   const [loading, setLoading] = useState(true);
@@ -139,18 +141,21 @@ export default function ManagerDigestModal({ onClose }: { onClose: () => void })
   const missingEmail = status?.homes.filter((home) => !home.managerEmail) || [];
 
   return (
-    <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-md flex items-center justify-center p-4 z-50" role="dialog" aria-modal="true" aria-labelledby="manager-digest-title">
-      <div style={{ backgroundColor: isDark ? '#1e293b' : '#ffffff', borderColor: isDark ? '#334155' : '#cbd5e1' }} className="rounded-3xl p-6 sm:p-8 w-full max-w-3xl max-h-[90vh] flex flex-col shadow-2xl border">
+    <div className={inline ? '' : 'fixed inset-0 bg-slate-900/60 backdrop-blur-md flex items-center justify-center p-4 z-50'} role={inline ? undefined : 'dialog'} aria-modal={inline ? undefined : true} aria-labelledby="manager-digest-title">
+      <div style={{ backgroundColor: isDark ? '#1e293b' : '#ffffff', borderColor: isDark ? '#334155' : '#cbd5e1' }} className={inline ? 'rounded-2xl p-5 w-full flex flex-col shadow-sm border' : 'rounded-3xl p-6 sm:p-8 w-full max-w-3xl max-h-[90vh] flex flex-col shadow-2xl border'}>
         <div className="flex justify-between items-start mb-2 gap-4">
           <div>
-            <h2 id="manager-digest-title" style={{ color: strong }} className="text-2xl font-black uppercase tracking-tight">Manager Emails</h2>
+            <h2 id="manager-digest-title" style={{ color: strong }} className={inline ? 'text-lg font-black' : 'text-2xl font-black uppercase tracking-tight'}>Manager Emails</h2>
             <p style={{ color: muted }} className="text-sm mt-1">
               On the 1st of each month at 7am, each home&rsquo;s managers get one email listing training that has expired, has never been completed, expires in the next {status?.lookaheadDays ?? 60} days, or is allocated but not done.
+              {!MANAGER_DIGEST_SCHEDULE_ON && <strong> The automatic monthly send is paused at the moment; previews and “Send now” still work.</strong>}
             </p>
           </div>
-          <button onClick={onClose} style={{ color: muted }} className="hover:text-red-500 transition-colors" aria-label="Close">
-            <Icon name="close" className="w-6 h-6" />
-          </button>
+          {!inline && onClose && (
+            <button onClick={onClose} style={{ color: muted }} className="hover:text-red-500 transition-colors" aria-label="Close">
+              <Icon name="close" className="w-6 h-6" />
+            </button>
+          )}
         </div>
 
         {error && (
@@ -165,7 +170,7 @@ export default function ManagerDigestModal({ onClose }: { onClose: () => void })
           </div>
         )}
 
-        <div className="mt-4 flex-1 overflow-y-auto pr-1 space-y-2 custom-scrollbar">
+        <div className={inline ? 'mt-4 space-y-2' : 'mt-4 flex-1 overflow-y-auto pr-1 space-y-2 custom-scrollbar'}>
           {loading && <p style={{ color: muted }} className="text-sm text-center py-8">Working out each home&rsquo;s training…</p>}
           {!loading && status?.homes.length === 0 && <p style={{ color: muted }} className="text-sm text-center py-8">No homes found.</p>}
           {!loading && status?.homes.map((home) => {
