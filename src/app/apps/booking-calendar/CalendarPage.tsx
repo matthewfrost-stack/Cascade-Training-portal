@@ -217,7 +217,7 @@ export default function CalendarPage() {
   const uniqueCourses = Array.from(new Set(events.map(e => e.courses?.name).filter((course): course is string => Boolean(course))));
   const filteredEvents = filterCourse === 'all' ? events : events.filter(e => e.courses?.name === filterCourse);
   const isStaff = profile?.role_tier === 'staff';
-  const canViewAdmin = hasPermission(profile?.role_tier || null, 'ADMIN_DASHBOARD', 'canView');
+  const canViewAdmin = hasPermission(profile?.role_tier || null, 'STAFF_MANAGEMENT', 'canView');
   const canSchedule = hasPermission(profile?.role_tier || null, 'COURSE_SCHEDULING', 'canCreate');
 
   return (

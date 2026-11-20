@@ -124,12 +124,14 @@ export default function LandingPage() {
 
           {hasPermission(userRole, 'COMPLIANCE_REPORT', 'canView') && (
             <TileButton
-              title="Compliance Report"
-              description="Compliance by home for CQC and Ofsted: who needs what, training hours, monthly trend, and PDF / Excel downloads."
-              emoji="📋"
+              title="Reports"
+              description={hasPermission(userRole, 'INTELLIGENCE_HUB', 'canView')
+                ? 'Compliance Report for CQC and Ofsted, the Intelligence Hub, and Feedback Results.'
+                : 'Compliance by home for CQC and Ofsted: who needs what, training hours, monthly trend, and PDF / Excel downloads.'}
+              emoji="📈"
               accent="emerald"
-              actionText="Open Report"
-              onClick={() => router.push('/reports/compliance')}
+              actionText="Open Reports"
+              onClick={() => router.push('/reports')}
             />
           )}
 

@@ -161,6 +161,12 @@ export default function AdminPage() {
     setPermissionLoadError(false);
     setAccessDenied(false);
 
+    // Schedulers only ever had the reports here; they now have their own page.
+    if (profile.role_tier.trim().toLowerCase() === 'scheduler') {
+      router.replace('/reports');
+      return;
+    }
+
     // Check if user has admin permission
     if (!hasPermission(profile.role_tier, 'ADMIN_DASHBOARD', 'canView')) {
       setAccessDenied(true);
@@ -286,9 +292,8 @@ export default function AdminPage() {
             </AdminSection>
           )}
 
-          <AdminSection isDark={isDark} title="Reports" description="Performance and feedback.">
-            <DashboardCard isDark={isDark} accent="#10b981" emoji="📊" title="Intelligence Hub" description="View your performance dashboard." actionLabel="📊 View" onClick={() => router.push('/analytics?from=/admin')} />
-            <DashboardCard isDark={isDark} accent="#3b82f6" emoji="⭐" title="Feedback Results" description="Analyse training course feedback from staff." actionLabel="⭐ View Results" onClick={() => router.push('/feedback/results')} />
+          <AdminSection isDark={isDark} title="Reports" description="Compliance, Intelligence Hub and Feedback Results now have their own Reports page.">
+            <DashboardCard isDark={isDark} accent="#10b981" emoji="📈" title="Reports" description="Compliance Report, Intelligence Hub and Feedback Results." actionLabel="📈 Open Reports" onClick={() => router.push('/reports')} />
           </AdminSection>
 
           {isAdmin && (

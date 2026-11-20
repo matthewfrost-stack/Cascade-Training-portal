@@ -474,7 +474,7 @@ export default function AnalyticsDashboard() {
                   return;
                 }
               }
-              router.push('/admin');
+              router.push('/reports');
             }}
           />
           <h1 style={{ color: isDark ? '#f1f5f9' : '#1e293b' }} className="text-3xl font-black uppercase tracking-tighter">Intelligence Hub</h1>

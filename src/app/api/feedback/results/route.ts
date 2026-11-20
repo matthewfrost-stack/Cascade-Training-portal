@@ -13,13 +13,13 @@ type EventRow = { id: string; event_date: string; courses: { name?: string | nul
 const courseOf = (row: EventRow) => (Array.isArray(row.courses) ? row.courses[0] : row.courses)?.name || 'Training session';
 
 /**
- * Feedback results (admins only).
+ * Feedback results (admins and schedulers can read; only admins can delete).
  *   GET ?from=YYYY-MM-DD&to=YYYY-MM-DD&course=<name>  -> questions, responses, response rates
  *   DELETE ?id=<response id>                          -> delete one response
  * Anonymous responses never carry a name or person id.
  */
 export async function GET(request: NextRequest) {
-  const authz = await requireRole(['admin']);
+  const authz = await requireRole(['admin', 'scheduler']);
   if ('error' in authz) return authz.error;
   const { service } = authz;
 

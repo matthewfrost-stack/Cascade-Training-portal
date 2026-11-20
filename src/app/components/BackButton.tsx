@@ -37,6 +37,15 @@ function getParentRoute(pathname: string | null): string {
 
 
   if (pathname === '/admin') return '/';
+  if (pathname === '/reports') return '/';
+  if (
+    pathname === '/analytics' ||
+    pathname.startsWith('/analytics/') ||
+    pathname === '/feedback/results' ||
+    pathname.startsWith('/feedback/results/')
+  ) {
+    return '/reports';
+  }
   if (
     pathname === '/admin-tools' ||
     pathname.startsWith('/admin-tools/') ||

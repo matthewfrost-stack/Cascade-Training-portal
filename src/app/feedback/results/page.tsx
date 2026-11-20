@@ -3,6 +3,8 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import BackButton from '@/app/components/BackButton';
+import { hasPermission } from '@/lib/permissions';
+import { useCurrentUserProfile } from '@/lib/useCurrentUserProfile';
 import UniformButton from '@/app/components/UniformButton';
 import {
   summariseQuestion,
@@ -171,6 +173,8 @@ async function downloadExcel(data: ResultsResponse, label: string) {
 
 export default function FeedbackResultsPage() {
   const router = useRouter();
+  const { profile } = useCurrentUserProfile();
+  const canDelete = hasPermission(profile?.role_tier || null, 'FEEDBACK_RESULTS', 'canDelete');
   const [periodKey, setPeriodKey] = useState<PeriodKey>('12m');
   const [course, setCourse] = useState('');
   const [data, setData] = useState<ResultsResponse | null>(null);
@@ -189,7 +193,7 @@ export default function FeedbackResultsPage() {
     try {
       const response = await fetch(`/api/feedback/results?${qs.toString()}`);
       const body = await response.json().catch(() => ({}));
-      if (response.status === 403) throw new Error('Only admins can see feedback results.');
+      if (response.status === 403) throw new Error('Only admins and schedulers can see feedback results.');
       if (!response.ok) throw new Error(body.error || 'Could not load feedback results.');
       setData(body as ResultsResponse);
     } catch (loadError) {
@@ -232,7 +236,7 @@ export default function FeedbackResultsPage() {
     <main className="min-h-screen p-4 md:p-8 bg-slate-100 dark:bg-slate-900 text-slate-900 dark:text-slate-100">
       <div className="max-w-6xl mx-auto">
         <div className="flex flex-wrap justify-between items-center gap-4 mb-6">
-          <BackButton to="/admin" />
+          <BackButton to="/reports" />
           <h1 className="text-2xl md:text-3xl font-black uppercase tracking-tighter">Feedback Results</h1>
           <UniformButton variant="secondary" size="sm" onClick={() => router.push('/feedback')}>📝 Open the form</UniformButton>
         </div>
@@ -336,7 +340,7 @@ export default function FeedbackResultsPage() {
                           </dl>
                           <div className="flex justify-end items-center gap-2 mt-3">
                             <span className="text-[11px] text-slate-500 mr-auto">Sent {new Date(r.submittedAt).toLocaleString('en-GB')}</span>
-                            {confirmDelete === r.id ? (
+                            {!canDelete ? null : confirmDelete === r.id ? (
                               <>
                                 <span className="text-xs text-slate-500">Delete this response?</span>
                                 <UniformButton variant="danger" size="sm" disabled={deleting} onClick={() => void deleteResponse(r.id)}>{deleting ? 'Deleting…' : 'Yes, delete'}</UniformButton>

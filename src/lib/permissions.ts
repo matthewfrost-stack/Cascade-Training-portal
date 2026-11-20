@@ -23,6 +23,14 @@ export const PERMISSIONS = {
     canEdit: ['admin'],
     canDelete: ['admin'],
   },
+  /** Intelligence Hub (/analytics). */
+  INTELLIGENCE_HUB: {
+    canView: ['admin', 'scheduler'],
+  },
+  FEEDBACK_RESULTS: {
+    canView: ['admin', 'scheduler'],
+    canDelete: ['admin'],
+  },
   COMPLIANCE_REPORT: {
     canView: ['admin', 'scheduler', 'manager'],
     canSnapshot: ['admin'],

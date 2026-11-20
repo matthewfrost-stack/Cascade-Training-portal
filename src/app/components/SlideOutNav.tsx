@@ -18,9 +18,9 @@ export default function SlideOutNav() {
   const { profile, isAuthenticated, loading } = useCurrentUserProfile();
   const userRole = profile?.role_tier ?? null;
 
-  // Admin page: admins and schedulers (schedulers only see its Reports section).
+  // Admin page: admins only (schedulers' reports now have their own Reports page).
   const canAdmin = useMemo(
-    () => !loading && hasPermission(userRole, "ADMIN_DASHBOARD", "canView"),
+    () => !loading && hasPermission(userRole, "STAFF_MANAGEMENT", "canView"),
     [userRole, loading],
   );
   const canAdminTools = useMemo(
@@ -62,7 +62,7 @@ export default function SlideOutNav() {
   const isExpiry = pathname.startsWith("/apps/expiry-checker");
   const isQualifications = pathname.startsWith("/apps/nvq-diploma");
   const isAdmin = pathname.startsWith("/admin") || pathname === "/automation-control";
-  const isReport = pathname.startsWith("/reports/compliance");
+  const isReport = pathname.startsWith("/reports") || pathname.startsWith("/analytics") || pathname.startsWith("/feedback/results");
   const canUseReport = !loading && hasPermission(userRole, "COMPLIANCE_REPORT", "canView");
   const canUseGeneralApps = !loading && userRole !== "staff";
   const canUseQualifications = !loading && hasPermission(userRole, "QUALIFICATIONS", "canView");
@@ -99,15 +99,15 @@ export default function SlideOutNav() {
 
         {canUseReport && <button
           type="button"
-          onClick={() => go("/reports/compliance")}
-          title="Compliance Report"
+          onClick={() => go("/reports")}
+          title="Reports"
           className={`w-10 h-10 rounded-xl border-2 flex items-center justify-center text-xl transition-all duration-200 ${
             isReport
               ? "bg-emerald-100 dark:bg-emerald-950/80 border-emerald-500 dark:border-emerald-400 shadow-sm"
               : "border-transparent hover:bg-slate-100 dark:hover:bg-slate-900 opacity-80 hover:opacity-100"
           }`}
         >
-          📋
+          📈
         </button>}
 
         <button
@@ -262,20 +262,20 @@ export default function SlideOutNav() {
 
                       {canUseReport && <button
                         type="button"
-                        onClick={() => go("/reports/compliance")}
+                        onClick={() => go("/reports")}
                         className={`w-full flex items-center gap-3 p-2.5 rounded-xl transition-all text-left border ${
                           isReport
                             ? "bg-emerald-50 border-emerald-300 dark:bg-emerald-950/60 dark:border-emerald-800 font-semibold"
                             : "bg-white border-slate-200/80 dark:bg-slate-900/20 dark:border-slate-800 hover:bg-slate-50 dark:hover:bg-slate-900"
                         }`}
                       >
-                        <span className="text-xl shrink-0">📋</span>
+                        <span className="text-xl shrink-0">📈</span>
                         <div className="min-w-0 flex-1">
                           <p className="text-xs font-bold text-slate-900 dark:text-white leading-tight">
-                            Compliance Report
+                            Reports
                           </p>
                           <p className="text-[11px] text-slate-500 dark:text-slate-400 truncate">
-                            CQC / Ofsted by home
+                            Compliance, Intelligence Hub, Feedback
                           </p>
                         </div>
                       </button>}
@@ -377,7 +377,7 @@ export default function SlideOutNav() {
                               Admin
                             </p>
                             <p className="text-[11px] text-slate-500 dark:text-slate-400 truncate">
-                              All admin tools and reports
+                              All admin tools
                             </p>
                           </div>
                         </button>

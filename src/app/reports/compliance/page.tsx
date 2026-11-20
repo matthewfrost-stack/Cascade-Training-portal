@@ -570,7 +570,7 @@ export default function ComplianceReportPage() {
       <div className="max-w-7xl mx-auto">
         {/* Header (screen) */}
         <div className="flex flex-wrap justify-between items-center gap-4 mb-6 print:hidden">
-          <BackButton label={homeId ? 'All homes' : 'Back'} onClick={() => (homeId ? openHome(null) : router.push('/'))} />
+          <BackButton label={homeId ? 'All homes' : 'Back'} onClick={() => (homeId ? openHome(null) : router.push('/reports'))} />
           <h1 className="text-2xl md:text-3xl font-black uppercase tracking-tighter">Compliance Report</h1>
           <div className="flex items-center gap-2">
             <label className="text-[10px] font-bold uppercase text-slate-500" htmlFor="hours-period">Hours</label>

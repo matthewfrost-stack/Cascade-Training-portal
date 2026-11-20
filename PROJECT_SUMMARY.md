@@ -106,14 +106,14 @@ Client auth state and role permissions are managed via `useCurrentUserProfile()`
 
 The root landing page after login is the **Training Dashboard**: the everyday tools, in this order:
 1. **Training Matrix** – `/training-matrix`
-2. **Compliance Report** – `/reports/compliance` (admin, scheduler, manager)
+2. **Reports** – `/reports` (admin, scheduler: Compliance Report, Intelligence Hub, Feedback Results; managers go straight to the Compliance Report)
 3. **Booking Calendar** – `/apps/booking-calendar`
 4. **Qualifications Tracker** – `/apps/nvq-diploma` (enquiries, Care Certificate, Level 3, Level 5)
 5. **Course Expiry Checker** – `/apps/expiry-checker`
 
 Matrix Sync moved to Admin → Data (2026-11-20).
 
-Navigation (`SlideOutNav.tsx`): an **always-visible side emoji strip** (🏠 Home, 📊 Matrix, 📋 Compliance Report, 📆 Calendar, 🎓 Qualifications, 📅 Expiry, ⚙️ Admin for admins and schedulers) and a drawer with the same items plus Admin shortcuts (Manage Staff, Emails & Feedback, Archive – admin only).
+Navigation (`SlideOutNav.tsx`): an **always-visible side emoji strip** (🏠 Home, 📊 Matrix, 📈 Reports, 📆 Calendar, 🎓 Qualifications, 📅 Expiry, ⚙️ Admin – admins only) and a drawer with the same items plus Admin shortcuts (Manage Staff, Emails & Feedback, Archive – admin only).
 
 ---
 
@@ -171,11 +171,11 @@ A calendar interface for creating and managing training events.
 ### Admin (`/admin`)
 `src/app/admin/page.tsx`
 
-One admin page (2026-11-20: the old "Training Control Centre" and the separate Admin Tools page `/admin-tools` were merged; `/admin-tools?open=…` forwards here). Reached from ⚙️ Admin in the side menu and the Booking Calendar. Sections:
+One admin page (2026-11-20: the old "Training Control Centre" and the separate Admin Tools page `/admin-tools` were merged; `/admin-tools?open=…` forwards here). Admins only (schedulers are sent to `/reports`). Reached from ⚙️ Admin in the side menu and the Booking Calendar. Sections:
 - **People** (admin): Manage Staff (`AddStaffModal`), Archive & Restore (`/admin/archive`), Clean Duplicates (`DuplicateRemovalModal`).
 - **Setup** (admin): Manage Venues, Course Catalog, Checklist Template.
 - **Emails** (admin): link to **Emails & Feedback** (`/automation-control`).
-- **Reports** (admin + scheduler): Intelligence Hub (`/analytics`), Feedback Results.
+- **Reports**: a link to the Reports page.
 - **Data** (admin): Matrix Sync (`MatrixSyncModal`).
 
 **Emails & Feedback** (`/automation-control`, admin): a panel at the top lists every automatic email with its state (feedback email, booking reminders, monthly manager email – shown "paused" while `MANAGER_DIGEST_SCHEDULE_ON` in `src/lib/emailSwitches.ts` is false, test mode). Tabs (`?tab=`): Feedback questions, Feedback & reminder emails, Send feedback now, **Manager emails** (`ManagerDigestModal inline`), **Test mode & sent emails** (`EmailTestAndLog.tsx`, moved from the old Notifications pop-up).
@@ -363,6 +363,7 @@ Always-on workspace constraints that apply to every agent invocation.
 - **Restoring a deleted person now unlocks their login** (`unlockLogin` in `src/app/api/archive/route.ts`): deleting staff swaps the login email for `deleted-…@system.local`, sets a random password and bans sign-in; restore puts the saved email back and lifts the ban. The password stays random, so use Reset Password afterwards; the page shows a message saying so. Logins are shared by live and dev.
 
 ### Navigation tidy-up (2026-11-20)
+- **Reports page** (`/reports`, `src/app/reports/page.tsx`): Compliance Report, Intelligence Hub and Feedback Results in one place, for admins and schedulers (new permissions `INTELLIGENCE_HUB`, `FEEDBACK_RESULTS` in `permissions.ts`). Managers, who can only see the compliance report, go straight to it. Schedulers can now read feedback results (`GET /api/feedback/results` allows scheduler); deleting a response stays admin-only. Admin is now admin-only in the menu and on the Booking Calendar. Back from the three reports goes to `/reports`.
 - One **Admin** page (`/admin`) with People / Setup / Emails / Reports / Data sections; `/admin-tools` forwards to it. Side menu ⚙️ Admin for admins and schedulers (schedulers previously only reached it via the Booking Calendar's "Training Dashboard" button, now "⚙️ Admin").
 - **Emails & Feedback** (`/automation-control`): every automatic email with on/off at the top; Manager emails and Test mode & sent emails moved in as tabs.
 - Dashboard: Matrix Sync moved to Admin → Data; tiles reordered; "NVQ & Diploma Tracker" renamed **Qualifications Tracker** (same URL). Compliance Report added to the side menu. Unused `AppSidebar.tsx` removed.
