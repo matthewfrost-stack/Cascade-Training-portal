@@ -83,6 +83,11 @@ export async function PATCH(request: NextRequest) {
     .eq('qualification', qualification)
     .maybeSingle();
   if (readError) return NextResponse.json({ error: /certificate_path/.test(readError.message || '') ? NOT_READY : 'Could not save the certificate.' }, { status: 503 });
+  // Level 5: people are added to the list by hand, so an upload must not add them.
+  if (!existing && qualification === 'L5_LEADERSHIP') {
+    await service.storage.from(CERTIFICATE_BUCKET).remove([path]);
+    return NextResponse.json({ error: 'Add them to the Level 5 list first.' }, { status: 400 });
+  }
 
   const ext = fileName.split('.').pop() || 'pdf';
   const name = String(body.fileName || '').replace(/[^\w.\- ()]+/g, '_').slice(0, 120) || `certificate.${ext}`;

@@ -350,6 +350,12 @@ Always-on workspace constraints that apply to every agent invocation.
 - `/admin/archive` has a **search box** (name, type, home, email). While searching, every matching day group is open and a "N of M match" count shows.
 - **Restoring a deleted person now unlocks their login** (`unlockLogin` in `src/app/api/archive/route.ts`): deleting staff swaps the login email for `deleted-…@system.local`, sets a random password and bans sign-in; restore puts the saved email back and lifts the ban. The password stays random, so use Reset Password afterwards; the page shows a message saying so. Logins are shared by live and dev.
 
+### Level 5 Diploma tracker (2026-11-20)
+- **"🏅 Level 5 Diploma – RMs & Deputies"** tab on `/apps/nvq-diploma` (`?tab=level5`, `src/app/components/Level5Tracker.tsx`). Level 5 Diploma in Leadership & Management for **Registered Managers and Deputies at every home**. People are added by hand ("+ Add person": staff member, role) and can be removed (deletes the record and certificate). Visibility as the other tabs: admins all; managers/schedulers people linked to their homes.
+- In-house rule (`src/lib/level5.ts`): deadline = **enrolment date + 2 years** (or an agreed extension with reason, after the normal deadline). No time limit on enrolling (unlike Level 3 / Care Certificate, there's no start-date clock). Bands: overdue / enrolment date needed (marked enrolled with no date) / due within 6 months / on track / not enrolled yet (no deadline) / qualified / not required. Completed/equivalent need a date and certificate; not required needs a note. Filters: home, role, band, name; Excel download.
+- `GET|POST|PUT|DELETE /api/level5`; server assembly `src/lib/level5Tracker.ts`. Records: `staff_qualifications` with `qualification = 'L5_LEADERSHIP'`, new `role` column (`registered_manager` / `deputy`). Certificates via `/api/qualification-certificates` (`L5_LEADERSHIP` added to `qualificationAccess.ts`; an upload can't add someone to the list).
+- Migration `20261120100000_level5_tracker.sql`. Not in the compliance report yet (by choice).
+
 ### Compliance report: Level 3 Diploma and Care Certificate (2026-11-19)
 - `/reports/compliance` now shows the two qualification trackers **separately from the training compliance %** (no percentage; status counts only). Overview table: "Level 3 Diploma" (children's homes with `diploma_required`; "–" elsewhere) and "Care Certificate" (every home) columns = number overdue plus "N others to check" (start date needed, due soon, not enrolled). Each home's page: a **Qualifications** section with a count per status and the list of people needing action with their deadline (extensions marked); included in the PDF and as a **Qualifications** sheet in the Excel download.
 - Built in `src/lib/complianceReport.ts` (`QualSummary`, `qualificationsByHome`) from `buildDiplomaHomes` / `buildCareCertHomes`, so the rules are exactly the tracker tabs'. If the tracker tables are missing the report still loads without them. Not saved in check snapshots (possible later).
@@ -526,4 +532,4 @@ Edit `src/lib/permissions.ts` — all permission gates read from here.
 
 ---
 
-*Last updated: 2026-11-19*
+*Last updated: 2026-11-20*
