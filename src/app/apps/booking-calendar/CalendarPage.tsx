@@ -2,7 +2,6 @@
 
 import { useState, useEffect, useRef, useCallback } from 'react';
 import Icon from '@/app/components/Icon';
-import { useRouter } from 'next/navigation';
 import { format, startOfMonth, endOfMonth, startOfWeek, endOfWeek, eachDayOfInterval, isSameDay, isSameMonth, subMonths, addMonths, parseISO } from 'date-fns';
 import ScheduleModal from '@/app/components/ScheduleModal';
 import UniformButton from '@/app/components/UniformButton';
@@ -29,7 +28,6 @@ interface CalendarEvent {
 }
 
 export default function CalendarPage() {
-  const router = useRouter();
   const { profile, isAuthenticated } = useCurrentUserProfile();
   const [today, setToday] = useState(() => new Date());
   const [currentMonth, setCurrentMonth] = useState(() => new Date());
@@ -217,7 +215,6 @@ export default function CalendarPage() {
   const uniqueCourses = Array.from(new Set(events.map(e => e.courses?.name).filter((course): course is string => Boolean(course))));
   const filteredEvents = filterCourse === 'all' ? events : events.filter(e => e.courses?.name === filterCourse);
   const isStaff = profile?.role_tier === 'staff';
-  const canViewAdmin = hasPermission(profile?.role_tier || null, 'STAFF_MANAGEMENT', 'canView');
   const canSchedule = hasPermission(profile?.role_tier || null, 'COURSE_SCHEDULING', 'canCreate');
 
   return (
@@ -238,19 +235,8 @@ export default function CalendarPage() {
                 Booking Calendar
               </h1>
 
-              <div className="flex items-center justify-end gap-1 md:gap-3">
-                {canViewAdmin && (
-                  <button
-                    onClick={() => {
-                      router.push('/admin');
-                    }}
-                    title="Admin"
-                    className="cursor-pointer bg-emerald-600 text-white px-1 md:px-4 py-1 md:py-2 rounded-lg md:rounded-xl font-black text-[7px] md:text-[10px] uppercase hover:bg-emerald-700 hover:shadow-md hover:scale-105 active:scale-95 transition-all duration-200"
-                  >
-                    ⚙️ Admin
-                  </button>
-                )}
-              </div>
+              {/* Right-hand column kept empty so the title stays centred (Admin is in the side menu). */}
+              <div />
             </div>
 
             <div className="flex flex-row justify-between items-center gap-2 md:gap-6">

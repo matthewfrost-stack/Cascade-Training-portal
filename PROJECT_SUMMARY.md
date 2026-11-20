@@ -171,7 +171,7 @@ A calendar interface for creating and managing training events.
 ### Admin (`/admin`)
 `src/app/admin/page.tsx`
 
-One admin page (2026-11-20: the old "Training Control Centre" and the separate Admin Tools page `/admin-tools` were merged; `/admin-tools?open=…` forwards here). Admins only (schedulers are sent to `/reports`). Reached from ⚙️ Admin in the side menu and the Booking Calendar. Sections:
+One admin page (2026-11-20: the old "Training Control Centre" and the separate Admin Tools page `/admin-tools` were merged; `/admin-tools?open=…` forwards here). Admins only (schedulers are sent to `/reports`). Reached from ⚙️ Admin in the side menu (the Booking Calendar's own Admin button was removed as a duplicate). Sections:
 - **People** (admin): Manage Staff (`AddStaffModal`), Archive & Restore (`/admin/archive`), Clean Duplicates (`DuplicateRemovalModal`).
 - **Setup** (admin): Manage Venues, Course Catalog, Checklist Template.
 - **Emails** (admin): link to **Emails & Feedback** (`/automation-control`).
