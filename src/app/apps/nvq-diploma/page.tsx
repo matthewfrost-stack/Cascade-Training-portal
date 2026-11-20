@@ -212,13 +212,13 @@ export default function NvqDiplomaPage() {
   }), [leads]);
 
   if (!profileLoading && !canView) {
-    return <main className="min-h-screen bg-slate-50 p-8 dark:bg-slate-950"><MainHeader title="NVQ & Diploma Tracker" backPath="/" /><div className="rounded-3xl border border-red-200 bg-red-50 p-6 font-bold text-red-700 dark:border-red-900 dark:bg-red-950/30 dark:text-red-300">You do not have permission to view this tracker.</div></main>;
+    return <main className="min-h-screen bg-slate-50 p-8 dark:bg-slate-950"><MainHeader title="Qualifications Tracker" backPath="/" /><div className="rounded-3xl border border-red-200 bg-red-50 p-6 font-bold text-red-700 dark:border-red-900 dark:bg-red-950/30 dark:text-red-300">You do not have permission to view this tracker.</div></main>;
   }
 
   return (
     <main className="min-h-screen bg-slate-50 p-4 transition-colors dark:bg-slate-950 md:p-8">
       <div className="mx-auto max-w-7xl">
-        <MainHeader title="NVQ & Diploma Tracker" backPath="/" showThemeToggle={false} />
+        <MainHeader title="Qualifications Tracker" backPath="/" showThemeToggle={false} />
         <div role="tablist" className="mb-6 flex gap-1 overflow-x-auto border-b border-slate-200 dark:border-slate-800">
           {([['enquiries', 'Enquiries & learners'], ['care', '📘 Care Certificate – all homes'], ['level3', '🎓 Level 3 Diploma – children’s homes'], ['level5', '🏅 Level 5 Diploma – RMs & Deputies']] as const).map(([key, label]) => (
             <button key={key} type="button" role="tab" aria-selected={tab === key} onClick={() => chooseTab(key)}

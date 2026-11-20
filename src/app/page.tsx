@@ -2,7 +2,6 @@
 
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
-import MatrixSyncModal from '@/app/components/MatrixSyncModal';
 import TileButton from '@/app/components/TileButton';
 import { hasPermission } from '@/lib/permissions';
 import { useCurrentUserProfile } from '@/lib/useCurrentUserProfile';
@@ -11,7 +10,6 @@ import { supabase } from '@/lib/supabase';
 export default function LandingPage() {
   const router = useRouter();
   const [isDark, setIsDark] = useState(true);
-  const [showMatrixSyncModal, setShowMatrixSyncModal] = useState(false);
   const { profile, loading, isAuthenticated } = useCurrentUserProfile();
   const userRole = profile?.role_tier ?? null;
 
@@ -114,17 +112,6 @@ export default function LandingPage() {
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 items-stretch">
-          {hasPermission(userRole, 'STAFF_MANAGEMENT', 'canView') && (
-            <TileButton
-              title="Matrix Sync"
-              description="Sync via Atlas upload or a full matrix CSV per location."
-              emoji="📥"
-              accent="blue"
-              actionText="Open Sync"
-              onClick={() => setShowMatrixSyncModal(true)}
-            />
-          )}
-
           {/* Training Matrix Card */}
           <TileButton
             title="Training Matrix"
@@ -146,16 +133,6 @@ export default function LandingPage() {
             />
           )}
 
-          {/* Course Expiry Checker Card */}
-          <TileButton
-            title="Course Expiry Checker"
-            description="Track staff training certifications, expiry dates, and manage course compliance across your organization."
-            emoji="📅"
-            accent="blue"
-            actionText="Open App"
-            onClick={() => router.push('/apps/expiry-checker')}
-          />
-
           {/* Booking Calendar Card */}
           <TileButton
             title="Booking Calendar"
@@ -168,22 +145,26 @@ export default function LandingPage() {
 
           {hasPermission(userRole, 'QUALIFICATIONS', 'canView') && (
             <TileButton
-              title="NVQ & Diploma Tracker"
-              description="Learner enquiries through to completion, and the Level 3 Diploma tracker for children's homes."
+              title="Qualifications Tracker"
+              description="Care Certificate, Level 3 Diploma (children's homes), Level 5 Diploma for managers and deputies, and NVQ / diploma enquiries."
               emoji="🎓"
               accent="amber"
               actionText="Open App"
               onClick={() => router.push('/apps/nvq-diploma')}
             />
           )}
+
+          {/* Course Expiry Checker Card */}
+          <TileButton
+            title="Course Expiry Checker"
+            description="Track staff training certifications, expiry dates, and manage course compliance across your organization."
+            emoji="📅"
+            accent="blue"
+            actionText="Open App"
+            onClick={() => router.push('/apps/expiry-checker')}
+          />
         </div>
       </div>
-
-      {showMatrixSyncModal && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-          <MatrixSyncModal onClose={() => setShowMatrixSyncModal(false)} />
-        </div>
-      )}
     </div>
   );
 }

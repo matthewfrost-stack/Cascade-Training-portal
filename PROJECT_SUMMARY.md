@@ -46,7 +46,7 @@ training-portal/
 │   │   ├── page.tsx            # Landing page (home tile selector)
 │   │   ├── layout.tsx          # Root layout (sidebar, update notifier, auth)
 │   │   ├── dashboard/          # Training hub – links to all sub-apps
-│   │   ├── admin/              # Admin and scheduler training control centre
+│   │   ├── admin/              # Admin page (People / Setup / Emails / Reports / Data)
 │   │   ├── training-matrix/    # Full staff × course compliance matrix
 │   │   ├── apps/
 │   │   │   ├── booking-calendar/      # Course booking and scheduling
@@ -104,13 +104,16 @@ Client auth state and role permissions are managed via `useCurrentUserProfile()`
 ### Home & Training Dashboard (`/` & `/dashboard`)
 `src/app/page.tsx`
 
-The root landing page after login is the **Training Dashboard**. It displays a responsive grid of cards leading directly to all core training tools:
-1. **Matrix Sync** – opens an import modal (admin view)
-2. **Training Matrix** – `/training-matrix`
-3. **Course Expiry Checker** – `/apps/expiry-checker`
-4. **Booking Calendar** – `/apps/booking-calendar`
+The root landing page after login is the **Training Dashboard**: the everyday tools, in this order:
+1. **Training Matrix** – `/training-matrix`
+2. **Compliance Report** – `/reports/compliance` (admin, scheduler, manager)
+3. **Booking Calendar** – `/apps/booking-calendar`
+4. **Qualifications Tracker** – `/apps/nvq-diploma` (enquiries, Care Certificate, Level 3, Level 5)
+5. **Course Expiry Checker** – `/apps/expiry-checker`
 
-Navigation across all pages includes an **always-visible side emoji strip** on the left screen edge (🏠 Home, 📊 Matrix, 📆 Calendar, 📅 Expiry, 🛠️ Admin) and compact drawer buttons when expanded.
+Matrix Sync moved to Admin → Data (2026-11-20).
+
+Navigation (`SlideOutNav.tsx`): an **always-visible side emoji strip** (🏠 Home, 📊 Matrix, 📋 Compliance Report, 📆 Calendar, 🎓 Qualifications, 📅 Expiry, ⚙️ Admin for admins and schedulers) and a drawer with the same items plus Admin shortcuts (Manage Staff, Emails & Feedback, Archive – admin only).
 
 ---
 
@@ -165,10 +168,19 @@ A calendar interface for creating and managing training events.
 
 ---
 
-### Training Control Centre (`/admin`)
+### Admin (`/admin`)
 `src/app/admin/page.tsx`
 
-Admin and scheduler-facing control centre with admin-only management tools:
+One admin page (2026-11-20: the old "Training Control Centre" and the separate Admin Tools page `/admin-tools` were merged; `/admin-tools?open=…` forwards here). Reached from ⚙️ Admin in the side menu and the Booking Calendar. Sections:
+- **People** (admin): Manage Staff (`AddStaffModal`), Archive & Restore (`/admin/archive`), Clean Duplicates (`DuplicateRemovalModal`).
+- **Setup** (admin): Manage Venues, Course Catalog, Checklist Template.
+- **Emails** (admin): link to **Emails & Feedback** (`/automation-control`).
+- **Reports** (admin + scheduler): Intelligence Hub (`/analytics`), Feedback Results.
+- **Data** (admin): Matrix Sync (`MatrixSyncModal`).
+
+**Emails & Feedback** (`/automation-control`, admin): a panel at the top lists every automatic email with its state (feedback email, booking reminders, monthly manager email – shown "paused" while `MANAGER_DIGEST_SCHEDULE_ON` in `src/lib/emailSwitches.ts` is false, test mode). Tabs (`?tab=`): Feedback questions, Feedback & reminder emails, Send feedback now, **Manager emails** (`ManagerDigestModal inline`), **Test mode & sent emails** (`EmailTestAndLog.tsx`, moved from the old Notifications pop-up).
+
+Older notes on the individual tools:
 - **Location Manager** – create and manage training locations, including each home's managers' email (Google Group) for the monthly training-due email and who regulates it (CQC or Ofsted).
 - **Manager Emails** – see each home's expired / expiring / allocated counts, send yourself a preview, or send this month's emails on demand (`ManagerDigestModal`).
 - **Course Catalogue** – define courses and set default capacity. Date-specific limits are managed from the booking roster.
@@ -181,7 +193,6 @@ Admin and scheduler-facing control centre with admin-only management tools:
 
 | Component | Purpose |
 |---|---|
-| `AppSidebar.tsx` | Collapsible left-side navigation bar |
 | `FixedHeader.tsx` | Top header with theme toggle and profile dropdown |
 | `TrainingCourseChecker.tsx` | TNA summary + drill-down (see §5) |
 | `CourseExpiryChecker.tsx` | Per-location expiry view |
@@ -190,7 +201,8 @@ Admin and scheduler-facing control centre with admin-only management tools:
 | `BookingModal.tsx` | Booking form, roster, attendance, export, roster settings; both tabs have collapsible sticky location headers |
 | `RosterSettingsModal.tsx` | Edit per-session booking limits and roster messages |
 | `ChecklistTemplateModal.tsx` | Manage reusable checklist items, including removal |
-| `AdminToolsPanel.tsx` | Admin sub-panel container |
+| `AdminToolsPanel.tsx` | Old Admin Tools panel – no longer used since the admin pages were merged (2026-11-20) |
+| `EmailTestAndLog.tsx` | Email test mode and sent-email log (Emails & Feedback page) |
 | `UpdateNotification.tsx` | Polls `/api/version` and shows a toast when a new deploy is detected |
 | `MatrixSyncModal.tsx` | Import options: Atlas upload or location CSV |
 | `ManagerDigestModal.tsx` | Admin view of the monthly manager email: per-home counts, preview to self, send now |
@@ -349,6 +361,11 @@ Always-on workspace constraints that apply to every agent invocation.
 ### Archive: search + restore unlocks the login (2026-11-19)
 - `/admin/archive` has a **search box** (name, type, home, email). While searching, every matching day group is open and a "N of M match" count shows.
 - **Restoring a deleted person now unlocks their login** (`unlockLogin` in `src/app/api/archive/route.ts`): deleting staff swaps the login email for `deleted-…@system.local`, sets a random password and bans sign-in; restore puts the saved email back and lifts the ban. The password stays random, so use Reset Password afterwards; the page shows a message saying so. Logins are shared by live and dev.
+
+### Navigation tidy-up (2026-11-20)
+- One **Admin** page (`/admin`) with People / Setup / Emails / Reports / Data sections; `/admin-tools` forwards to it. Side menu ⚙️ Admin for admins and schedulers (schedulers previously only reached it via the Booking Calendar's "Training Dashboard" button, now "⚙️ Admin").
+- **Emails & Feedback** (`/automation-control`): every automatic email with on/off at the top; Manager emails and Test mode & sent emails moved in as tabs.
+- Dashboard: Matrix Sync moved to Admin → Data; tiles reordered; "NVQ & Diploma Tracker" renamed **Qualifications Tracker** (same URL). Compliance Report added to the side menu. Unused `AppSidebar.tsx` removed.
 
 ### Level 5 Diploma tracker (2026-11-20)
 - **"🏅 Level 5 Diploma – RMs & Deputies"** tab on `/apps/nvq-diploma` (`?tab=level5`, `src/app/components/Level5Tracker.tsx`). Level 5 Diploma in Leadership & Management for **Registered Managers and Deputies at every home**. People are added by hand ("+ Add person": staff member, role) and can be removed (deletes the record and certificate). Visibility as the other tabs: admins all; managers/schedulers people linked to their homes.
