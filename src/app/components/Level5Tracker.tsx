@@ -26,12 +26,12 @@ const BAND_STYLE: Record<L5Band, string> = {
   overdue: 'bg-red-500/15 text-red-700 dark:text-red-300 border-red-500/30',
   date_needed: 'bg-slate-500/15 text-slate-700 dark:text-slate-200 border-slate-500/30',
   due_soon: 'bg-orange-500/15 text-orange-700 dark:text-orange-300 border-orange-500/30',
-  not_enrolled: 'bg-amber-500/15 text-amber-700 dark:text-amber-300 border-amber-500/30',
+  not_enrolled: 'bg-slate-500/10 text-slate-600 dark:text-slate-300 border-slate-500/20',
   on_track: 'bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 border-emerald-500/30',
   done: 'bg-emerald-600/20 text-emerald-800 dark:text-emerald-200 border-emerald-600/40',
   not_required: 'bg-slate-500/10 text-slate-500 border-slate-500/20',
 };
-const BAND_ICON: Record<L5Band, string> = { overdue: '🔴', date_needed: '❔', due_soon: '🟠', not_enrolled: '🟡', on_track: '🟢', done: '✅', not_required: '–' };
+const BAND_ICON: Record<L5Band, string> = { overdue: '🔴', date_needed: '❔', due_soon: '🟠', not_enrolled: '⚪', on_track: '🟢', done: '✅', not_required: '–' };
 
 const card = 'rounded-2xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 shadow-sm';
 const input = 'w-full bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-600 text-slate-900 dark:text-slate-100 rounded-lg px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-blue-500';
@@ -73,11 +73,10 @@ async function send(method: string, url: string, body?: unknown) {
 
 // ---------- add person ----------
 
-function AddPanel({ candidates, today, onAdded, onCancel }: { candidates: L5Candidate[]; today: string; onAdded: () => void; onCancel: () => void }) {
+function AddPanel({ candidates, onAdded, onCancel }: { candidates: L5Candidate[]; onAdded: () => void; onCancel: () => void }) {
   const [search, setSearch] = useState('');
   const [profileId, setProfileId] = useState('');
   const [role, setRole] = useState<L5Role | ''>('');
-  const [inRoleSince, setInRoleSince] = useState('');
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
   const matches = useMemo(() => {
@@ -92,7 +91,7 @@ function AddPanel({ candidates, today, onAdded, onCancel }: { candidates: L5Cand
     setSaving(true);
     setError('');
     try {
-      await send('POST', '/api/level5', { profileId, role, inRoleSince });
+      await send('POST', '/api/level5', { profileId, role });
       onAdded();
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Could not add them.');
@@ -103,7 +102,7 @@ function AddPanel({ candidates, today, onAdded, onCancel }: { candidates: L5Cand
   return (
     <div className={`${card} p-4 mb-6 space-y-3`}>
       <h3 className="font-black">Add someone to the Level 5 list</h3>
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
         <div>
           <label className={smallLabel} htmlFor="l5-add-search">Staff member</label>
           {chosen ? (
@@ -136,11 +135,6 @@ function AddPanel({ candidates, today, onAdded, onCancel }: { candidates: L5Cand
             {Object.entries(L5_ROLE_LABELS).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
           </select>
         </div>
-        <div>
-          <label className={smallLabel} htmlFor="l5-add-since">In role since</label>
-          <input id="l5-add-since" type="date" className={input} max={today} value={inRoleSince} onChange={(e) => setInRoleSince(e.target.value)} />
-          <p className="text-[11px] text-slate-500 mt-1">Used to flag anyone not enrolled after 3 months.</p>
-        </div>
       </div>
       {error && <p role="alert" className="text-sm text-red-600 dark:text-red-300">{error}</p>}
       <div className="flex justify-end gap-2">
@@ -154,11 +148,11 @@ function AddPanel({ candidates, today, onAdded, onCancel }: { candidates: L5Cand
 // ---------- edit panel ----------
 
 type Draft = {
-  role: L5Role | ''; inRoleSince: string; status: L5Status; enrolledOn: string; provider: string; completedOn: string;
+  role: L5Role | ''; status: L5Status; enrolledOn: string; provider: string; completedOn: string;
   equivalent: string; achievedOn: string; extend: boolean; extendedTo: string; extensionReason: string; notes: string;
 };
 const toDraft = (p: L5Person): Draft => ({
-  role: p.role || '', inRoleSince: p.inRoleSince || '', status: p.status, enrolledOn: p.enrolledOn || '', provider: p.provider || '',
+  role: p.role || '', status: p.status, enrolledOn: p.enrolledOn || '', provider: p.provider || '',
   completedOn: p.completedOn || '', equivalent: p.equivalent || '', achievedOn: p.achievedOn || '',
   extend: !!p.extendedTo, extendedTo: p.extendedTo || '', extensionReason: p.extensionReason || '', notes: p.notes || '',
 });
@@ -178,7 +172,7 @@ function EditPanel({ person, today, onSaved, onRemoved, onCancel }: {
   const normalDue = l5StandardDue(d.enrolledOn || null);
   const extending = d.extend && !finished && !!d.enrolledOn;
   const extendedTo = extending ? d.extendedTo || null : null;
-  const preview = l5Band({ status: d.status, inRoleSince: d.inRoleSince || null, enrolledOn: d.enrolledOn || null, extendedTo }, today);
+  const preview = l5Band({ status: d.status, enrolledOn: d.enrolledOn || null, extendedTo }, today);
   const id = (k: string) => `l5-${person.profileId}-${k}`;
 
   const upload = async (file: File | undefined) => {
@@ -210,11 +204,11 @@ function EditPanel({ person, today, onSaved, onRemoved, onCancel }: {
       };
       await send('PUT', '/api/level5', { profileId: person.profileId, record });
       onSaved({
-        ...person, role: d.role, inRoleSince: d.inRoleSince || null, status: d.status, enrolledOn, provider: d.provider.trim() || null,
+        ...person, role: d.role, status: d.status, enrolledOn, provider: d.provider.trim() || null,
         standardDue: l5StandardDue(enrolledOn), dueDate: l5Due(enrolledOn, extendedTo), extendedTo,
         extensionReason: extendedTo ? d.extensionReason.trim() : null, completedOn: d.completedOn || null,
         equivalent: d.equivalent.trim() || null, achievedOn: d.achievedOn || null, certificateName, notes: d.notes.trim() || null,
-        band: l5Band({ status: d.status, inRoleSince: d.inRoleSince || null, enrolledOn, extendedTo }, today),
+        band: l5Band({ status: d.status, enrolledOn, extendedTo }, today),
       });
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Could not save.');
@@ -245,10 +239,6 @@ function EditPanel({ person, today, onSaved, onRemoved, onCancel }: {
             <option value="">Choose…</option>
             {Object.entries(L5_ROLE_LABELS).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
           </select>
-        </div>
-        <div>
-          <label className={smallLabel} htmlFor={id('since')}>In role since</label>
-          <input id={id('since')} type="date" className={input} max={today} value={d.inRoleSince} onChange={(e) => set('inRoleSince', e.target.value)} />
         </div>
         <div>
           <label className={smallLabel} htmlFor={id('status')}>Status</label>
@@ -342,9 +332,9 @@ function EditPanel({ person, today, onSaved, onRemoved, onCancel }: {
 async function downloadExcel(people: L5Person[], today: string) {
   const { default: writeXlsxFile } = await import('write-excel-file/browser');
   const bold = { fontWeight: 'bold' as const };
-  const head = ['Name', 'Role', 'Home(s)', 'Where they stand', 'In role since', 'Status', 'Enrolled on', 'Provider', '2-year deadline', 'Extended to', 'Extension reason', 'Time left', 'Completed / achieved on', 'Equivalent', 'Certificate on file', 'Notes'];
+  const head = ['Name', 'Role', 'Home(s)', 'Where they stand', 'Status', 'Enrolled on', 'Provider', '2-year deadline', 'Extended to', 'Extension reason', 'Time left', 'Completed / achieved on', 'Equivalent', 'Certificate on file', 'Notes'];
   const rows = people.map((p) => [
-    p.name, p.role ? L5_ROLE_LABELS[p.role] : '', p.homes.map((h) => h.name).join(', '), L5_BAND_LABELS[p.band], day(p.inRoleSince),
+    p.name, p.role ? L5_ROLE_LABELS[p.role] : '', p.homes.map((h) => h.name).join(', '), L5_BAND_LABELS[p.band],
     L5_STATUS_LABELS[p.status], day(p.enrolledOn), p.provider || '', day(p.standardDue), day(p.extendedTo), p.extensionReason || '',
     p.band === 'done' || p.band === 'not_required' ? '' : timeLeft(p.dueDate, today), day(p.completedOn || p.achievedOn),
     p.equivalent || '', p.certificateName ? 'Yes' : 'No', p.notes || '',
@@ -418,7 +408,7 @@ export default function Level5Tracker() {
           }}>{exporting ? 'Preparing…' : '📊 Download Excel'}</UniformButton>
         </div>
       </div>
-      <p className="text-sm text-slate-500 dark:text-slate-400 mb-6">Registered Managers and Deputies at every home. Our rule: finish the Level 5 Diploma within 2 years of enrolling. Anyone not enrolled 3 months after starting in the role is flagged. You only see people at the homes you manage.</p>
+      <p className="text-sm text-slate-500 dark:text-slate-400 mb-6">Registered Managers and Deputies at every home. Our rule: finish the Level 5 Diploma within 2 years of enrolling. There&rsquo;s no time limit on enrolling – the clock only starts once they enrol. You only see people at the homes you manage.</p>
 
       {error && <div className="mb-4 rounded-lg border border-red-300 bg-red-50 dark:bg-red-950/30 dark:border-red-900/50 p-3 text-sm text-red-700 dark:text-red-200">{error}</div>}
       {notice && <div className="mb-4 rounded-lg border border-emerald-300 bg-emerald-50 dark:bg-emerald-950/30 dark:border-emerald-900/50 p-3 text-sm text-emerald-800 dark:text-emerald-200">{notice}</div>}
@@ -427,7 +417,7 @@ export default function Level5Tracker() {
       {data && (
         <>
           {adding && (
-            <AddPanel candidates={data.candidates} today={data.today} onCancel={() => setAdding(false)}
+            <AddPanel candidates={data.candidates} onCancel={() => setAdding(false)}
               onAdded={() => { setAdding(false); setNotice('Added to the Level 5 list. Click Edit to add their enrolment details.'); void load(); }} />
           )}
 
@@ -435,7 +425,7 @@ export default function Level5Tracker() {
             <Tile label="Qualified" value={`${summary.qualified} of ${summary.required}`} sub="completed or holds an equivalent" tone="text-emerald-600 dark:text-emerald-400" />
             <Tile label="Overdue" value={String(summary.counts.overdue)} sub="past their 2-year deadline" tone={summary.counts.overdue ? 'text-red-600 dark:text-red-400' : ''} />
             <Tile label="Due within 6 months" value={String(summary.counts.due_soon)} tone={summary.counts.due_soon ? 'text-orange-600 dark:text-orange-400' : ''} />
-            <Tile label="Not enrolled / date needed" value={String(summary.counts.not_enrolled + summary.counts.date_needed)} sub={`${summary.counts.not_enrolled} not enrolled after 3 months · ${summary.counts.date_needed} missing a date`} tone={summary.counts.not_enrolled + summary.counts.date_needed ? 'text-amber-600' : ''} />
+            <Tile label="Not enrolled yet" value={String(summary.counts.not_enrolled)} sub={summary.counts.date_needed ? `${summary.counts.date_needed} enrolled but missing the date` : 'no deadline until they enrol'} tone={summary.counts.date_needed ? 'text-amber-600' : ''} />
           </div>
 
           <div className={`${card} p-4 mb-6 flex flex-wrap items-end gap-4`}>
@@ -471,14 +461,14 @@ export default function Level5Tracker() {
           <section className={`${card} overflow-x-auto`}>
             <table className="w-full text-left text-sm min-w-[960px]">
               <thead className="border-b border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-900/50">
-                <tr><th className={th}>Name</th><th className={th}>Where they stand</th><th className={th}>In role since</th><th className={th}>Enrolled</th><th className={th}>Deadline</th><th className={th}>Completed</th><th className={th}><span className="sr-only">Edit</span></th></tr>
+                <tr><th className={th}>Name</th><th className={th}>Where they stand</th><th className={th}>Enrolled</th><th className={th}>Deadline</th><th className={th}>Completed</th><th className={th}><span className="sr-only">Edit</span></th></tr>
               </thead>
               <tbody className="divide-y divide-slate-200 dark:divide-slate-700">
                 {shown.length === 0 && (
-                  <tr><td colSpan={7} className="p-6 text-center text-slate-500">{data.people.length ? 'Nobody matches the filter.' : 'Nobody on the list yet. Use “+ Add person” to add your Registered Managers and Deputies.'}</td></tr>
+                  <tr><td colSpan={6} className="p-6 text-center text-slate-500">{data.people.length ? 'Nobody matches the filter.' : 'Nobody on the list yet. Use “+ Add person” to add your Registered Managers and Deputies.'}</td></tr>
                 )}
                 {shown.map((p) => editing === p.profileId ? (
-                  <tr key={p.profileId}><td colSpan={7} className="p-3">
+                  <tr key={p.profileId}><td colSpan={6} className="p-3">
                     <p className="font-bold mb-2">{p.name} <span className="text-xs font-normal text-slate-500">{p.homes.map((h) => h.name).join(', ')}</span></p>
                     <EditPanel person={p} today={data.today} onSaved={updatePerson} onCancel={() => setEditing(null)}
                       onRemoved={() => { setEditing(null); setNotice(`${p.name} was taken off the Level 5 list.`); void load(); }} />
@@ -490,7 +480,6 @@ export default function Level5Tracker() {
                       <div className="text-[11px] text-slate-500">{p.role ? L5_ROLE_LABELS[p.role] : 'Role not set'} · {p.homes.map((h) => h.name).join(', ')}</div>
                     </td>
                     <td className="p-3"><Pill band={p.band} /></td>
-                    <td className="p-3 tabular-nums whitespace-nowrap">{day(p.inRoleSince)}</td>
                     <td className="p-3 tabular-nums whitespace-nowrap">{day(p.enrolledOn)}{p.provider && <div className="text-[11px] text-slate-500">{p.provider}</div>}</td>
                     <td className="p-3 tabular-nums whitespace-nowrap">
                       {p.band === 'done' || p.band === 'not_required' || !p.dueDate ? '–' : <>

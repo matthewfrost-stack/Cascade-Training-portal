@@ -16,7 +16,7 @@ const text = (value: unknown, max = 300) => (typeof value === 'string' && value.
 /**
  * Level 5 Diploma tracker (admins, schedulers, managers; non-admins see people at their own homes).
  *   GET                                        -> people on the list + staff who could be added
- *   POST   { profileId, role, inRoleSince }    -> add someone to the list
+ *   POST   { profileId, role }                 -> add someone to the list
  *   PUT    { profileId, record }               -> save one person's record
  *   DELETE ?profileId=…                        -> take someone off the list (and delete their certificate)
  */
@@ -45,15 +45,13 @@ export async function POST(request: NextRequest) {
   const profileId = typeof body?.profileId === 'string' ? body.profileId : '';
   if (!UUID.test(profileId)) return NextResponse.json({ error: 'Choose a staff member.' }, { status: 400 });
   if (!isL5Role(body?.role)) return NextResponse.json({ error: 'Choose their role.' }, { status: 400 });
-  const inRoleSince = date(body?.inRoleSince);
-  if (inRoleSince && inRoleSince > ukToday()) return NextResponse.json({ error: '“In role since” can’t be in the future.' }, { status: 400 });
 
   try {
     if (!(await canManagePerson(service, { userId, role }, profileId, L5))) {
       return NextResponse.json({ error: 'This person is not at a home you manage.' }, { status: 403 });
     }
     const { error } = await service.from('staff_qualifications').insert({
-      profile_id: profileId, qualification: L5, role: body.role, start_date: inRoleSince, status: 'not_started',
+      profile_id: profileId, qualification: L5, role: body.role, status: 'not_started',
       updated_by: userId, updated_at: new Date().toISOString(),
     });
     if (error) {
@@ -83,7 +81,6 @@ export async function PUT(request: NextRequest) {
 
   const row = {
     role: r.role,
-    start_date: date(r.inRoleSince),
     status: r.status as L5Status,
     enrolled_on: date(r.enrolledOn),
     provider: text(r.provider),

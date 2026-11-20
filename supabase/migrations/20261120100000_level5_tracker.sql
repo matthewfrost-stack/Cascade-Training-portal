@@ -3,8 +3,8 @@
 -- * staff_qualifications can now hold L5_LEADERSHIP records. A row = that person is on
 --   the Level 5 list (added from the tracker's "+ Add person"; removing them deletes the row).
 -- * New column `role`: 'registered_manager' or 'deputy' (only used by Level 5).
--- * Existing columns are reused: start_date = "in role since", enrolled_on starts the
---   2-year in-house deadline, extended_to / extension_reason for agreed extensions.
+-- * Existing columns are reused: enrolled_on starts the 2-year in-house deadline
+--   (no time limit on enrolling), extended_to / extension_reason for agreed extensions.
 --
 -- Applied to both live (public) and dev. Safe to run more than once.
 --

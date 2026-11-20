@@ -13,7 +13,6 @@ export type L5Person = {
   /** Names of the homes they're linked to (only the ones the viewer can see). */
   homes: { id: string; name: string }[];
   role: L5Role | null;
-  inRoleSince: string | null;
   status: L5Status;
   enrolledOn: string | null;
   provider: string | null;
@@ -38,7 +37,7 @@ export class Level5NotReady extends Error {
 }
 
 type QualRow = {
-  profile_id: string; role: L5Role | null; start_date: string | null; status: L5Status; enrolled_on: string | null; provider: string | null;
+  profile_id: string; role: L5Role | null; status: L5Status; enrolled_on: string | null; provider: string | null;
   completed_on: string | null; equivalent: string | null; achieved_on: string | null; certificate_name: string | null;
   extended_to: string | null; extension_reason: string | null; notes: string | null;
 };
@@ -63,7 +62,7 @@ export async function buildLevel5(
 
   const { data: rows, error } = await service
     .from('staff_qualifications')
-    .select('profile_id, role, start_date, status, enrolled_on, provider, completed_on, equivalent, achieved_on, certificate_name, extended_to, extension_reason, notes')
+    .select('profile_id, role, status, enrolled_on, provider, completed_on, equivalent, achieved_on, certificate_name, extended_to, extension_reason, notes')
     .eq('qualification', L5);
   if (error) {
     if (error.code === '42703' || /role|extended_to|achieved_on|certificate_name/.test(error.message || '')) throw new Level5NotReady();
@@ -97,7 +96,6 @@ export async function buildLevel5(
       if (withCandidates) candidates.push({ profileId, name: person.name, homes: homeList(person.homeIds).map((h) => h.name).join(', ') });
       continue;
     }
-    const inRoleSince = d(r.start_date);
     const enrolledOn = d(r.enrolled_on);
     const extendedTo = d(r.extended_to);
     people.push({
@@ -105,7 +103,6 @@ export async function buildLevel5(
       name: person.name,
       homes: homeList(person.homeIds),
       role: r.role,
-      inRoleSince,
       status: r.status,
       enrolledOn,
       provider: r.provider,
@@ -118,7 +115,7 @@ export async function buildLevel5(
       achievedOn: d(r.achieved_on),
       certificateName: r.certificate_name,
       notes: r.notes,
-      band: l5Band({ status: r.status, inRoleSince, enrolledOn, extendedTo }, today),
+      band: l5Band({ status: r.status, enrolledOn, extendedTo }, today),
     });
   }
   people.sort((a, b) => a.name.localeCompare(b.name));
