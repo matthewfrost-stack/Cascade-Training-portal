@@ -2,7 +2,7 @@ import { getScopedLocationIds, type createServiceClient, type RoleTier } from '@
 
 type ServiceClient = ReturnType<typeof createServiceClient>;
 
-export const QUALIFICATIONS = ['L3_RESIDENTIAL_CHILDCARE', 'CARE_CERTIFICATE'] as const;
+export const QUALIFICATIONS = ['L3_RESIDENTIAL_CHILDCARE', 'CARE_CERTIFICATE', 'L5_LEADERSHIP'] as const;
 export type TrackedQualification = (typeof QUALIFICATIONS)[number];
 export const isTrackedQualification = (value: unknown): value is TrackedQualification =>
   typeof value === 'string' && (QUALIFICATIONS as readonly string[]).includes(value);
@@ -13,6 +13,7 @@ export const CERTIFICATE_BUCKET = 'qualification-certificates';
  * Can this user see (and so manage) this person's record for this qualification?
  * Admins: anyone. Managers / schedulers: people linked to a home they're assigned
  * to or manage. Level 3 also needs the home to be a children's home.
+ * (Level 5 and the Care Certificate: any home.)
  */
 export async function canManagePerson(
   service: ServiceClient,
