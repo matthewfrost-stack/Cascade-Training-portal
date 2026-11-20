@@ -3,7 +3,7 @@
 import React from 'react';
 import Icon from '@/app/components/Icon';
 
-type Accent = 'blue' | 'purple' | 'emerald' | 'amber' | 'indigo' | 'cyan' | 'slate';
+type Accent = 'blue' | 'purple' | 'emerald' | 'amber' | 'indigo' | 'cyan' | 'slate' | 'rose';
 type Size = 'sm' | 'md';
 
 const accentStyles: Record<Accent, { border: string; text: string }> = {
@@ -31,6 +31,10 @@ const accentStyles: Record<Accent, { border: string; text: string }> = {
     border: 'hover:border-cyan-500 hover:bg-cyan-50/50 dark:hover:border-cyan-400 dark:hover:bg-cyan-950/30 focus-visible:ring-cyan-500/40',
     text: 'text-cyan-600 dark:text-cyan-400',
   },
+  rose: {
+    border: 'hover:border-rose-500 hover:bg-rose-50/50 dark:hover:border-rose-400 dark:hover:bg-rose-950/30 focus-visible:ring-rose-500/40',
+    text: 'text-rose-600 dark:text-rose-400',
+  },
   slate: {
     border: 'hover:border-slate-500 hover:bg-slate-50/50 dark:hover:border-slate-300 dark:hover:bg-slate-900/40 focus-visible:ring-slate-500/40',
     text: 'text-slate-600 dark:text-slate-300',
@@ -46,6 +50,8 @@ type Props = {
   title: string;
   description?: string;
   emoji?: string;
+  /** A badge from `AppIcon` (shown instead of the emoji). */
+  icon?: React.ReactNode;
   onClick?: () => void;
   accent?: Accent;
   size?: Size;
@@ -59,6 +65,7 @@ export default function TileButton({
   title,
   description,
   emoji,
+  icon,
   onClick,
   accent = 'blue',
   size = 'md',
@@ -82,7 +89,7 @@ export default function TileButton({
     >
       <div>
         <div className="flex items-start justify-between gap-3 mb-3 sm:mb-4">
-          {emoji ? (
+          {icon ? icon : emoji ? (
             <div className={`${size === 'sm' ? 'text-3xl' : 'text-4xl sm:text-5xl'} leading-none`}>
               {emoji}
             </div>

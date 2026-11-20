@@ -5,17 +5,20 @@ import { useRouter } from 'next/navigation';
 import CourseManagerModal from '@/app/components/CourseManagerModal';
 import LocationManagerModal from '@/app/components/LocationManagerModal';
 import ChecklistTemplateModal from '@/app/components/ChecklistTemplateModal';
-import ManagerDigestModal from '@/app/components/ManagerDigestModal';
+import AddStaffModal from '@/app/components/AddStaffModal';
+import DuplicateRemovalModal from '@/app/components/DuplicateRemovalModal';
+import MatrixSyncModal from '@/app/components/MatrixSyncModal';
 import { hasPermission } from '@/lib/permissions';
 import BackButton from '@/app/components/BackButton';
 import UniformButton from '@/app/components/UniformButton';
 import { useCurrentUserProfile } from '@/lib/useCurrentUserProfile';
 import { supabase } from '@/lib/supabase';
+import { AppIcon, type AppIconName } from '@/lib/appIcons';
 
 type DashboardCardProps = {
   isDark: boolean;
   accent: string;
-  emoji: string;
+  icon: AppIconName;
   title: string;
   description: string;
   actionLabel: string;
@@ -25,7 +28,7 @@ type DashboardCardProps = {
 function DashboardCard({
   isDark,
   accent,
-  emoji,
+  icon,
   title,
   description,
   actionLabel,
@@ -39,7 +42,7 @@ function DashboardCard({
       }}
       className="rounded-xl border p-4 shadow-sm transition-all hover:-translate-y-0.5 hover:shadow-md"
     >
-      <div className="mb-2 text-2xl sm:text-3xl">{emoji}</div>
+      <div className="mb-3"><AppIcon name={icon} size="md" /></div>
       <h3
         style={{ color: isDark ? '#f1f5f9' : '#1e293b' }}
         className="mb-1 text-sm font-bold sm:text-base"
@@ -65,6 +68,18 @@ function DashboardCard({
   );
 }
 
+function AdminSection({ isDark, title, description, children }: { isDark: boolean; title: string; description: string; children: React.ReactNode }) {
+  return (
+    <section>
+      <div className="mb-3 px-1">
+        <h2 style={{ color: isDark ? '#f1f5f9' : '#1e293b' }} className="text-sm font-black uppercase tracking-widest">{title}</h2>
+        <p style={{ color: isDark ? '#94a3b8' : '#64748b' }} className="text-xs mt-0.5">{description}</p>
+      </div>
+      <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">{children}</div>
+    </section>
+  );
+}
+
 export default function AdminPage() {
   const router = useRouter();
   const { profile, isAuthenticated, loading, refreshProfile } = useCurrentUserProfile();
@@ -72,7 +87,9 @@ export default function AdminPage() {
   const [showCourseModal, setShowCourseModal] = useState(false);
   const [showLocationModal, setShowLocationModal] = useState(false);
   const [showChecklistTemplateModal, setShowChecklistTemplateModal] = useState(false);
-  const [showManagerDigestModal, setShowManagerDigestModal] = useState(false);
+  const [showStaffModal, setShowStaffModal] = useState(false);
+  const [showDuplicateModal, setShowDuplicateModal] = useState(false);
+  const [showMatrixSyncModal, setShowMatrixSyncModal] = useState(false);
   const [accessDenied, setAccessDenied] = useState(false);
   const [permissionRetry, setPermissionRetry] = useState(0);
   const [permissionLoadError, setPermissionLoadError] = useState(false);
@@ -81,6 +98,13 @@ export default function AdminPage() {
   useEffect(() => {
     checkTheme();
   }, []);
+
+  // Old links to the separate Admin Tools page (/admin-tools?open=…) land here.
+  useEffect(() => {
+    const open = new URLSearchParams(window.location.search).get('open');
+    if (open === 'staff') setShowStaffModal(true);
+    if (open === 'notifications') router.replace('/automation-control?tab=test');
+  }, [router]);
 
   // Handle authentication and authorization
   useEffect(() => {
@@ -138,6 +162,12 @@ export default function AdminPage() {
     setPermissionLoadError(false);
     setAccessDenied(false);
 
+    // Schedulers only ever had the reports here; they now have their own page.
+    if (profile.role_tier.trim().toLowerCase() === 'scheduler') {
+      router.replace('/reports');
+      return;
+    }
+
     // Check if user has admin permission
     if (!hasPermission(profile.role_tier, 'ADMIN_DASHBOARD', 'canView')) {
       setAccessDenied(true);
@@ -172,7 +202,7 @@ export default function AdminPage() {
   };
 
   const handleBack = (): void => {
-    router.push('/apps/booking-calendar');
+    router.push('/');
   };
 
   const roleTier = profile?.role_tier?.trim().toLowerCase() || null;
@@ -207,7 +237,7 @@ export default function AdminPage() {
       <main style={{ backgroundColor: isDark ? '#0f172a' : '#f1f5f9', minHeight: '100vh' }} className="p-8 transition-colors duration-300 flex items-center justify-center">
         <div className="text-center">
           <div className="mx-auto h-10 w-10 animate-spin rounded-full border-4 border-slate-300 border-t-emerald-500" />
-          <p style={{ color: isDark ? '#94a3b8' : '#64748b' }} className="mt-4">Loading Training Dashboard...</p>
+          <p style={{ color: isDark ? '#94a3b8' : '#64748b' }} className="mt-4">Loading Admin...</p>
         </div>
       </main>
     );
@@ -236,29 +266,41 @@ export default function AdminPage() {
         {/* Header row with back button and title */}
         <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-8 sm:mb-12 px-2 sm:px-4">
           <BackButton onClick={handleBack} />
-          <h1 style={{ color: isDark ? '#f1f5f9' : '#1e293b' }} className="text-xl sm:text-2xl md:text-3xl font-black uppercase tracking-tighter">Training Control Centre</h1>
+          <h1 style={{ color: isDark ? '#f1f5f9' : '#1e293b' }} className="text-xl sm:text-2xl md:text-3xl font-black uppercase tracking-tighter">Admin</h1>
           <div />
         </div>
 
-        <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
-          {/* ADMIN-ONLY MANAGEMENT */}
+        <div className="space-y-8">
           {isAdmin && (
-            <>
-              <DashboardCard isDark={isDark} accent="#f59e0b" emoji="📍" title="Manage Venues" description="Add and manage training locations." actionLabel="🏢 Manage" onClick={() => setShowLocationModal(true)} />
-              <DashboardCard isDark={isDark} accent="#a855f7" emoji="📚" title="Course Catalog" description="Create training types and set capacities." actionLabel="📖 Manage" onClick={() => setShowCourseModal(true)} />
-            </>
+            <AdminSection isDark={isDark} title="People" description="Staff accounts, people who have left, and duplicate clean-up.">
+              <DashboardCard isDark={isDark} accent="#3b82f6" icon="staff" title="Manage Staff" description="Add or edit staff, their homes, start dates and logins." actionLabel="Manage" onClick={() => setShowStaffModal(true)} />
+              <DashboardCard isDark={isDark} accent="#0ea5e9" icon="archive" title="Archive & Restore" description="People who have left. Restore someone to bring their login back." actionLabel="Open" onClick={() => router.push('/admin/archive')} />
+              <DashboardCard isDark={isDark} accent="#ef4444" icon="duplicates" title="Clean Duplicates" description="Find and merge duplicate staff records." actionLabel="Open" onClick={() => setShowDuplicateModal(true)} />
+            </AdminSection>
           )}
 
-          <DashboardCard isDark={isDark} accent="#10b981" emoji="📊" title="Intelligence Hub" description="View your performance dashboard." actionLabel="📊 View" onClick={() => router.push('/analytics?from=/admin')} />
-          <DashboardCard isDark={isDark} accent="#3b82f6" emoji="⭐" title="Feedback Results" description="Analyse training course feedback from staff." actionLabel="⭐ View Results" onClick={() => router.push('/feedback/results')} />
-
-          {/* ADMIN-ONLY */}
           {isAdmin && (
-            <>
-              <DashboardCard isDark={isDark} accent="#6366f1" emoji="✅" title="Checklist Template" description="Add/remove booking checklist items." actionLabel="✅ Manage" onClick={() => setShowChecklistTemplateModal(true)} />
-              <DashboardCard isDark={isDark} accent="#06b6d4" emoji="🤖" title="Feedback & Emails" description="Feedback form questions, feedback emails and booking reminders." actionLabel="✉️ Manage" onClick={() => router.push('/automation-control')} />
-              <DashboardCard isDark={isDark} accent="#ef4444" emoji="📬" title="Manager Emails" description="Monthly 'training due' email to each home's managers." actionLabel="📬 Manage" onClick={() => setShowManagerDigestModal(true)} />
-            </>
+            <AdminSection isDark={isDark} title="Setup" description="Homes, courses and the booking checklist.">
+              <DashboardCard isDark={isDark} accent="#f59e0b" icon="venues" title="Manage Venues" description="Homes and training locations, regulator, managers' email group." actionLabel="Manage" onClick={() => setShowLocationModal(true)} />
+              <DashboardCard isDark={isDark} accent="#a855f7" icon="courses" title="Course Catalog" description="Create training types and set capacities." actionLabel="Manage" onClick={() => setShowCourseModal(true)} />
+              <DashboardCard isDark={isDark} accent="#6366f1" icon="checklist" title="Checklist Template" description="Add/remove booking checklist items." actionLabel="Manage" onClick={() => setShowChecklistTemplateModal(true)} />
+            </AdminSection>
+          )}
+
+          {isAdmin && (
+            <AdminSection isDark={isDark} title="Emails" description="Every automatic email in one place, with its on/off switch.">
+              <DashboardCard isDark={isDark} accent="#06b6d4" icon="emails" title="Emails & Feedback" description="Feedback form and emails, booking reminders, manager emails, test mode and sent emails." actionLabel="Manage" onClick={() => router.push('/automation-control')} />
+            </AdminSection>
+          )}
+
+          <AdminSection isDark={isDark} title="Reports" description="Compliance, Intelligence Hub and Feedback Results now have their own Reports page.">
+            <DashboardCard isDark={isDark} accent="#10b981" icon="reports" title="Reports" description="Compliance Report, Intelligence Hub and Feedback Results." actionLabel="Open Reports" onClick={() => router.push('/reports')} />
+          </AdminSection>
+
+          {isAdmin && (
+            <AdminSection isDark={isDark} title="Data" description="Bring training records in from Atlas or a spreadsheet.">
+              <DashboardCard isDark={isDark} accent="#2563eb" icon="sync" title="Matrix Sync" description="Sync via Atlas upload or a full matrix CSV per location." actionLabel="Open Sync" onClick={() => setShowMatrixSyncModal(true)} />
+            </AdminSection>
           )}
         </div>
       </div>
@@ -267,7 +309,30 @@ export default function AdminPage() {
       {isAdmin && showCourseModal && <CourseManagerModal onClose={() => setShowCourseModal(false)} />}
       {isAdmin && showLocationModal && <LocationManagerModal onClose={() => setShowLocationModal(false)} />}
       {isAdmin && showChecklistTemplateModal && <ChecklistTemplateModal onClose={() => setShowChecklistTemplateModal(false)} />}
-      {isAdmin && showManagerDigestModal && <ManagerDigestModal onClose={() => setShowManagerDigestModal(false)} />}
+      {isAdmin && showStaffModal && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className={`max-w-2xl w-full max-h-[90vh] overflow-y-auto rounded-lg ${isDark ? 'bg-gray-800' : 'bg-white'}`}>
+            <AddStaffModal
+              onClose={() => setShowStaffModal(false)}
+              onRefresh={() => {
+                // Keep the window open after save/update so more edits can be made.
+              }}
+            />
+          </div>
+        </div>
+      )}
+      {isAdmin && showDuplicateModal && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className={`max-w-2xl w-full max-h-[90vh] overflow-y-auto rounded-lg ${isDark ? 'bg-gray-800' : 'bg-white'}`}>
+            <DuplicateRemovalModal onClose={() => setShowDuplicateModal(false)} />
+          </div>
+        </div>
+      )}
+      {isAdmin && showMatrixSyncModal && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <MatrixSyncModal onClose={() => setShowMatrixSyncModal(false)} />
+        </div>
+      )}
     </main>
   );
 }

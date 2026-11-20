@@ -2,8 +2,8 @@
 
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
-import MatrixSyncModal from '@/app/components/MatrixSyncModal';
 import TileButton from '@/app/components/TileButton';
+import { AppIcon } from '@/lib/appIcons';
 import { hasPermission } from '@/lib/permissions';
 import { useCurrentUserProfile } from '@/lib/useCurrentUserProfile';
 import { supabase } from '@/lib/supabase';
@@ -11,7 +11,6 @@ import { supabase } from '@/lib/supabase';
 export default function LandingPage() {
   const router = useRouter();
   const [isDark, setIsDark] = useState(true);
-  const [showMatrixSyncModal, setShowMatrixSyncModal] = useState(false);
   const { profile, loading, isAuthenticated } = useCurrentUserProfile();
   const userRole = profile?.role_tier ?? null;
 
@@ -114,22 +113,11 @@ export default function LandingPage() {
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 items-stretch">
-          {hasPermission(userRole, 'STAFF_MANAGEMENT', 'canView') && (
-            <TileButton
-              title="Matrix Sync"
-              description="Sync via Atlas upload or a full matrix CSV per location."
-              emoji="📥"
-              accent="blue"
-              actionText="Open Sync"
-              onClick={() => setShowMatrixSyncModal(true)}
-            />
-          )}
-
           {/* Training Matrix Card */}
           <TileButton
             title="Training Matrix"
             description="View all staff training records, completion dates, and manage certification expiry dates across all locations."
-            emoji="📊"
+            icon={<AppIcon name="matrix" size="lg" />}
             accent="purple"
             actionText="Open App"
             onClick={() => router.push('/training-matrix')}
@@ -137,12 +125,35 @@ export default function LandingPage() {
 
           {hasPermission(userRole, 'COMPLIANCE_REPORT', 'canView') && (
             <TileButton
-              title="Compliance Report"
-              description="Compliance by home for CQC and Ofsted: who needs what, training hours, monthly trend, and PDF / Excel downloads."
-              emoji="📋"
+              title="Reports"
+              description={hasPermission(userRole, 'INTELLIGENCE_HUB', 'canView')
+                ? 'Compliance Report for CQC and Ofsted, the Intelligence Hub, and Feedback Results.'
+                : 'Compliance by home for CQC and Ofsted: who needs what, training hours, monthly trend, and PDF / Excel downloads.'}
+              icon={<AppIcon name="reports" size="lg" />}
               accent="emerald"
-              actionText="Open Report"
-              onClick={() => router.push('/reports/compliance')}
+              actionText="Open Reports"
+              onClick={() => router.push('/reports')}
+            />
+          )}
+
+          {/* Booking Calendar Card */}
+          <TileButton
+            title="Booking Calendar"
+            description="Schedule training events, manage staff bookings, and track attendance for courses."
+            icon={<AppIcon name="calendar" size="lg" />}
+            accent="blue"
+            actionText="Open App"
+            onClick={() => router.push('/apps/booking-calendar')}
+          />
+
+          {hasPermission(userRole, 'QUALIFICATIONS', 'canView') && (
+            <TileButton
+              title="Qualifications Tracker"
+              description="Care Certificate, Level 3 Diploma (children's homes), Level 5 Diploma for managers and deputies, and NVQ / diploma enquiries."
+              icon={<AppIcon name="qualifications" size="lg" />}
+              accent="amber"
+              actionText="Open App"
+              onClick={() => router.push('/apps/nvq-diploma')}
             />
           )}
 
@@ -150,40 +161,13 @@ export default function LandingPage() {
           <TileButton
             title="Course Expiry Checker"
             description="Track staff training certifications, expiry dates, and manage course compliance across your organization."
-            emoji="📅"
-            accent="blue"
+            icon={<AppIcon name="expiry" size="lg" />}
+            accent="rose"
             actionText="Open App"
             onClick={() => router.push('/apps/expiry-checker')}
           />
-
-          {/* Booking Calendar Card */}
-          <TileButton
-            title="Booking Calendar"
-            description="Schedule training events, manage staff bookings, and track attendance for courses."
-            emoji="📆"
-            accent="emerald"
-            actionText="Open App"
-            onClick={() => router.push('/apps/booking-calendar')}
-          />
-
-          {hasPermission(userRole, 'QUALIFICATIONS', 'canView') && (
-            <TileButton
-              title="NVQ & Diploma Tracker"
-              description="Learner enquiries through to completion, and the Level 3 Diploma tracker for children's homes."
-              emoji="🎓"
-              accent="amber"
-              actionText="Open App"
-              onClick={() => router.push('/apps/nvq-diploma')}
-            />
-          )}
         </div>
       </div>
-
-      {showMatrixSyncModal && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-          <MatrixSyncModal onClose={() => setShowMatrixSyncModal(false)} />
-        </div>
-      )}
     </div>
   );
 }
