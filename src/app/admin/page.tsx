@@ -13,11 +13,12 @@ import BackButton from '@/app/components/BackButton';
 import UniformButton from '@/app/components/UniformButton';
 import { useCurrentUserProfile } from '@/lib/useCurrentUserProfile';
 import { supabase } from '@/lib/supabase';
+import { AppIcon, type AppIconName } from '@/lib/appIcons';
 
 type DashboardCardProps = {
   isDark: boolean;
   accent: string;
-  emoji: string;
+  icon: AppIconName;
   title: string;
   description: string;
   actionLabel: string;
@@ -27,7 +28,7 @@ type DashboardCardProps = {
 function DashboardCard({
   isDark,
   accent,
-  emoji,
+  icon,
   title,
   description,
   actionLabel,
@@ -41,7 +42,7 @@ function DashboardCard({
       }}
       className="rounded-xl border p-4 shadow-sm transition-all hover:-translate-y-0.5 hover:shadow-md"
     >
-      <div className="mb-2 text-2xl sm:text-3xl">{emoji}</div>
+      <div className="mb-3"><AppIcon name={icon} size="md" /></div>
       <h3
         style={{ color: isDark ? '#f1f5f9' : '#1e293b' }}
         className="mb-1 text-sm font-bold sm:text-base"
@@ -272,33 +273,33 @@ export default function AdminPage() {
         <div className="space-y-8">
           {isAdmin && (
             <AdminSection isDark={isDark} title="People" description="Staff accounts, people who have left, and duplicate clean-up.">
-              <DashboardCard isDark={isDark} accent="#3b82f6" emoji="👥" title="Manage Staff" description="Add or edit staff, their homes, start dates and logins." actionLabel="👥 Manage" onClick={() => setShowStaffModal(true)} />
-              <DashboardCard isDark={isDark} accent="#0ea5e9" emoji="🗄️" title="Archive & Restore" description="People who have left. Restore someone to bring their login back." actionLabel="🗄️ Open" onClick={() => router.push('/admin/archive')} />
-              <DashboardCard isDark={isDark} accent="#ef4444" emoji="🧹" title="Clean Duplicates" description="Find and merge duplicate staff records." actionLabel="🧹 Open" onClick={() => setShowDuplicateModal(true)} />
+              <DashboardCard isDark={isDark} accent="#3b82f6" icon="staff" title="Manage Staff" description="Add or edit staff, their homes, start dates and logins." actionLabel="Manage" onClick={() => setShowStaffModal(true)} />
+              <DashboardCard isDark={isDark} accent="#0ea5e9" icon="archive" title="Archive & Restore" description="People who have left. Restore someone to bring their login back." actionLabel="Open" onClick={() => router.push('/admin/archive')} />
+              <DashboardCard isDark={isDark} accent="#ef4444" icon="duplicates" title="Clean Duplicates" description="Find and merge duplicate staff records." actionLabel="Open" onClick={() => setShowDuplicateModal(true)} />
             </AdminSection>
           )}
 
           {isAdmin && (
             <AdminSection isDark={isDark} title="Setup" description="Homes, courses and the booking checklist.">
-              <DashboardCard isDark={isDark} accent="#f59e0b" emoji="📍" title="Manage Venues" description="Homes and training locations, regulator, managers' email group." actionLabel="🏢 Manage" onClick={() => setShowLocationModal(true)} />
-              <DashboardCard isDark={isDark} accent="#a855f7" emoji="📚" title="Course Catalog" description="Create training types and set capacities." actionLabel="📖 Manage" onClick={() => setShowCourseModal(true)} />
-              <DashboardCard isDark={isDark} accent="#6366f1" emoji="✅" title="Checklist Template" description="Add/remove booking checklist items." actionLabel="✅ Manage" onClick={() => setShowChecklistTemplateModal(true)} />
+              <DashboardCard isDark={isDark} accent="#f59e0b" icon="venues" title="Manage Venues" description="Homes and training locations, regulator, managers' email group." actionLabel="Manage" onClick={() => setShowLocationModal(true)} />
+              <DashboardCard isDark={isDark} accent="#a855f7" icon="courses" title="Course Catalog" description="Create training types and set capacities." actionLabel="Manage" onClick={() => setShowCourseModal(true)} />
+              <DashboardCard isDark={isDark} accent="#6366f1" icon="checklist" title="Checklist Template" description="Add/remove booking checklist items." actionLabel="Manage" onClick={() => setShowChecklistTemplateModal(true)} />
             </AdminSection>
           )}
 
           {isAdmin && (
             <AdminSection isDark={isDark} title="Emails" description="Every automatic email in one place, with its on/off switch.">
-              <DashboardCard isDark={isDark} accent="#06b6d4" emoji="✉️" title="Emails & Feedback" description="Feedback form and emails, booking reminders, manager emails, test mode and sent emails." actionLabel="✉️ Manage" onClick={() => router.push('/automation-control')} />
+              <DashboardCard isDark={isDark} accent="#06b6d4" icon="emails" title="Emails & Feedback" description="Feedback form and emails, booking reminders, manager emails, test mode and sent emails." actionLabel="Manage" onClick={() => router.push('/automation-control')} />
             </AdminSection>
           )}
 
           <AdminSection isDark={isDark} title="Reports" description="Compliance, Intelligence Hub and Feedback Results now have their own Reports page.">
-            <DashboardCard isDark={isDark} accent="#10b981" emoji="📈" title="Reports" description="Compliance Report, Intelligence Hub and Feedback Results." actionLabel="📈 Open Reports" onClick={() => router.push('/reports')} />
+            <DashboardCard isDark={isDark} accent="#10b981" icon="reports" title="Reports" description="Compliance Report, Intelligence Hub and Feedback Results." actionLabel="Open Reports" onClick={() => router.push('/reports')} />
           </AdminSection>
 
           {isAdmin && (
             <AdminSection isDark={isDark} title="Data" description="Bring training records in from Atlas or a spreadsheet.">
-              <DashboardCard isDark={isDark} accent="#2563eb" emoji="📥" title="Matrix Sync" description="Sync via Atlas upload or a full matrix CSV per location." actionLabel="📥 Open Sync" onClick={() => setShowMatrixSyncModal(true)} />
+              <DashboardCard isDark={isDark} accent="#2563eb" icon="sync" title="Matrix Sync" description="Sync via Atlas upload or a full matrix CSV per location." actionLabel="Open Sync" onClick={() => setShowMatrixSyncModal(true)} />
             </AdminSection>
           )}
         </div>

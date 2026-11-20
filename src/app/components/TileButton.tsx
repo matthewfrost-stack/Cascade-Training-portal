@@ -46,6 +46,8 @@ type Props = {
   title: string;
   description?: string;
   emoji?: string;
+  /** A badge from `AppIcon` (shown instead of the emoji). */
+  icon?: React.ReactNode;
   onClick?: () => void;
   accent?: Accent;
   size?: Size;
@@ -59,6 +61,7 @@ export default function TileButton({
   title,
   description,
   emoji,
+  icon,
   onClick,
   accent = 'blue',
   size = 'md',
@@ -82,7 +85,7 @@ export default function TileButton({
     >
       <div>
         <div className="flex items-start justify-between gap-3 mb-3 sm:mb-4">
-          {emoji ? (
+          {icon ? icon : emoji ? (
             <div className={`${size === 'sm' ? 'text-3xl' : 'text-4xl sm:text-5xl'} leading-none`}>
               {emoji}
             </div>

@@ -4,6 +4,7 @@ import { useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import MainHeader from '@/app/components/MainHeader';
 import TileButton from '@/app/components/TileButton';
+import { AppIcon } from '@/lib/appIcons';
 import { hasPermission } from '@/lib/permissions';
 import { useCurrentUserProfile } from '@/lib/useCurrentUserProfile';
 
@@ -41,7 +42,7 @@ export default function ReportsPage() {
               <TileButton
                 title="Compliance Report"
                 description="Compliance by home for CQC and Ofsted: who needs what, qualifications, training hours, monthly trend, and PDF / Excel downloads."
-                emoji="📋"
+                icon={<AppIcon name="compliance" size="lg" />}
                 accent="emerald"
                 actionText="Open Report"
                 onClick={() => router.push('/reports/compliance')}
@@ -51,7 +52,7 @@ export default function ReportsPage() {
               <TileButton
                 title="Intelligence Hub"
                 description="Attendance, training hours delivered, and hours lost to absences and lateness."
-                emoji="📊"
+                icon={<AppIcon name="hub" size="lg" />}
                 accent="blue"
                 actionText="Open Hub"
                 onClick={() => router.push('/analytics?from=/reports')}
@@ -61,7 +62,7 @@ export default function ReportsPage() {
               <TileButton
                 title="Feedback Results"
                 description="What staff said about their training: scores, comments and response rates by course."
-                emoji="⭐"
+                icon={<AppIcon name="feedback" size="lg" />}
                 accent="amber"
                 actionText="View Results"
                 onClick={() => router.push('/feedback/results')}

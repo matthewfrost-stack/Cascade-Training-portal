@@ -113,7 +113,7 @@ The root landing page after login is the **Training Dashboard**: the everyday to
 
 Matrix Sync moved to Admin → Data (2026-11-20).
 
-Navigation (`SlideOutNav.tsx`): an **always-visible side emoji strip** (🏠 Home, 📊 Matrix, 📈 Reports, 📆 Calendar, 🎓 Qualifications, 📅 Expiry, ⚙️ Admin – admins only) and a drawer with the same items plus Admin shortcuts (Manage Staff, Emails & Feedback, Archive – admin only).
+Navigation (`SlideOutNav.tsx`): an **always-visible side strip** of coloured icon badges with a short label under each (Home, Matrix, Reports, Calendar, Quals, Expiry, Admin – admins only) and a drawer with the same items plus Admin shortcuts (Manage Staff, Emails & Feedback, Archive – admin only).
 
 ---
 
@@ -363,6 +363,7 @@ Always-on workspace constraints that apply to every agent invocation.
 - **Restoring a deleted person now unlocks their login** (`unlockLogin` in `src/app/api/archive/route.ts`): deleting staff swaps the login email for `deleted-…@system.local`, sets a random password and bans sign-in; restore puts the saved email back and lifts the ban. The password stays random, so use Reset Password afterwards; the page shows a message saying so. Logins are shared by live and dev.
 
 ### Navigation tidy-up (2026-11-20)
+- **Icons**: the emoji on the dashboard, Reports page, Admin page and side menu were replaced with matching Lucide line icons on coloured badges, defined once in `src/lib/appIcons.tsx` (`<AppIcon name=… size=… />`; `TileButton` takes `icon`). Each area keeps one icon and colour everywhere: Matrix purple grid, Reports green chart, Calendar blue, Qualifications amber cap, Expiry rose calendar-clock, Admin grey cog.
 - **Reports page** (`/reports`, `src/app/reports/page.tsx`): Compliance Report, Intelligence Hub and Feedback Results in one place, for admins and schedulers (new permissions `INTELLIGENCE_HUB`, `FEEDBACK_RESULTS` in `permissions.ts`). Managers, who can only see the compliance report, go straight to it. Schedulers can now read feedback results (`GET /api/feedback/results` allows scheduler); deleting a response stays admin-only. Admin is now admin-only in the menu and on the Booking Calendar. Back from the three reports goes to `/reports`.
 - One **Admin** page (`/admin`) with People / Setup / Emails / Reports / Data sections; `/admin-tools` forwards to it. Side menu ⚙️ Admin for admins and schedulers (schedulers previously only reached it via the Booking Calendar's "Training Dashboard" button, now "⚙️ Admin").
 - **Emails & Feedback** (`/automation-control`): every automatic email with on/off at the top; Manager emails and Test mode & sent emails moved in as tabs.

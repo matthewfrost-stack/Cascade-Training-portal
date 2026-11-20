@@ -7,6 +7,25 @@ import UniformButton from "@/app/components/UniformButton";
 import { hasPermission } from "@/lib/permissions";
 import { useNavDrawer } from "@/app/components/NavDrawerProvider";
 import { useCurrentUserProfile } from "@/lib/useCurrentUserProfile";
+import { AppIcon, type AppIconName } from "@/lib/appIcons";
+
+function StripItem({ icon, label, title, active, onClick }: { icon: AppIconName; label: string; title: string; active: boolean; onClick: () => void }) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      title={title}
+      aria-label={title}
+      aria-current={active ? "page" : undefined}
+      className={`w-14 flex flex-col items-center gap-0.5 rounded-xl py-1.5 transition-all duration-200 ${
+        active ? "bg-slate-100 dark:bg-slate-800/80" : "hover:bg-slate-100 dark:hover:bg-slate-900"
+      }`}
+    >
+      <AppIcon name={icon} size="sm" className={active ? "ring-2 ring-offset-2 ring-slate-400 ring-offset-white dark:ring-offset-slate-950" : "opacity-90"} />
+      <span className={`text-[10px] leading-tight ${active ? "font-bold text-slate-900 dark:text-white" : "font-semibold text-slate-500 dark:text-slate-400"}`}>{label}</span>
+    </button>
+  );
+}
 
 export default function SlideOutNav() {
   const router = useRouter();
@@ -69,100 +88,15 @@ export default function SlideOutNav() {
 
   return (
     <>
-      {/* Always-visible vertical side emoji strip on the left screen edge */}
-      <div className="fixed left-0 top-14 bottom-0 z-40 w-16 border-r border-slate-200 bg-white/95 shadow-sm backdrop-blur dark:border-slate-800 dark:bg-slate-950/95 flex flex-col items-center py-4 gap-3">
-        {canUseGeneralApps && <button
-          type="button"
-          onClick={() => go("/")}
-          title="Training Dashboard"
-          className={`w-10 h-10 rounded-xl border-2 flex items-center justify-center text-xl transition-all duration-200 ${
-            isHome
-              ? "bg-blue-100 dark:bg-blue-950/80 border-blue-500 dark:border-blue-400 shadow-sm"
-              : "border-transparent hover:bg-slate-100 dark:hover:bg-slate-900 opacity-80 hover:opacity-100"
-          }`}
-        >
-          🏠
-        </button>}
-
-        <button
-          type="button"
-          onClick={() => go("/training-matrix")}
-          title="Training Matrix"
-          className={`w-10 h-10 rounded-xl border-2 flex items-center justify-center text-xl transition-all duration-200 ${
-            isMatrix
-              ? "bg-purple-100 dark:bg-purple-950/80 border-purple-500 dark:border-purple-400 shadow-sm"
-              : "border-transparent hover:bg-slate-100 dark:hover:bg-slate-900 opacity-80 hover:opacity-100"
-          }`}
-        >
-          📊
-        </button>
-
-        {canUseReport && <button
-          type="button"
-          onClick={() => go("/reports")}
-          title="Reports"
-          className={`w-10 h-10 rounded-xl border-2 flex items-center justify-center text-xl transition-all duration-200 ${
-            isReport
-              ? "bg-emerald-100 dark:bg-emerald-950/80 border-emerald-500 dark:border-emerald-400 shadow-sm"
-              : "border-transparent hover:bg-slate-100 dark:hover:bg-slate-900 opacity-80 hover:opacity-100"
-          }`}
-        >
-          📈
-        </button>}
-
-        <button
-          type="button"
-          onClick={() => go("/apps/booking-calendar")}
-          title="Booking Calendar"
-          className={`w-10 h-10 rounded-xl border-2 flex items-center justify-center text-xl transition-all duration-200 ${
-            isCalendar
-              ? "bg-emerald-100 dark:bg-emerald-950/80 border-emerald-500 dark:border-emerald-400 shadow-sm"
-              : "border-transparent hover:bg-slate-100 dark:hover:bg-slate-900 opacity-80 hover:opacity-100"
-          }`}
-        >
-          📆
-        </button>
-
-        {canUseQualifications && <button
-          type="button"
-          onClick={() => go("/apps/nvq-diploma")}
-          title="Qualifications Tracker"
-          className={`w-10 h-10 rounded-xl border-2 flex items-center justify-center text-xl transition-all ${
-            isQualifications
-              ? "bg-amber-100 dark:bg-amber-950/80 border-amber-500 dark:border-amber-400 shadow-sm"
-              : "border-transparent hover:bg-slate-100 dark:hover:bg-slate-900 opacity-80 hover:opacity-100"
-          }`}
-        >
-          🎓
-        </button>}
-
-        {canUseGeneralApps && <button
-          type="button"
-          onClick={() => go("/apps/expiry-checker")}
-          title="Course Expiry Checker"
-          className={`w-10 h-10 rounded-xl border-2 flex items-center justify-center text-xl transition-all duration-200 ${
-            isExpiry
-              ? "bg-blue-100 dark:bg-blue-950/80 border-blue-500 dark:border-blue-400 shadow-sm"
-              : "border-transparent hover:bg-slate-100 dark:hover:bg-slate-900 opacity-80 hover:opacity-100"
-          }`}
-        >
-          📅
-        </button>}
-
-        {canAdmin && (
-          <button
-            type="button"
-            onClick={() => go("/admin")}
-            title="Admin"
-            className={`w-10 h-10 rounded-xl border-2 flex items-center justify-center text-xl transition-all duration-200 ${
-              isAdmin
-                ? "bg-slate-200 dark:bg-slate-800 border-slate-500 dark:border-slate-400 shadow-sm"
-                : "border-transparent hover:bg-slate-100 dark:hover:bg-slate-900 opacity-80 hover:opacity-100"
-            }`}
-          >
-            ⚙️
-          </button>
-        )}
+      {/* Always-visible side strip on the left screen edge: icon badge + short label */}
+      <div className="fixed left-0 top-14 bottom-0 z-40 w-16 border-r border-slate-200 bg-white/95 shadow-sm backdrop-blur dark:border-slate-800 dark:bg-slate-950/95 flex flex-col items-center py-3 gap-1.5 overflow-y-auto">
+        {canUseGeneralApps && <StripItem icon="home" label="Home" title="Training Dashboard" active={isHome} onClick={() => go("/")} />}
+        <StripItem icon="matrix" label="Matrix" title="Training Matrix" active={isMatrix} onClick={() => go("/training-matrix")} />
+        {canUseReport && <StripItem icon="reports" label="Reports" title="Reports" active={isReport} onClick={() => go("/reports")} />}
+        <StripItem icon="calendar" label="Calendar" title="Booking Calendar" active={isCalendar} onClick={() => go("/apps/booking-calendar")} />
+        {canUseQualifications && <StripItem icon="qualifications" label="Quals" title="Qualifications Tracker" active={isQualifications} onClick={() => go("/apps/nvq-diploma")} />}
+        {canUseGeneralApps && <StripItem icon="expiry" label="Expiry" title="Course Expiry Checker" active={isExpiry} onClick={() => go("/apps/expiry-checker")} />}
+        {canAdmin && <StripItem icon="admin" label="Admin" title="Admin" active={isAdmin} onClick={() => go("/admin")} />}
       </div>
 
       {/* Expanded Drawer Overlay */}
@@ -207,7 +141,7 @@ export default function SlideOutNav() {
                       : "bg-slate-50/60 border-slate-200/80 dark:bg-slate-900/40 dark:border-slate-800 hover:bg-slate-100 dark:hover:bg-slate-900"
                   }`}
                 >
-                  <span className="text-2xl shrink-0">🏠</span>
+                  <AppIcon name="home" size="sm" />
                   <div className="min-w-0 flex-1">
                     <p className="text-sm font-bold text-slate-900 dark:text-white leading-tight">
                       Dashboard
@@ -249,7 +183,7 @@ export default function SlideOutNav() {
                             : "bg-white border-slate-200/80 dark:bg-slate-900/20 dark:border-slate-800 hover:bg-slate-50 dark:hover:bg-slate-900"
                         }`}
                       >
-                        <span className="text-xl shrink-0">📊</span>
+                        <AppIcon name="matrix" size="xs" />
                         <div className="min-w-0 flex-1">
                           <p className="text-xs font-bold text-slate-900 dark:text-white leading-tight">
                             Training Matrix
@@ -269,7 +203,7 @@ export default function SlideOutNav() {
                             : "bg-white border-slate-200/80 dark:bg-slate-900/20 dark:border-slate-800 hover:bg-slate-50 dark:hover:bg-slate-900"
                         }`}
                       >
-                        <span className="text-xl shrink-0">📈</span>
+                        <AppIcon name="reports" size="xs" />
                         <div className="min-w-0 flex-1">
                           <p className="text-xs font-bold text-slate-900 dark:text-white leading-tight">
                             Reports
@@ -289,7 +223,7 @@ export default function SlideOutNav() {
                             : "bg-white border-slate-200/80 dark:bg-slate-900/20 dark:border-slate-800 hover:bg-slate-50 dark:hover:bg-slate-900"
                         }`}
                       >
-                        <span className="text-xl shrink-0">📆</span>
+                        <AppIcon name="calendar" size="xs" />
                         <div className="min-w-0 flex-1">
                           <p className="text-xs font-bold text-slate-900 dark:text-white leading-tight">
                             Booking Calendar
@@ -309,7 +243,7 @@ export default function SlideOutNav() {
                             : "bg-white border-slate-200/80 dark:bg-slate-900/20 dark:border-slate-800 hover:bg-slate-50 dark:hover:bg-slate-900"
                         }`}
                       >
-                        <span className="text-xl shrink-0">📅</span>
+                        <AppIcon name="expiry" size="xs" />
                         <div className="min-w-0 flex-1">
                           <p className="text-xs font-bold text-slate-900 dark:text-white leading-tight">
                             Course Expiry
@@ -329,7 +263,7 @@ export default function SlideOutNav() {
                             : "bg-white border-slate-200/80 dark:bg-slate-900/20 dark:border-slate-800 hover:bg-slate-50 dark:hover:bg-slate-900"
                         }`}
                       >
-                        <span className="text-xl shrink-0">🎓</span>
+                        <AppIcon name="qualifications" size="xs" />
                         <div className="min-w-0 flex-1">
                           <p className="text-xs font-bold text-slate-900 dark:text-white leading-tight">
                             Qualifications Tracker
@@ -371,7 +305,7 @@ export default function SlideOutNav() {
                           onClick={() => go("/admin")}
                           className="w-full flex items-center gap-3 p-2.5 rounded-xl transition-all text-left border bg-white border-slate-200/80 dark:bg-slate-900/20 dark:border-slate-800 hover:bg-slate-50 dark:hover:bg-slate-900"
                         >
-                          <span className="text-xl shrink-0">⚙️</span>
+                          <AppIcon name="admin" size="xs" />
                           <div className="min-w-0 flex-1">
                             <p className="text-xs font-bold text-slate-900 dark:text-white leading-tight">
                               Admin
@@ -387,7 +321,7 @@ export default function SlideOutNav() {
                           onClick={() => go("/admin?open=staff")}
                           className="w-full flex items-center gap-3 p-2.5 rounded-xl transition-all text-left border bg-white border-slate-200/80 dark:bg-slate-900/20 dark:border-slate-800 hover:bg-slate-50 dark:hover:bg-slate-900"
                         >
-                          <span className="text-xl shrink-0">👥</span>
+                          <AppIcon name="staff" size="xs" />
                           <div className="min-w-0 flex-1">
                             <p className="text-xs font-bold text-slate-900 dark:text-white leading-tight">
                               Manage Staff
@@ -403,7 +337,7 @@ export default function SlideOutNav() {
                           onClick={() => go("/automation-control")}
                           className="w-full flex items-center gap-3 p-2.5 rounded-xl transition-all text-left border bg-white border-slate-200/80 dark:bg-slate-900/20 dark:border-slate-800 hover:bg-slate-50 dark:hover:bg-slate-900"
                         >
-                          <span className="text-xl shrink-0">✉️</span>
+                          <AppIcon name="emails" size="xs" />
                           <div className="min-w-0 flex-1">
                             <p className="text-xs font-bold text-slate-900 dark:text-white leading-tight">
                               Emails & Feedback
@@ -419,7 +353,7 @@ export default function SlideOutNav() {
                           onClick={() => go("/admin/archive")}
                           className="w-full flex items-center gap-3 p-2.5 rounded-xl transition-all text-left border bg-white border-slate-200/80 dark:bg-slate-900/20 dark:border-slate-800 hover:bg-slate-50 dark:hover:bg-slate-900"
                         >
-                          <span className="text-xl shrink-0">🗄️</span>
+                          <AppIcon name="archive" size="xs" />
                           <div className="min-w-0 flex-1">
                             <p className="text-xs font-bold text-slate-900 dark:text-white leading-tight">
                               Archive & Restore

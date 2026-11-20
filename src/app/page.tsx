@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import TileButton from '@/app/components/TileButton';
+import { AppIcon } from '@/lib/appIcons';
 import { hasPermission } from '@/lib/permissions';
 import { useCurrentUserProfile } from '@/lib/useCurrentUserProfile';
 import { supabase } from '@/lib/supabase';
@@ -116,7 +117,7 @@ export default function LandingPage() {
           <TileButton
             title="Training Matrix"
             description="View all staff training records, completion dates, and manage certification expiry dates across all locations."
-            emoji="📊"
+            icon={<AppIcon name="matrix" size="lg" />}
             accent="purple"
             actionText="Open App"
             onClick={() => router.push('/training-matrix')}
@@ -128,7 +129,7 @@ export default function LandingPage() {
               description={hasPermission(userRole, 'INTELLIGENCE_HUB', 'canView')
                 ? 'Compliance Report for CQC and Ofsted, the Intelligence Hub, and Feedback Results.'
                 : 'Compliance by home for CQC and Ofsted: who needs what, training hours, monthly trend, and PDF / Excel downloads.'}
-              emoji="📈"
+              icon={<AppIcon name="reports" size="lg" />}
               accent="emerald"
               actionText="Open Reports"
               onClick={() => router.push('/reports')}
@@ -139,7 +140,7 @@ export default function LandingPage() {
           <TileButton
             title="Booking Calendar"
             description="Schedule training events, manage staff bookings, and track attendance for courses."
-            emoji="📆"
+            icon={<AppIcon name="calendar" size="lg" />}
             accent="emerald"
             actionText="Open App"
             onClick={() => router.push('/apps/booking-calendar')}
@@ -149,7 +150,7 @@ export default function LandingPage() {
             <TileButton
               title="Qualifications Tracker"
               description="Care Certificate, Level 3 Diploma (children's homes), Level 5 Diploma for managers and deputies, and NVQ / diploma enquiries."
-              emoji="🎓"
+              icon={<AppIcon name="qualifications" size="lg" />}
               accent="amber"
               actionText="Open App"
               onClick={() => router.push('/apps/nvq-diploma')}
@@ -160,7 +161,7 @@ export default function LandingPage() {
           <TileButton
             title="Course Expiry Checker"
             description="Track staff training certifications, expiry dates, and manage course compliance across your organization."
-            emoji="📅"
+            icon={<AppIcon name="expiry" size="lg" />}
             accent="blue"
             actionText="Open App"
             onClick={() => router.push('/apps/expiry-checker')}
