@@ -44,6 +44,19 @@ export async function careCertCourses(service: ServiceClient): Promise<{ id: str
   return (data || []).filter((c) => !/assessor/i.test(c.name || '')).map((c) => ({ id: String(c.id), name: c.name }));
 }
 
+/**
+ * Homes that need the Care Certificate (`locations.care_cert_required`; schools don't).
+ * `null` = every home (the database update that adds the setting hasn't been run yet).
+ */
+export async function careCertHomeIds(service: ServiceClient): Promise<Set<string> | null> {
+  const { data, error } = await service.from('locations').select('id').eq('care_cert_required', true);
+  if (error) {
+    if (error.code === '42703' || /care_cert_required/.test(error.message || '')) return null;
+    throw new Error(error.message);
+  }
+  return new Set((data || []).map((l) => String(l.id)));
+}
+
 type QualRow = {
   profile_id: string; status: string; completed_on: string | null; equivalent: string | null; achieved_on: string | null;
   certificate_name: string | null; extended_to: string | null; extension_reason: string | null; notes: string | null;
@@ -51,7 +64,8 @@ type QualRow = {
 
 export async function buildCareCertHomes(service: ServiceClient, onlyLocationIds: string[] | null): Promise<CareCertHome[]> {
   const wanted = onlyLocationIds ? new Set(onlyLocationIds) : null;
-  const homes = (await loadLocations(service)).filter((l) => !wanted || wanted.has(l.id));
+  const required = await careCertHomeIds(service);
+  const homes = (await loadLocations(service)).filter((l) => (!wanted || wanted.has(l.id)) && (!required || required.has(l.id)));
   if (homes.length === 0) return [];
   const today = ukToday();
 

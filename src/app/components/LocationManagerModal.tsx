@@ -5,7 +5,7 @@ import { supabase } from '@/lib/supabase';
 import Icon from './Icon';
 
 type Regulator = '' | 'CQC' | 'Ofsted';
-interface ManagedLocation { id: string; name: string; accessible_office_regions?: string[] | null; manager_email?: string | null; regulator?: Regulator | null; diploma_required?: boolean | null }
+interface ManagedLocation { id: string; name: string; accessible_office_regions?: string[] | null; manager_email?: string | null; regulator?: Regulator | null; diploma_required?: boolean | null; care_cert_required?: boolean | null }
 
 const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
@@ -26,12 +26,14 @@ export default function LocationManagerModal({ onClose }: { onClose: () => void 
   const [newLocationManagerEmail, setNewLocationManagerEmail] = useState('');
   const [newLocationRegulator, setNewLocationRegulator] = useState<Regulator>('');
   const [newLocationDiploma, setNewLocationDiploma] = useState(false);
+  const [newLocationCareCert, setNewLocationCareCert] = useState(true);
   const [editingLocationId, setEditingLocationId] = useState<string | null>(null);
   const [editingLocationName, setEditingLocationName] = useState('');
   const [editingLocationAccessible, setEditingLocationAccessible] = useState<string[]>(['Hull']);
   const [editingLocationManagerEmail, setEditingLocationManagerEmail] = useState('');
   const [editingLocationRegulator, setEditingLocationRegulator] = useState<Regulator>('');
   const [editingLocationDiploma, setEditingLocationDiploma] = useState(false);
+  const [editingLocationCareCert, setEditingLocationCareCert] = useState(true);
   const [newVenueName, setNewVenueName] = useState('');
   const [newVenueOffice, setNewVenueOffice] = useState('Hull');
   const [editingVenueId, setEditingVenueId] = useState<string | null>(null);
@@ -105,6 +107,8 @@ export default function LocationManagerModal({ onClose }: { onClose: () => void 
         ...(managerEmail.value ? { manager_email: managerEmail.value } : {}),
         ...(newLocationRegulator ? { regulator: newLocationRegulator } : {}),
         ...(newLocationRegulator === 'Ofsted' && newLocationDiploma ? { diploma_required: true } : {}),
+        // Every home needs it by default; only send the setting when it's switched off (e.g. a school).
+        ...(!newLocationCareCert ? { care_cert_required: false } : {}),
       }]);
       if (error) throw error;
       setNewLocationName('');
@@ -112,6 +116,7 @@ export default function LocationManagerModal({ onClose }: { onClose: () => void 
       setNewLocationManagerEmail('');
       setNewLocationRegulator('');
       setNewLocationDiploma(false);
+      setNewLocationCareCert(true);
       fetchData();
     } catch (error: unknown) {
       alert(error instanceof Error ? error.message : 'Unable to add location');
@@ -155,6 +160,7 @@ export default function LocationManagerModal({ onClose }: { onClose: () => void 
     setEditingLocationManagerEmail(loc.manager_email || '');
     setEditingLocationRegulator(loc.regulator || '');
     setEditingLocationDiploma(loc.diploma_required === true);
+    setEditingLocationCareCert(loc.care_cert_required !== false);
   };
 
   const handleSaveLocation = async (e: React.FormEvent) => {
@@ -173,9 +179,11 @@ export default function LocationManagerModal({ onClose }: { onClose: () => void 
         regulator: editingLocationRegulator || null,
         // Only Ofsted children's homes need the Level 3 Diploma.
         diploma_required: editingLocationRegulator === 'Ofsted' && editingLocationDiploma,
+        // Schools don't need the Care Certificate.
+        care_cert_required: editingLocationCareCert,
       }).eq('id', editingLocationId);
       if (error) {
-        if (error.code === 'PGRST204' || /manager_email|regulator|diploma_required/.test(error.message || '')) {
+        if (error.code === 'PGRST204' || /manager_email|regulator|diploma_required|care_cert_required/.test(error.message || '')) {
           throw new Error('These fields need a database update first. Run the latest Supabase migration.');
         }
         throw error;
@@ -316,6 +324,13 @@ export default function LocationManagerModal({ onClose }: { onClose: () => void 
                         </span>
                       </label>
                     )}
+                    <label className="flex items-start gap-2 mt-3">
+                      <input type="checkbox" checked={editingLocationCareCert} onChange={(e) => setEditingLocationCareCert(e.target.checked)} className="w-4 h-4 rounded mt-0.5" />
+                      <span style={{ color: isDark ? '#cbd5e1' : '#1e293b' }} className="text-sm font-bold">
+                        Care Certificate required
+                        <span style={{ color: isDark ? '#94a3b8' : '#64748b' }} className="block text-[11px] font-normal">New staff must complete the Care Certificate within 12 weeks of starting. Untick for schools.</span>
+                      </span>
+                    </label>
                   </div>
 
                   <div>
@@ -422,6 +437,13 @@ export default function LocationManagerModal({ onClose }: { onClose: () => void 
                         </span>
                       </label>
                     )}
+                    <label className="flex items-start gap-2 mt-3">
+                      <input type="checkbox" checked={newLocationCareCert} onChange={(e) => setNewLocationCareCert(e.target.checked)} className="w-4 h-4 rounded mt-0.5" />
+                      <span style={{ color: isDark ? '#cbd5e1' : '#1e293b' }} className="text-sm font-bold">
+                        Care Certificate required
+                        <span style={{ color: isDark ? '#94a3b8' : '#64748b' }} className="block text-[11px] font-normal">New staff must complete the Care Certificate within 12 weeks of starting. Untick for schools.</span>
+                      </span>
+                    </label>
                   </div>
 
                   <div>
@@ -484,6 +506,7 @@ export default function LocationManagerModal({ onClose }: { onClose: () => void 
                       <p style={{ color: loc.manager_email ? (isDark ? '#94a3b8' : '#64748b') : '#d97706' }} className="text-[9px] font-bold mt-0.5">{loc.manager_email ? `📧 ${loc.manager_email}` : '📧 No managers\' email set'}</p>
                       <p style={{ color: loc.regulator ? (isDark ? '#94a3b8' : '#64748b') : '#d97706' }} className="text-[9px] font-bold mt-0.5">{loc.regulator ? `🏛️ Regulated by ${loc.regulator}` : '🏛️ Regulator not set'}</p>
                       {loc.diploma_required && <p style={{ color: isDark ? '#94a3b8' : '#64748b' }} className="text-[9px] font-bold mt-0.5">🎓 Level 3 Diploma required</p>}
+                      {loc.care_cert_required === false && <p style={{ color: isDark ? '#94a3b8' : '#64748b' }} className="text-[9px] font-bold mt-0.5">🩺 Care Certificate not required</p>}
                     </div>
                     <div className="flex gap-2">
                       <button 
