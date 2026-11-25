@@ -362,6 +362,9 @@ Always-on workspace constraints that apply to every agent invocation.
 - `/admin/archive` has a **search box** (name, type, home, email). While searching, every matching day group is open and a "N of M match" count shows.
 - **Restoring a deleted person now unlocks their login** (`unlockLogin` in `src/app/api/archive/route.ts`): deleting staff swaps the login email for `deleted-…@system.local`, sets a random password and bans sign-in; restore puts the saved email back and lifts the ban. The password stays random, so use Reset Password afterwards; the page shows a message saying so. Logins are shared by live and dev.
 
+### Level 5: "add person" picker leaves out head office and schools (2026-11-25)
+- `buildLevel5` only offers staff linked to at least one location with `care_cert_required` (so With Group / head office and the schools are left out once unticked in Manage Venues). People already on the Level 5 list are unaffected.
+
 ### Attendance reasons managed by admins; edit reasons from the Intelligence Hub (2026-11-25)
 - New table `attendance_reasons` (kind `late`/`absence`, label, sort_order, is_active; migration `20261125120000_attendance_reasons.sql`, seeded with the old fixed lists). Read: any logged-in user; write: admins only (RLS). Managed in Admin → Setup → **Attendance Reasons** (`AttendanceReasonsModal.tsx`). Removing a reason only hides it; bookings keep the text they were saved with. Shared helpers in `src/lib/attendanceReasons.ts` (`useAttendanceReasons` falls back to the built-in lists if the table isn't there; `reasonOptions` keeps a booking's current value in the dropdown).
 - Booking window (`BookingModal.tsx`) lateness and absence dropdowns use the list (unchanged otherwise).

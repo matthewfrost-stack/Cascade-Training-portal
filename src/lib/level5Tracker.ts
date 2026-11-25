@@ -1,5 +1,6 @@
 import type { createServiceClient } from '@/lib/apiAuth';
 import { fetchAll, isDeletedProfile, loadLocations, ukToday } from '@/lib/compliance';
+import { careCertHomeIds } from '@/lib/careCertificateTracker';
 import { l5Band, l5Due, l5StandardDue, type L5Band, type L5Role, type L5Status } from '@/lib/level5';
 
 type ServiceClient = ReturnType<typeof createServiceClient>;
@@ -88,12 +89,17 @@ export async function buildLevel5(
   const homeList = (ids: Set<string>) =>
     Array.from(ids).map((id) => ({ id, name: homeName.get(id) || 'Unknown' })).sort((a, b) => a.name.localeCompare(b.name));
 
+  // The "add person" picker only offers staff at a care home: locations with
+  // "Care Certificate required" off (head office, schools) are left out.
+  const careHomes = withCandidates ? await careCertHomeIds(service) : null;
+  const atCareHome = (ids: Set<string>) => !careHomes || Array.from(ids).some((id) => careHomes.has(id));
+
   const people: L5Person[] = [];
   const candidates: L5Candidate[] = [];
   for (const [profileId, person] of byPerson) {
     const r = records.get(profileId);
     if (!r) {
-      if (withCandidates) candidates.push({ profileId, name: person.name, homes: homeList(person.homeIds).map((h) => h.name).join(', ') });
+      if (withCandidates && atCareHome(person.homeIds)) candidates.push({ profileId, name: person.name, homes: homeList(person.homeIds).map((h) => h.name).join(', ') });
       continue;
     }
     const enrolledOn = d(r.enrolled_on);
