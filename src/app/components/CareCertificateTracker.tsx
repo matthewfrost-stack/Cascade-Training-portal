@@ -228,7 +228,7 @@ async function downloadExcel(homes: CareCertHome[], today: string) {
 
 // ---------- tab ----------
 
-/** Care Certificate tab of the NVQ & Diploma Tracker (every home). */
+/** Care Certificate tab of the Qualifications Tracker (every home with care_cert_required; not schools). */
 export default function CareCertificateTracker() {
   const [data, setData] = useState<Loaded | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -286,7 +286,7 @@ export default function CareCertificateTracker() {
           try { await downloadExcel(homes, data.today); } catch { setError('Could not create the Excel file.'); } finally { setExporting(false); }
         }}>{exporting ? 'Preparing…' : '📊 Download Excel'}</UniformButton>
       </div>
-      <p className="text-sm text-slate-500 dark:text-slate-400 mb-6">Every home: new staff should complete the Care Certificate within 12 weeks of their start date. Completions come from the Training Matrix. You only see the homes you manage.</p>
+      <p className="text-sm text-slate-500 dark:text-slate-400 mb-6">Every home except schools (set per home in Manage Venues): new staff should complete the Care Certificate within 12 weeks of their start date. Completions come from the Training Matrix. You only see the homes you manage.</p>
 
       {error && <div className="mb-4 rounded-lg border border-red-300 bg-red-50 dark:bg-red-950/30 dark:border-red-900/50 p-3 text-sm text-red-700 dark:text-red-200">{error}</div>}
       {notice && <div className="mb-4 rounded-lg border border-emerald-300 bg-emerald-50 dark:bg-emerald-950/30 dark:border-emerald-900/50 p-3 text-sm text-emerald-800 dark:text-emerald-200">{notice}</div>}

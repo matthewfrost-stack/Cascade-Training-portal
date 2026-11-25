@@ -361,6 +361,10 @@ Always-on workspace constraints that apply to every agent invocation.
 - `/admin/archive` has a **search box** (name, type, home, email). While searching, every matching day group is open and a "N of M match" count shows.
 - **Restoring a deleted person now unlocks their login** (`unlockLogin` in `src/app/api/archive/route.ts`): deleting staff swaps the login email for `deleted-…@system.local`, sets a random password and bans sign-in; restore puts the saved email back and lifts the ban. The password stays random, so use Reset Password afterwards; the page shows a message saying so. Logins are shared by live and dev.
 
+### Care Certificate: schools left out (2026-11-25)
+- New `locations.care_cert_required` (default true; migration `20261125100000_care_cert_required.sql` sets it false for any location named "…school…"). Ticked per home in Manage Venues ("Care Certificate required"); the venue card shows "🩺 Care Certificate not required" when off.
+- The Care Certificate tab, the compliance report's Care Certificate counts (schools show "–") and `canManagePerson` for CARE_CERTIFICATE only include homes with it ticked (`careCertHomeIds` in `src/lib/careCertificateTracker.ts`; before the migration runs, every home is included). Saved records for school staff are kept and reappear if the school is ticked again.
+
 ### Level 3: staff who moved from another site; Manage Venues warning (2026-11-20)
 - New optional `staff_qualifications.home_start_date` (migration `20261120120000_level3_home_start.sql`). In the Level 3 edit panel, "Moved from another site" + "started at a children's home" date: the 2-year clock (and the 3-month enrol prompt) runs from that date instead of the company start date (`clockStart` in `src/lib/diploma.ts`). The company start date and the Care Certificate are unchanged. Shown as "Moved in: …" in the table, a column in the Excel, and used by the compliance report's Level 3 counts.
 - Manage Venues (`LocationManagerModal.tsx`): before saving, asks to confirm if an Ofsted home whose name has no "school" is left without the Level 3 tick, or if the save would take a home off the Level 3 tracker (e.g. regulator changed or tick removed). Applies to adding and editing.
@@ -554,4 +558,4 @@ Edit `src/lib/permissions.ts` — all permission gates read from here.
 
 ---
 
-*Last updated: 2026-11-20*
+*Last updated: 2026-11-25*

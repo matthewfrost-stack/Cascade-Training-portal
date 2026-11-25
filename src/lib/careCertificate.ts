@@ -1,6 +1,7 @@
 /**
  * Care Certificate: new staff are expected to complete it within 12 weeks of
- * their start date (CQC / Skills for Care expectation). Tracked at every home.
+ * their start date (CQC / Skills for Care expectation). Tracked at every home
+ * with `locations.care_cert_required` (schools are left out).
  * Completion is read from the Training Matrix; the tracker can also record a
  * completion from elsewhere (saved to the matrix too), an equivalent, "not
  * required", or an agreed extension with a new deadline and a reason.

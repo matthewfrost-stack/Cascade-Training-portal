@@ -1,4 +1,5 @@
 import { getScopedLocationIds, type createServiceClient, type RoleTier } from '@/lib/apiAuth';
+import { careCertHomeIds } from '@/lib/careCertificateTracker';
 
 type ServiceClient = ReturnType<typeof createServiceClient>;
 
@@ -12,8 +13,8 @@ export const CERTIFICATE_BUCKET = 'qualification-certificates';
 /**
  * Can this user see (and so manage) this person's record for this qualification?
  * Admins: anyone. Managers / schedulers: people linked to a home they're assigned
- * to or manage. Level 3 also needs the home to be a children's home.
- * (Level 5 and the Care Certificate: any home.)
+ * to or manage. Level 3 also needs the home to be a children's home; the Care
+ * Certificate a home that needs it (not a school). Level 5: any home.
  */
 export async function canManagePerson(
   service: ServiceClient,
@@ -28,6 +29,12 @@ export async function canManagePerson(
   if (qualification === 'L3_RESIDENTIAL_CHILDCARE') {
     const { data } = await service.from('locations').select('id').in('id', homeIds).eq('diploma_required', true);
     homeIds = (data || []).map((l) => l.id as string);
+    if (homeIds.length === 0) return false;
+  }
+
+  if (qualification === 'CARE_CERTIFICATE') {
+    const required = await careCertHomeIds(service);
+    if (required) homeIds = homeIds.filter((id) => required.has(id));
     if (homeIds.length === 0) return false;
   }
 
