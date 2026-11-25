@@ -7,6 +7,8 @@
  * for someone who moved from another (e.g. CQC) site — see `clockStart`.
  * Only homes with `locations.diploma_required` are tracked (schools are not
  * children's homes). Records live in `staff_qualifications`.
+ * Reg 32(6): the deadline can be deferred for someone who works part-time or has had
+ * a long break from a care role — recorded as `extended_to` + `extension_reason`.
  */
 
 export const DIPLOMA_YEARS = 2;
@@ -45,6 +47,8 @@ export type DiplomaRecord = {
   status: DiplomaStatus;
   startDate: string | null; // YYYY-MM-DD
   completedOn?: string | null;
+  /** A deferred deadline (Reg 32(6)), replacing start + 2 years. */
+  extendedTo?: string | null;
 };
 
 /** When the 2-year clock starts: the children's-home start if they moved in, else their start date. */
@@ -65,10 +69,15 @@ export function dueDate(startDate: string | null): string | null {
   return startDate ? addMonths(startDate, DIPLOMA_YEARS * 12) : null;
 }
 
+/** The deadline that applies: a deferred one if agreed, else start + 2 years. */
+export function diplomaDue(startDate: string | null, extendedTo?: string | null): string | null {
+  return extendedTo || dueDate(startDate);
+}
+
 export function diplomaBand(record: DiplomaRecord, today: string): DiplomaBand {
   if (record.status === 'not_required') return 'not_required';
   if (record.status === 'completed' || record.status === 'equivalent') return 'done';
-  const due = dueDate(record.startDate);
+  const due = diplomaDue(record.startDate, record.extendedTo);
   if (!record.startDate || !due) return 'no_start_date';
   if (today > due) return 'overdue';
   if (today >= addMonths(due, -DUE_SOON_MONTHS)) return 'due_soon';

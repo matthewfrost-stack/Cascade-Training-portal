@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getScopedLocationIds, requireRole } from '@/lib/apiAuth';
-import { STATUS_LABELS, type DiplomaStatus } from '@/lib/diploma';
+import { clockStart, dueDate, STATUS_LABELS, type DiplomaStatus } from '@/lib/diploma';
 import { ukToday } from '@/lib/compliance';
 import { buildDiplomaHomes, diplomaHomes, DiplomaNotReady, L3 } from '@/lib/diplomaTracker';
 
@@ -54,6 +54,9 @@ export async function PUT(request: NextRequest) {
     completed_on: date(r.completedOn),
     equivalent: text(r.equivalent),
     achieved_on: date(r.achievedOn),
+    // Reg 32(6) deferral (part-time / long break). Only while they're still working towards it.
+    extended_to: ['completed', 'equivalent', 'not_required'].includes(r.status) ? null : date(r.extendedTo),
+    extension_reason: text(r.extensionReason, 1000),
     notes: text(r.notes, 2000),
     updated_by: userId,
     updated_at: new Date().toISOString(),
@@ -63,6 +66,14 @@ export async function PUT(request: NextRequest) {
   if (row.status === 'equivalent' && !row.equivalent) return NextResponse.json({ error: 'Say which equivalent qualification they hold.' }, { status: 400 });
   if (row.status === 'equivalent' && !row.achieved_on) return NextResponse.json({ error: 'Enter the date they achieved it.' }, { status: 400 });
   if (row.status === 'not_required' && !row.notes) return NextResponse.json({ error: 'Add a note saying why it isn’t required.' }, { status: 400 });
+  if (row.extended_to) {
+    const normal = dueDate(clockStart(row.start_date, row.home_start_date));
+    if (!normal) return NextResponse.json({ error: 'Enter their start date before deferring the deadline.' }, { status: 400 });
+    if (!row.extension_reason) return NextResponse.json({ error: 'Give a reason for deferring the deadline.' }, { status: 400 });
+    if (row.extended_to <= normal) return NextResponse.json({ error: 'The deferred deadline must be after the normal 2-year deadline.' }, { status: 400 });
+  } else {
+    row.extension_reason = null;
+  }
   if (row.home_start_date && row.start_date && row.home_start_date < row.start_date) return NextResponse.json({ error: 'The children’s home date can’t be before their start date.' }, { status: 400 });
 
   try {
@@ -81,7 +92,7 @@ export async function PUT(request: NextRequest) {
     }
     const { error } = await service.from('staff_qualifications').upsert(row, { onConflict: 'profile_id,qualification' });
     if (error) {
-      if (/home_start_date/.test(error.message || '')) throw new DiplomaNotReady();
+      if (/home_start_date|extended_to|extension_reason/.test(error.message || '')) throw new DiplomaNotReady();
       throw error;
     }
     // The start date (and qualifications on entry) belong to the person, shared with the Care Certificate.
