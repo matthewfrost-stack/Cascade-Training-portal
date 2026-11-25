@@ -92,7 +92,7 @@ export async function PUT(request: NextRequest) {
     }
     const { error } = await service.from('staff_qualifications').upsert(row, { onConflict: 'profile_id,qualification' });
     if (error) {
-      if (/home_start_date|extended_to|extension_reason/.test(error.message || '')) throw new DiplomaNotReady();
+      if (/home_start_date|extended_to|extension_reason/.test(error.message || '')) throw new DiplomaNotReady(error.message);
       throw error;
     }
     // The start date (and qualifications on entry) belong to the person, shared with the Care Certificate.
@@ -101,7 +101,7 @@ export async function PUT(request: NextRequest) {
       .update({ start_date: row.start_date, qualifications_on_entry: text(r.qualificationsOnEntry, 500) })
       .eq('id', profileId);
     if (profileError) {
-      if (/start_date|qualifications_on_entry/.test(profileError.message || '')) throw new DiplomaNotReady();
+      if (/start_date|qualifications_on_entry/.test(profileError.message || '')) throw new DiplomaNotReady(profileError.message);
       throw profileError;
     }
     return NextResponse.json({ ok: true });

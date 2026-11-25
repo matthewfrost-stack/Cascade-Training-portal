@@ -6,6 +6,7 @@ import {
   BookOpenCheck,
   CalendarClock,
   CalendarDays,
+  Clock,
   ChartColumn,
   ClipboardCheck,
   GraduationCap,
@@ -31,7 +32,7 @@ import {
 export type AppIconName =
   | 'home' | 'matrix' | 'reports' | 'calendar' | 'qualifications' | 'expiry' | 'admin'
   | 'compliance' | 'hub' | 'feedback'
-  | 'staff' | 'archive' | 'duplicates' | 'venues' | 'courses' | 'checklist' | 'emails' | 'sync'
+  | 'staff' | 'archive' | 'duplicates' | 'venues' | 'courses' | 'checklist' | 'attendanceReasons' | 'emails' | 'sync'
   | 'enquiries' | 'careCertificate' | 'level3' | 'level5';
 
 const ICONS: Record<AppIconName, { icon: LucideIcon; bg: string }> = {
@@ -53,6 +54,7 @@ const ICONS: Record<AppIconName, { icon: LucideIcon; bg: string }> = {
   venues: { icon: MapPin, bg: 'bg-amber-500' },
   courses: { icon: BookOpen, bg: 'bg-purple-600' },
   checklist: { icon: ListChecks, bg: 'bg-indigo-600' },
+  attendanceReasons: { icon: Clock, bg: 'bg-orange-500' },
   emails: { icon: Mail, bg: 'bg-cyan-600' },
   sync: { icon: Upload, bg: 'bg-blue-700' },
   // Qualifications Tracker tabs

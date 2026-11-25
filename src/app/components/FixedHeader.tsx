@@ -9,6 +9,7 @@ import { supabase } from '@/lib/supabase';
 import { getProfileAvatarUrl, getProfileInitials } from '@/lib/profile';
 import { useCurrentUserProfile } from '@/lib/useCurrentUserProfile';
 import NotificationBell from '@/app/components/NotificationBell';
+import { isSignInPage } from '@/lib/appChrome';
 
 type ThemeMode = 'light' | 'dark' | 'system';
 type RoleTier = 'staff' | 'manager' | 'scheduler' | 'admin';
@@ -145,7 +146,7 @@ export default function FixedHeader() {
     applyThemeMode(mode);
   };
 
-  if (pathname === '/login' || pathname === '/auth/callback') {
+  if (isSignInPage(pathname)) {
     return null;
   }
 

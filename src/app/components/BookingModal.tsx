@@ -4,6 +4,7 @@ import { useState, useEffect, useRef } from 'react';
 import { format } from 'date-fns';
 import { supabase } from '@/lib/supabase';
 import { hasPermission } from '@/lib/permissions';
+import { reasonOptions, useAttendanceReasons } from '@/lib/attendanceReasons';
 import { getEmailTestHeaders } from '@/lib/emailTestMode';
 import { useCurrentUserProfile } from '@/lib/useCurrentUserProfile';
 import UniformButton from './UniformButton';
@@ -76,8 +77,8 @@ export default function BookingModal({ event, onClose, onRefresh, onOpenChecklis
   });
   const [showRosterSettings, setShowRosterSettings] = useState(false);
 
-  const ABSENCE_REASONS = ["Appointment", "Needed in home", "Rostering", "Transport issues", "Not started yet", "Childcare", "Sickness", "Holiday"];
-  const LATE_REASONS = ["Traffic", "Handover delayed", "Public Transport", "Personal", "Other"];
+  // Managed by admins in Admin → Setup → Attendance Reasons (built-in lists until the database update is run).
+  const { late: LATE_REASONS, absence: ABSENCE_REASONS } = useAttendanceReasons();
 
   const canBookPastEvents = userRole === 'admin' || userRole === 'scheduler';
   const canAccessChecklist = userRole === 'admin' || userRole === 'scheduler';
@@ -865,7 +866,7 @@ export default function BookingModal({ event, onClose, onRefresh, onOpenChecklis
                           onChange={(e) => updateBooking(row.id, { late_reason: e.target.value })}
                         >
                           <option value="">Reason...</option>
-                          {LATE_REASONS.map(r => <option key={r} value={r}>{r}</option>)}
+                          {reasonOptions(LATE_REASONS, row.late_reason).map(r => <option key={r} value={r}>{r}</option>)}
                         </select>
                       </div>
                     </div>
@@ -878,7 +879,7 @@ export default function BookingModal({ event, onClose, onRefresh, onOpenChecklis
                         onChange={(e) => updateBooking(row.id, { absence_reason: e.target.value })}
                       >
                         <option value="">Select Absence Reason...</option>
-                        {ABSENCE_REASONS.map(r => <option key={r} value={r}>{r}</option>)}
+                        {reasonOptions(ABSENCE_REASONS, row.absence_reason).map(r => <option key={r} value={r}>{r}</option>)}
                       </select>
                     </div>
                   ) : null}

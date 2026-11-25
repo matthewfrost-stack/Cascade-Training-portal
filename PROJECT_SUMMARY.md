@@ -201,6 +201,7 @@ Older notes on the individual tools:
 | `BookingModal.tsx` | Booking form, roster, attendance, export, roster settings; both tabs have collapsible sticky location headers |
 | `RosterSettingsModal.tsx` | Edit per-session booking limits and roster messages |
 | `ChecklistTemplateModal.tsx` | Manage reusable checklist items, including removal |
+| `AttendanceReasonsModal.tsx` | Admin → Setup → Attendance Reasons: add, rename, reorder, remove (hide) lateness and absence reasons |
 | `EmailTestAndLog.tsx` | Email test mode and sent-email log (Emails & Feedback page) |
 | `UpdateNotification.tsx` | Polls `/api/version` and shows a toast when a new deploy is detected |
 | `MatrixSyncModal.tsx` | Import options: Atlas upload or location CSV |
@@ -360,6 +361,11 @@ Always-on workspace constraints that apply to every agent invocation.
 ### Archive: search + restore unlocks the login (2026-11-19)
 - `/admin/archive` has a **search box** (name, type, home, email). While searching, every matching day group is open and a "N of M match" count shows.
 - **Restoring a deleted person now unlocks their login** (`unlockLogin` in `src/app/api/archive/route.ts`): deleting staff swaps the login email for `deleted-…@system.local`, sets a random password and bans sign-in; restore puts the saved email back and lifts the ban. The password stays random, so use Reset Password afterwards; the page shows a message saying so. Logins are shared by live and dev.
+
+### Attendance reasons managed by admins; edit reasons from the Intelligence Hub (2026-11-25)
+- New table `attendance_reasons` (kind `late`/`absence`, label, sort_order, is_active; migration `20261125120000_attendance_reasons.sql`, seeded with the old fixed lists). Read: any logged-in user; write: admins only (RLS). Managed in Admin → Setup → **Attendance Reasons** (`AttendanceReasonsModal.tsx`). Removing a reason only hides it; bookings keep the text they were saved with. Shared helpers in `src/lib/attendanceReasons.ts` (`useAttendanceReasons` falls back to the built-in lists if the table isn't there; `reasonOptions` keeps a booking's current value in the dropdown).
+- Booking window (`BookingModal.tsx`) lateness and absence dropdowns use the list (unchanged otherwise).
+- Intelligence Hub (`/analytics`): in the "Late Arrivals / Absences – reason" pop-ups and the per-group Absences pop-up, admins and schedulers (`ATTENDANCE.canMark`) get a reason dropdown per person that saves straight to `bookings.late_reason` / `absence_reason` and regroups the charts at once. Sign In App / kiosk automatic labels show as "Not specified".
 
 ### Level 3: deferred deadline (2026-11-25)
 - Children's Homes Regulations 2015 reg 32(6): the 2-year deadline can be deferred for part-time staff or after a long break from a care role. The Level 3 edit panel has "Deadline deferred" (new deadline + reason, required; must be after start + 2 years), stored in the existing `staff_qualifications.extended_to` / `extension_reason` (no migration). Shown under the deadline in the table, in the Excel export, and as "(extended)" in the compliance report. Only while not started / enrolled / in progress. `diplomaDue()` in `src/lib/diploma.ts`.

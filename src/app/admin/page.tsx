@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import CourseManagerModal from '@/app/components/CourseManagerModal';
 import LocationManagerModal from '@/app/components/LocationManagerModal';
 import ChecklistTemplateModal from '@/app/components/ChecklistTemplateModal';
+import AttendanceReasonsModal from '@/app/components/AttendanceReasonsModal';
 import AddStaffModal from '@/app/components/AddStaffModal';
 import DuplicateRemovalModal from '@/app/components/DuplicateRemovalModal';
 import MatrixSyncModal from '@/app/components/MatrixSyncModal';
@@ -87,6 +88,7 @@ export default function AdminPage() {
   const [showCourseModal, setShowCourseModal] = useState(false);
   const [showLocationModal, setShowLocationModal] = useState(false);
   const [showChecklistTemplateModal, setShowChecklistTemplateModal] = useState(false);
+  const [showReasonsModal, setShowReasonsModal] = useState(false);
   const [showStaffModal, setShowStaffModal] = useState(false);
   const [showDuplicateModal, setShowDuplicateModal] = useState(false);
   const [showMatrixSyncModal, setShowMatrixSyncModal] = useState(false);
@@ -280,10 +282,11 @@ export default function AdminPage() {
           )}
 
           {isAdmin && (
-            <AdminSection isDark={isDark} title="Setup" description="Homes, courses and the booking checklist.">
+            <AdminSection isDark={isDark} title="Setup" description="Homes, courses, the booking checklist and attendance reasons.">
               <DashboardCard isDark={isDark} accent="#f59e0b" icon="venues" title="Manage Venues" description="Homes and training locations, regulator, managers' email group." actionLabel="Manage" onClick={() => setShowLocationModal(true)} />
               <DashboardCard isDark={isDark} accent="#a855f7" icon="courses" title="Course Catalog" description="Create training types and set capacities." actionLabel="Manage" onClick={() => setShowCourseModal(true)} />
               <DashboardCard isDark={isDark} accent="#6366f1" icon="checklist" title="Checklist Template" description="Add/remove booking checklist items." actionLabel="Manage" onClick={() => setShowChecklistTemplateModal(true)} />
+              <DashboardCard isDark={isDark} accent="#f97316" icon="attendanceReasons" title="Attendance Reasons" description="Add or remove the lateness and absence reasons used in bookings and the Intelligence Hub." actionLabel="Manage" onClick={() => setShowReasonsModal(true)} />
             </AdminSection>
           )}
 
@@ -309,6 +312,7 @@ export default function AdminPage() {
       {isAdmin && showCourseModal && <CourseManagerModal onClose={() => setShowCourseModal(false)} />}
       {isAdmin && showLocationModal && <LocationManagerModal onClose={() => setShowLocationModal(false)} />}
       {isAdmin && showChecklistTemplateModal && <ChecklistTemplateModal onClose={() => setShowChecklistTemplateModal(false)} />}
+      {isAdmin && showReasonsModal && <AttendanceReasonsModal onClose={() => setShowReasonsModal(false)} />}
       {isAdmin && showStaffModal && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
           <div className={`max-w-2xl w-full max-h-[90vh] overflow-y-auto rounded-lg ${isDark ? 'bg-gray-800' : 'bg-white'}`}>

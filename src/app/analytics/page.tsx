@@ -7,6 +7,9 @@ import BackButton from '@/app/components/BackButton';
 import { debugLog, debugWarn } from '@/lib/debug';
 import type { User } from '@supabase/supabase-js';
 import { bookingHours, formatHours } from '@/lib/trainingHours';
+import { useCurrentUserProfile } from '@/lib/useCurrentUserProfile';
+import { hasPermission } from '@/lib/permissions';
+import { reasonOptions, useAttendanceReasons, type ReasonKind } from '@/lib/attendanceReasons';
 
 interface AnalyticsBooking {
   id: string;
@@ -50,12 +53,15 @@ interface AnalyticsStats {
 }
 
 interface DetailRecord {
+  id: string;
   name: string;
   location: string;
   course: string;
   event_date?: string;
   minutes_late?: number | null;
   absence_reason?: string;
+  /** The reason exactly as saved on the booking (for the edit dropdown). */
+  raw_reason?: string | null;
 }
 
 type GroupedDetails = Record<string, Record<string, DetailRecord[]>>;
@@ -70,6 +76,33 @@ function lateReasonLabel(reason?: string | null): string {
   return trimmed;
 }
 
+/** Dropdown value for a saved reason: automatic lateness labels count as "Not specified" (''). */
+function reasonValue(kind: ReasonKind, raw?: string | null): string {
+  if (kind === 'late') return lateReasonLabel(raw) === 'Not specified' ? '' : (raw || '').trim();
+  return (raw || '').trim();
+}
+
+/** Reason dropdown on the Intelligence Hub (admins and schedulers); saves straight to the booking. */
+function ReasonPicker({ kind, raw, options, isDark, disabled, onChange }: {
+  kind: ReasonKind; raw?: string | null; options: string[]; isDark: boolean; disabled: boolean; onChange: (value: string) => void;
+}) {
+  const value = reasonValue(kind, raw);
+  return (
+    <select
+      aria-label={kind === 'late' ? 'Lateness reason' : 'Absence reason'}
+      value={value}
+      disabled={disabled}
+      onChange={(e) => onChange(e.target.value)}
+      onClick={(e) => e.stopPropagation()}
+      style={{ backgroundColor: isDark ? '#1e293b' : '#ffffff', color: kind === 'late' ? '#f59e0b' : '#ef4444', borderColor: isDark ? '#334155' : '#cbd5e1' }}
+      className="text-xs font-bold p-2 rounded-lg border outline-none max-w-[12rem] disabled:opacity-50"
+    >
+      <option value="">Not specified</option>
+      {reasonOptions(options, value).map((r) => <option key={r} value={r}>{r}</option>)}
+    </select>
+  );
+}
+
 function getCourseName(event?: AnalyticsEvent): string | undefined {
   const course = event?.courses;
   return Array.isArray(course) ? course[0]?.name : course?.name;
@@ -77,6 +110,12 @@ function getCourseName(event?: AnalyticsEvent): string | undefined {
 
 export default function AnalyticsDashboard() {
   const router = useRouter();
+  const { profile } = useCurrentUserProfile();
+  // Same people who can mark attendance in the booking window.
+  const canEditReasons = hasPermission(profile?.role_tier ?? null, 'ATTENDANCE', 'canMark');
+  const reasonLists = useAttendanceReasons();
+  const [savingReason, setSavingReason] = useState<string | null>(null);
+  const [reasonNotice, setReasonNotice] = useState('');
   const [loading, setLoading] = useState(true);
   const [data, setData] = useState<AnalyticsRow[]>([]);
   const [filterYear, setFilterYear] = useState('2026');
@@ -86,6 +125,8 @@ export default function AnalyticsDashboard() {
   const [user, setUser] = useState<User | null>(null);
   const [selectedReason, setSelectedReason] = useState<{ type: 'lateness' | 'absence'; reason: string } | null>(null);
   const [selectedAbsenceGroup, setSelectedAbsenceGroup] = useState<{ key: string } | null>(null);
+  // A fresh pop-up starts without the last "Saved" message.
+  useEffect(() => { setReasonNotice(''); }, [selectedReason, selectedAbsenceGroup]);
   const [collapsedCourses, setCollapsedCourses] = useState<Set<string>>(new Set());
   const [collapsedDates, setCollapsedDates] = useState<Set<string>>(new Set());
 
@@ -416,6 +457,8 @@ export default function AnalyticsDashboard() {
       return data
         .filter((item) => item?.minutes_late && item.minutes_late > 0 && lateReasonLabel(item?.late_reason) === reason)
         .map((item) => ({
+          id: item.id,
+          raw_reason: item.late_reason,
           name: item?.profiles?.full_name || 'Unknown',
           location: item?.profiles?.location || 'Unassigned Location',
           minutes_late: item?.minutes_late,
@@ -426,6 +469,8 @@ export default function AnalyticsDashboard() {
       return data
         .filter((item) => !item?.attended_at && (item?.absence_reason || 'Not specified') === reason)
         .map((item) => ({
+          id: item.id,
+          raw_reason: item.absence_reason,
           name: item?.profiles?.full_name || 'Unknown',
           location: item?.profiles?.location || 'Unassigned Location',
           event_date: item?.training_events?.event_date,
@@ -443,6 +488,8 @@ export default function AnalyticsDashboard() {
         return (item?.profiles?.full_name || 'Unknown Staff') === groupKey;
       })
       .map((item) => ({
+        id: item.id,
+        raw_reason: item.absence_reason,
         name: item?.profiles?.full_name || 'Unknown',
         location: item?.profiles?.location || 'Unassigned Location',
         course: getCourseName(item.training_events) || 'Unknown',
@@ -450,6 +497,31 @@ export default function AnalyticsDashboard() {
         absence_reason: item?.absence_reason || 'Not specified'
       }));
   };
+
+  /** Saves a new reason on the booking and updates the charts straight away. */
+  const saveReason = async (bookingId: string, kind: ReasonKind, value: string, name: string) => {
+    const column = kind === 'late' ? 'late_reason' : 'absence_reason';
+    const newValue = value || null;
+    setSavingReason(bookingId);
+    setReasonNotice('');
+    try {
+      const { error } = await supabase.from('bookings').update({ [column]: newValue }).eq('id', bookingId);
+      if (error) throw error;
+      setData((rows) => rows.map((row) => (row.id === bookingId ? { ...row, [column]: newValue } : row)));
+      setReasonNotice(`Saved – ${name} moved to “${value || 'Not specified'}”.`);
+    } catch (err) {
+      console.error('Error saving reason:', err);
+      alert('Could not save the reason. Please try again.');
+    } finally {
+      setSavingReason(null);
+    }
+  };
+
+  const reasonNoticeBanner = reasonNotice ? (
+    <p role="status" className="mb-4 rounded-lg border border-emerald-300 bg-emerald-50 dark:bg-emerald-900/20 dark:border-emerald-700 px-3 py-2 text-sm font-bold text-emerald-700 dark:text-emerald-300">
+      ✓ {reasonNotice}
+    </p>
+  ) : null;
 
   if (loading) {
     return (
@@ -725,6 +797,8 @@ export default function AnalyticsDashboard() {
                 </button>
               </div>
 
+              {reasonNoticeBanner}
+              {canEditReasons && <p style={{ color: isDark ? '#94a3b8' : '#64748b' }} className="text-xs mb-4">Change a reason here and it&rsquo;s saved to the booking straight away. Reasons are managed in Admin &rarr; Setup &rarr; Attendance Reasons.</p>}
               <div className="space-y-3">
                 {(() => {
                   const detailedData = getDetailedData(selectedReason.type, selectedReason.reason);
@@ -772,9 +846,9 @@ export default function AnalyticsDashboard() {
                               </button>
                               {!isDateCollapsed && (
                                 <div className="space-y-2">
-                                  {records.map((record, idx: number) => (
+                                  {records.map((record) => (
                                     <div
-                                      key={idx}
+                                      key={record.id}
                                       style={{
                                         backgroundColor: isDark ? '#0f172a' : '#f1f5f9',
                                         borderColor: isDark ? '#334155' : '#e2e8f0'
@@ -786,9 +860,21 @@ export default function AnalyticsDashboard() {
                                           <p style={{ color: isDark ? '#f1f5f9' : '#1e293b' }} className="font-bold text-sm truncate">{record.name}</p>
                                           <p style={{ color: isDark ? '#94a3b8' : '#64748b' }} className="text-[11px] font-bold uppercase truncate">{record.location}</p>
                                         </div>
-                                        {selectedReason.type === 'lateness' && (
-                                          <p style={{ color: '#f59e0b' }} className="text-sm font-black">{record.minutes_late} mins late</p>
-                                        )}
+                                        <div className="flex flex-col items-end gap-1.5 shrink-0">
+                                          {selectedReason.type === 'lateness' && (
+                                            <p style={{ color: '#f59e0b' }} className="text-sm font-black whitespace-nowrap">{record.minutes_late} mins late</p>
+                                          )}
+                                          {canEditReasons && (
+                                            <ReasonPicker
+                                              kind={selectedReason.type === 'lateness' ? 'late' : 'absence'}
+                                              raw={record.raw_reason}
+                                              options={selectedReason.type === 'lateness' ? reasonLists.late : reasonLists.absence}
+                                              isDark={isDark}
+                                              disabled={savingReason === record.id}
+                                              onChange={(value) => void saveReason(record.id, selectedReason.type === 'lateness' ? 'late' : 'absence', value, record.name)}
+                                            />
+                                          )}
+                                        </div>
                                       </div>
                                     </div>
                                   ))}
@@ -837,6 +923,8 @@ export default function AnalyticsDashboard() {
                 </button>
               </div>
 
+              {reasonNoticeBanner}
+              {canEditReasons && <p style={{ color: isDark ? '#94a3b8' : '#64748b' }} className="text-xs mb-4">Change a reason here and it&rsquo;s saved to the booking straight away. Reasons are managed in Admin &rarr; Setup &rarr; Attendance Reasons.</p>}
               <div className="space-y-3">
                 {(() => {
                   const detailedData = getGroupAbsences(selectedAbsenceGroup.key);
@@ -884,9 +972,9 @@ export default function AnalyticsDashboard() {
                               </button>
                               {!isDateCollapsed && (
                                 <div className="space-y-2">
-                                  {records.map((record, idx: number) => (
+                                  {records.map((record) => (
                                     <div
-                                      key={idx}
+                                      key={record.id}
                                       style={{
                                         backgroundColor: isDark ? '#0f172a' : '#f1f5f9',
                                         borderColor: isDark ? '#334155' : '#e2e8f0'
@@ -898,7 +986,18 @@ export default function AnalyticsDashboard() {
                                           <p style={{ color: isDark ? '#f1f5f9' : '#1e293b' }} className="font-bold text-sm truncate">{record.name}</p>
                                           <p style={{ color: isDark ? '#94a3b8' : '#64748b' }} className="text-[11px] font-bold uppercase truncate">{record.location}</p>
                                         </div>
-                                        <p style={{ color: '#ef4444' }} className="text-sm font-black whitespace-nowrap">{record.absence_reason}</p>
+                                        {canEditReasons ? (
+                                          <ReasonPicker
+                                            kind="absence"
+                                            raw={record.raw_reason}
+                                            options={reasonLists.absence}
+                                            isDark={isDark}
+                                            disabled={savingReason === record.id}
+                                            onChange={(value) => void saveReason(record.id, 'absence', value, record.name)}
+                                          />
+                                        ) : (
+                                          <p style={{ color: '#ef4444' }} className="text-sm font-black whitespace-nowrap">{record.absence_reason}</p>
+                                        )}
                                       </div>
                                     </div>
                                   ))}

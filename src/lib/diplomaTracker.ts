@@ -44,8 +44,10 @@ type QualRow = {
 };
 
 export class DiplomaNotReady extends Error {
-  constructor() {
-    super('The Level 3 Diploma tracker needs the database update first. Run the latest migrations (20261118170000, 20261118190000, 20261118210000 and 20261120120000) in the Supabase SQL Editor.');
+  /** `detail` = the database's own message, shown so the real cause is visible. */
+  constructor(detail?: string) {
+    super(`The Level 3 Diploma tracker couldn't read the database. If a migration hasn't been run, run 20261118170000, 20261118190000, 20261118210000 and 20261120120000 in the Supabase SQL Editor.${detail ? ` (Database said: ${detail})` : ''}`);
+    if (detail) console.error('Level 3 tracker database error:', detail);
   }
 }
 
@@ -53,7 +55,7 @@ export class DiplomaNotReady extends Error {
 export async function diplomaHomes(service: ServiceClient, onlyLocationIds: string[] | null): Promise<{ id: string; name: string }[]> {
   const { data, error } = await service.from('locations').select('id, name, diploma_required').eq('diploma_required', true).order('name');
   if (error) {
-    if (error.code === '42703' || /diploma_required/.test(error.message || '')) throw new DiplomaNotReady();
+    if (error.code === '42703' || /diploma_required/.test(error.message || '')) throw new DiplomaNotReady(error.message);
     throw new Error(error.message);
   }
   const wanted = onlyLocationIds ? new Set(onlyLocationIds) : null;
@@ -79,7 +81,7 @@ export async function buildDiplomaHomes(service: ServiceClient, onlyLocationIds:
         .in('location_id', homes.map((h) => h.id))
         .range(from, to));
   } catch (error) {
-    if (/start_date|qualifications_on_entry/.test(error instanceof Error ? error.message : '')) throw new DiplomaNotReady();
+    if (/start_date|qualifications_on_entry/.test(error instanceof Error ? error.message : '')) throw new DiplomaNotReady(error instanceof Error ? error.message : String(error));
     throw error;
   }
 
@@ -92,7 +94,7 @@ export async function buildDiplomaHomes(service: ServiceClient, onlyLocationIds:
       .eq('qualification', L3)
       .in('profile_id', staffIds.slice(i, i + 200));
     if (error) {
-      if (error.code === '42P01' || error.code === '42703' || /staff_qualifications|achieved_on|certificate_name|home_start_date|extended_to|extension_reason/.test(error.message || '')) throw new DiplomaNotReady();
+      if (error.code === '42P01' || error.code === '42703' || /staff_qualifications|achieved_on|certificate_name|home_start_date|extended_to|extension_reason/.test(error.message || '')) throw new DiplomaNotReady(`${error.code || ''} ${error.message}`.trim());
       throw new Error(error.message);
     }
     for (const row of (data || []) as QualRow[]) records.set(row.profile_id, row);
