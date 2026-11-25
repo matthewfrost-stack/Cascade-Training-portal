@@ -1,6 +1,6 @@
 import type { createServiceClient } from '@/lib/apiAuth';
 import { fetchAll, isDeletedProfile, ukToday } from '@/lib/compliance';
-import { clockStart, diplomaBand, dueDate, type DiplomaBand, type DiplomaStatus } from '@/lib/diploma';
+import { clockStart, diplomaBand, diplomaDue, dueDate, type DiplomaBand, type DiplomaStatus } from '@/lib/diploma';
 
 type ServiceClient = ReturnType<typeof createServiceClient>;
 type One<T> = T | T[] | null;
@@ -16,7 +16,13 @@ export type DiplomaPerson = {
   /** Only for people who moved from another site: when they started at a children's home (starts the clock). */
   homeStartDate: string | null;
   qualificationsOnEntry: string | null;
+  /** The deadline that applies (deferred, if agreed). */
   dueDate: string | null;
+  /** Start + 2 years, before any deferral. */
+  standardDue: string | null;
+  /** Reg 32(6) deferral: new deadline and why (part-time / long break). */
+  extendedTo: string | null;
+  extensionReason: string | null;
   enrolledOn: string | null;
   provider: string | null;
   completedOn: string | null;
@@ -34,6 +40,7 @@ type QualRow = {
   profile_id: string; status: DiplomaStatus; start_date: string | null; enrolled_on: string | null; provider: string | null;
   completed_on: string | null; equivalent: string | null; notes: string | null; updated_at: string | null;
   achieved_on: string | null; certificate_name: string | null; home_start_date: string | null;
+  extended_to: string | null; extension_reason: string | null;
 };
 
 export class DiplomaNotReady extends Error {
@@ -81,11 +88,11 @@ export async function buildDiplomaHomes(service: ServiceClient, onlyLocationIds:
   for (let i = 0; i < staffIds.length; i += 200) {
     const { data, error } = await service
       .from('staff_qualifications')
-      .select('profile_id, status, start_date, enrolled_on, provider, completed_on, equivalent, notes, updated_at, achieved_on, certificate_name, home_start_date')
+      .select('profile_id, status, start_date, enrolled_on, provider, completed_on, equivalent, notes, updated_at, achieved_on, certificate_name, home_start_date, extended_to, extension_reason')
       .eq('qualification', L3)
       .in('profile_id', staffIds.slice(i, i + 200));
     if (error) {
-      if (error.code === '42P01' || error.code === '42703' || /staff_qualifications|achieved_on|certificate_name|home_start_date/.test(error.message || '')) throw new DiplomaNotReady();
+      if (error.code === '42P01' || error.code === '42703' || /staff_qualifications|achieved_on|certificate_name|home_start_date|extended_to|extension_reason/.test(error.message || '')) throw new DiplomaNotReady();
       throw new Error(error.message);
     }
     for (const row of (data || []) as QualRow[]) records.set(row.profile_id, row);
@@ -109,6 +116,7 @@ export async function buildDiplomaHomes(service: ServiceClient, onlyLocationIds:
       const startDate = person.startDate || r?.start_date?.slice(0, 10) || null;
       const homeStartDate = r?.home_start_date?.slice(0, 10) || null;
       const clock = clockStart(startDate, homeStartDate);
+      const extendedTo = r?.extended_to?.slice(0, 10) || null;
       return {
         profileId,
         name: person.name,
@@ -116,7 +124,10 @@ export async function buildDiplomaHomes(service: ServiceClient, onlyLocationIds:
         startDate,
         homeStartDate,
         qualificationsOnEntry: person.onEntry,
-        dueDate: dueDate(clock),
+        dueDate: diplomaDue(clock, extendedTo),
+        standardDue: dueDate(clock),
+        extendedTo,
+        extensionReason: extendedTo ? r?.extension_reason || null : null,
         enrolledOn: r?.enrolled_on?.slice(0, 10) || null,
         provider: r?.provider || null,
         completedOn: r?.completed_on?.slice(0, 10) || null,
@@ -124,7 +135,7 @@ export async function buildDiplomaHomes(service: ServiceClient, onlyLocationIds:
         achievedOn: r?.achieved_on?.slice(0, 10) || null,
         certificateName: r?.certificate_name || null,
         notes: r?.notes || null,
-        band: diplomaBand({ status, startDate: clock }, today),
+        band: diplomaBand({ status, startDate: clock, extendedTo }, today),
         updatedAt: r?.updated_at || null,
       };
     }).sort((a, b) => a.name.localeCompare(b.name));

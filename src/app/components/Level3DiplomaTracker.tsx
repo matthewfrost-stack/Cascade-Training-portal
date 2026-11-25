@@ -10,6 +10,7 @@ import {
   diplomaBand,
   clockStart,
   diplomaSummary,
+  diplomaDue,
   dueDate,
   type DiplomaBand,
   type DiplomaStatus,
@@ -63,10 +64,11 @@ function Tile({ label, value, sub, tone }: { label: string; value: string; sub?:
 
 // ---------- edit panel ----------
 
-type Draft = { status: DiplomaStatus; startDate: string; moved: boolean; homeStartDate: string; qualificationsOnEntry: string; enrolledOn: string; provider: string; completedOn: string; equivalent: string; achievedOn: string; notes: string };
+type Draft = { status: DiplomaStatus; startDate: string; moved: boolean; homeStartDate: string; qualificationsOnEntry: string; enrolledOn: string; provider: string; completedOn: string; equivalent: string; achievedOn: string; extend: boolean; extendedTo: string; extensionReason: string; notes: string };
 const toDraft = (p: DiplomaPerson): Draft => ({
   status: p.status, startDate: p.startDate || '', moved: !!p.homeStartDate, homeStartDate: p.homeStartDate || '', qualificationsOnEntry: p.qualificationsOnEntry || '', enrolledOn: p.enrolledOn || '', provider: p.provider || '',
-  completedOn: p.completedOn || '', equivalent: p.equivalent || '', achievedOn: p.achievedOn || '', notes: p.notes || '',
+  completedOn: p.completedOn || '', equivalent: p.equivalent || '', achievedOn: p.achievedOn || '',
+  extend: !!p.extendedTo, extendedTo: p.extendedTo || '', extensionReason: p.extensionReason || '', notes: p.notes || '',
 });
 
 function EditPanel({ person, today, onSaved, onCancel }: { person: DiplomaPerson; today: string; onSaved: (p: DiplomaPerson) => void; onCancel: () => void }) {
@@ -87,8 +89,11 @@ function EditPanel({ person, today, onSaved, onCancel }: { person: DiplomaPerson
   const set = <K extends keyof Draft>(k: K, v: Draft[K]) => setD((x) => ({ ...x, [k]: v }));
   const homeStart = d.moved ? d.homeStartDate || null : null;
   const clock = clockStart(d.startDate || null, homeStart);
-  const preview = diplomaBand({ status: d.status, startDate: clock }, today);
-  const due = dueDate(clock);
+  const canDefer = d.status === 'not_started' || d.status === 'enrolled' || d.status === 'in_progress';
+  const extendedTo = canDefer && d.extend ? d.extendedTo || null : null;
+  const normalDue = dueDate(clock);
+  const due = diplomaDue(clock, extendedTo);
+  const preview = diplomaBand({ status: d.status, startDate: clock, extendedTo }, today);
 
   const save = async () => {
     if (d.status === 'completed' && !d.completedOn) { setError('Enter the date they completed it.'); return; }
@@ -98,14 +103,19 @@ function EditPanel({ person, today, onSaved, onCancel }: { person: DiplomaPerson
     if (d.status === 'not_required' && !d.notes.trim()) { setError('Add a note saying why it isn’t required.'); return; }
     if (d.moved && !d.homeStartDate) { setError('Enter the date they started at a children’s home, or untick “Moved from another site”.'); return; }
     if (homeStart && d.startDate && homeStart < d.startDate) { setError('The children’s home date can’t be before their start date.'); return; }
+    if (canDefer && d.extend) {
+      if (!normalDue) { setError('Enter their start date before deferring the deadline.'); return; }
+      if (!d.extendedTo || !d.extensionReason.trim()) { setError('A deferral needs a new deadline and a reason.'); return; }
+      if (d.extendedTo <= normalDue) { setError(`The new deadline must be after the normal one (${day(normalDue)}).`); return; }
+    }
     setSaving(true);
     setError('');
     try {
-      const response = await fetch('/api/diploma', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ profileId: person.profileId, record: { ...d, homeStartDate: homeStart || '' } }) });
+      const response = await fetch('/api/diploma', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ profileId: person.profileId, record: { ...d, homeStartDate: homeStart || '', extendedTo: extendedTo || '', extensionReason: extendedTo ? d.extensionReason : '' } }) });
       const body = await response.json().catch(() => ({}));
       if (!response.ok) throw new Error(body.error || 'Could not save.');
       onSaved({
-        ...person, status: d.status, startDate: d.startDate || null, homeStartDate: homeStart, qualificationsOnEntry: d.qualificationsOnEntry.trim() || null, dueDate: due, enrolledOn: d.enrolledOn || null, provider: d.provider.trim() || null,
+        ...person, status: d.status, startDate: d.startDate || null, homeStartDate: homeStart, qualificationsOnEntry: d.qualificationsOnEntry.trim() || null, dueDate: due, standardDue: normalDue, extendedTo, extensionReason: extendedTo ? d.extensionReason.trim() : null, enrolledOn: d.enrolledOn || null, provider: d.provider.trim() || null,
         completedOn: d.completedOn || null, equivalent: d.equivalent.trim() || null, achievedOn: d.achievedOn || null, certificateName,
         notes: d.notes.trim() || null, band: preview, updatedAt: new Date().toISOString(),
       });
@@ -123,7 +133,7 @@ function EditPanel({ person, today, onSaved, onCancel }: { person: DiplomaPerson
         <div>
           <label className={smallLabel} htmlFor={id('start')}>Start date</label>
           <input id={id('start')} type="date" className={input} value={d.startDate} onChange={(e) => set('startDate', e.target.value)} />
-          <p className="text-[11px] text-slate-500 mt-1">{due ? `Deadline: ${day(due)}. ` : ''}Saved on their staff record (also used for the Care Certificate).</p>
+          <p className="text-[11px] text-slate-500 mt-1">{normalDue ? `Deadline: ${day(normalDue)}${extendedTo ? ` (deferred to ${day(extendedTo)})` : ''}. ` : ''}Saved on their staff record (also used for the Care Certificate).</p>
         </div>
         <div>
           <label className="flex items-center gap-2 text-[11px] font-bold uppercase tracking-wide text-slate-500 dark:text-slate-400 mb-1">
@@ -193,6 +203,27 @@ function EditPanel({ person, today, onSaved, onCancel }: { person: DiplomaPerson
           <span className="text-[11px] text-slate-500">PDF or photo, up to 10 MB. Kept privately.</span>
         </div>
       )}
+      {canDefer && (
+        <div className="rounded-lg border border-slate-200 dark:border-slate-700 p-3 space-y-3">
+          <label className="flex items-center gap-2 text-sm font-bold">
+            <input type="checkbox" className="w-4 h-4" checked={d.extend} onChange={(e) => set('extend', e.target.checked)} />
+            Deadline deferred &ndash; part-time or a long break from a care role
+          </label>
+          {d.extend && (
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+              <div>
+                <label className={smallLabel} htmlFor={id('extto')}>New deadline</label>
+                <input id={id('extto')} type="date" className={input} value={d.extendedTo} min={normalDue || undefined} onChange={(e) => set('extendedTo', e.target.value)} />
+              </div>
+              <div className="sm:col-span-2">
+                <label className={smallLabel} htmlFor={id('extwhy')}>Reason</label>
+                <input id={id('extwhy')} className={input} value={d.extensionReason} maxLength={1000} placeholder="e.g. works 20 hours a week; 6 months' sickness absence" onChange={(e) => set('extensionReason', e.target.value)} />
+              </div>
+            </div>
+          )}
+          {!d.extend && <p className="text-[11px] text-slate-500">Children&rsquo;s Homes Regulations 2015, reg 32(6): the home can defer the 2-year deadline for someone who works part-time or has had a long break from a care role. Record the reason.</p>}
+        </div>
+      )}
       <div>
         <label className={smallLabel} htmlFor={id('notes')}>Notes</label>
         <textarea id={id('notes')} className={input} rows={2} maxLength={2000} value={d.notes}
@@ -213,9 +244,9 @@ function EditPanel({ person, today, onSaved, onCancel }: { person: DiplomaPerson
 async function downloadExcel(homes: DiplomaHome[], today: string) {
   const { default: writeXlsxFile } = await import('write-excel-file/browser');
   const bold = { fontWeight: 'bold' as const };
-  const head = ['Home', 'Name', 'Qualifications on entry', 'Status', 'Where they stand', 'Start date', 'Started at children’s home', 'Deadline', 'Time left', 'Provider', 'Enrolled on', 'Completed on', 'Equivalent', 'Achieved on', 'Certificate on file', 'Notes'];
+  const head = ['Home', 'Name', 'Qualifications on entry', 'Status', 'Where they stand', 'Start date', 'Started at children’s home', 'Deadline', 'Deferred (reason)', 'Time left', 'Provider', 'Enrolled on', 'Completed on', 'Equivalent', 'Achieved on', 'Certificate on file', 'Notes'];
   const rows = homes.flatMap((h) => h.people.map((p) => [
-    h.locationName, p.name, p.qualificationsOnEntry || '', STATUS_LABELS[p.status], BAND_LABELS[p.band], day(p.startDate), p.homeStartDate ? day(p.homeStartDate) : '', day(p.dueDate), timeLeft(p.dueDate, today),
+    h.locationName, p.name, p.qualificationsOnEntry || '', STATUS_LABELS[p.status], BAND_LABELS[p.band], day(p.startDate), p.homeStartDate ? day(p.homeStartDate) : '', day(p.dueDate), p.extendedTo ? `Yes – ${p.extensionReason || ''}` : '', timeLeft(p.dueDate, today),
     p.provider || '', day(p.enrolledOn), day(p.completedOn), p.equivalent || '', day(p.achievedOn), p.certificateName ? 'Yes' : 'No', p.notes || '',
   ]));
   await writeXlsxFile([head.map((value) => ({ value, ...bold })), ...rows], {
@@ -361,7 +392,7 @@ export default function Level3DiplomaTracker() {
                               <td className="p-3"><Pill band={p.band} /></td>
                               <td className="p-3">{STATUS_LABELS[p.status]}{p.status === 'equivalent' && p.equivalent && <div className="text-[11px] text-slate-500">{p.equivalent}</div>}{p.status === 'completed' && p.completedOn && <div className="text-[11px] text-slate-500">{day(p.completedOn)}</div>}{p.status === 'equivalent' && p.achievedOn && <div className="text-[11px] text-slate-500">{day(p.achievedOn)}</div>}{p.certificateName && <button type="button" onClick={() => void openCertificate(p.profileId, 'L3_RESIDENTIAL_CHILDCARE')} className="block text-[11px] font-bold text-blue-600 dark:text-blue-300 hover:underline">📄 View certificate</button>}</td>
                               <td className="p-3 tabular-nums whitespace-nowrap">{day(p.startDate)}{p.homeStartDate && <div className="text-[11px] font-bold text-blue-600 dark:text-blue-300" title="Moved from another site – the 2 years run from this date">Moved in: {day(p.homeStartDate)}</div>}</td>
-                              <td className="p-3 tabular-nums whitespace-nowrap">{p.band === 'done' || p.band === 'not_required' ? '–' : <>{day(p.dueDate)}<div className="text-[11px] text-slate-500">{timeLeft(p.dueDate, data.today)}</div></>}</td>
+                              <td className="p-3 tabular-nums whitespace-nowrap">{p.band === 'done' || p.band === 'not_required' ? '–' : <>{day(p.dueDate)}<div className="text-[11px] text-slate-500">{timeLeft(p.dueDate, data.today)}</div>{p.extendedTo && <div className="text-[11px] text-slate-500" title={p.extensionReason || ''}>Deferred{p.extensionReason ? `: ${p.extensionReason}` : ''}</div>}</>}</td>
                               <td className="p-3">{p.provider || <span className="text-slate-400">–</span>}</td>
                               <td className="p-3 text-right"><UniformButton variant="secondary" size="sm" onClick={() => setEditing(key)}>Edit</UniformButton></td>
                             </tr>
@@ -374,7 +405,7 @@ export default function Level3DiplomaTracker() {
               })}
             </div>
             <p className="text-xs text-slate-500 mt-4">
-              Deadline = start date + 2 years (or, for staff who moved from another site, the date they started at a children&rsquo;s home + 2 years). &ldquo;Not enrolled yet&rdquo; is a prompt 3 months after that (not a legal limit). Staff are listed by the homes they&rsquo;re linked to on the Training Matrix.
+              Deadline = start date + 2 years (or, for staff who moved from another site, the date they started at a children&rsquo;s home + 2 years). A deadline can be deferred, with a reason, for part-time staff or after a long break (reg 32(6)). &ldquo;Not enrolled yet&rdquo; is a prompt 3 months after that (not a legal limit). Staff are listed by the homes they&rsquo;re linked to on the Training Matrix.
             </p>
           </>
         )}
