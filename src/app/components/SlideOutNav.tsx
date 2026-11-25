@@ -8,6 +8,7 @@ import { hasPermission } from "@/lib/permissions";
 import { useNavDrawer } from "@/app/components/NavDrawerProvider";
 import { useCurrentUserProfile } from "@/lib/useCurrentUserProfile";
 import { AppIcon, type AppIconName } from "@/lib/appIcons";
+import { isSignInPage } from '@/lib/appChrome';
 
 function StripItem({ icon, label, title, active, onClick }: { icon: AppIconName; label: string; title: string; active: boolean; onClick: () => void }) {
   return (
@@ -66,7 +67,8 @@ export default function SlideOutNav() {
     setAdminOpen(false);
   }, [pathname]);
 
-  if (pathname === "/login" || pathname === "/auth/callback") {
+  // No menu on the sign-in pages (forgotten password etc.), or for anyone not signed in.
+  if (isSignInPage(pathname) || (!loading && !isAuthenticated)) {
     return null;
   }
 
